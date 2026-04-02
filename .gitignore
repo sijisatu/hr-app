@@ -1,0 +1,11 @@
+node_modules/
+.next/
+*.log
+*.tsbuildinfo
+
+backend/node_modules/
+backend/dist/
+backend/storage/
+
+.DS_Store
+Thumbs.db
