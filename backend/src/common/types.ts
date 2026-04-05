@@ -5,6 +5,10 @@ export type EmploymentType = "permanent" | "contract" | "probation";
 export type ContractStatus = "active" | "probation" | "ending-soon" | "expired";
 export type ShiftStatus = "active" | "scheduled" | "maintenance";
 export type OvertimeStatus = "pending" | "approved" | "paid";
+export type PayrollComponentType = "earning" | "deduction";
+export type PayrollCalculationType = "fixed" | "percentage";
+export type PayRunStatus = "draft" | "published";
+export type PayslipStatus = "draft" | "published";
 
 export type LeaveBalance = {
   annual: number;
@@ -98,10 +102,80 @@ export type LeaveRecord = {
   autoApproved: boolean;
 };
 
+export type PayrollComponentRecord = {
+  id: string;
+  code: string;
+  name: string;
+  type: PayrollComponentType;
+  calculationType: PayrollCalculationType;
+  amount: number;
+  percentage: number | null;
+  taxable: boolean;
+  active: boolean;
+  appliesToAll: boolean;
+  employeeIds: string[];
+  description: string;
+};
+
+export type PayslipLineItem = {
+  code: string;
+  name: string;
+  type: PayrollComponentType;
+  amount: number;
+  taxable: boolean;
+  source: "base-salary" | "allowance" | "overtime" | "component" | "tax";
+};
+
+export type PayslipRecord = {
+  id: string;
+  payRunId: string;
+  userId: string;
+  employeeName: string;
+  employeeNumber: string;
+  department: string;
+  position: string;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  payDate: string;
+  status: PayslipStatus;
+  baseSalary: number;
+  allowance: number;
+  overtimePay: number;
+  additionalEarnings: number;
+  grossPay: number;
+  taxDeduction: number;
+  otherDeductions: number;
+  netPay: number;
+  bankName: string;
+  bankAccountMasked: string;
+  taxProfile: string;
+  components: PayslipLineItem[];
+  generatedFileUrl: string | null;
+};
+
+export type PayRunRecord = {
+  id: string;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  payDate: string;
+  status: PayRunStatus;
+  totalGross: number;
+  totalNet: number;
+  totalTax: number;
+  employeeCount: number;
+  createdAt: string;
+  publishedAt: string | null;
+};
+
 export type DatabaseShape = {
   employees: EmployeeRecord[];
   attendanceLogs: AttendanceRecord[];
   shifts: ShiftRecord[];
   overtimeRequests: OvertimeRecord[];
   leaveRequests: LeaveRecord[];
+  payrollComponents: PayrollComponentRecord[];
+  payRuns: PayRunRecord[];
+  payslips: PayslipRecord[];
 };

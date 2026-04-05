@@ -1,4 +1,4 @@
-﻿import {
+import {
   Body,
   Controller,
   Delete,
@@ -6,6 +6,7 @@
   Param,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -20,9 +21,14 @@ import {
   CreateEmployeeDto,
   CreateExportDto,
   CreateOvertimeDto,
+  CreatePayrollComponentDto,
+  ExportPayslipDto,
+  GeneratePayrollRunDto,
   LeaveApproveDto,
   LeaveRequestDto,
-  UpdateEmployeeDto
+  PublishPayrollRunDto,
+  UpdateEmployeeDto,
+  UpdatePayrollComponentDto
 } from "./common/dtos";
 
 @Controller("api")
@@ -124,6 +130,51 @@ export class AppController {
   @Post("leave/approve")
   async approveLeave(@Body() body: LeaveApproveDto) {
     return this.wrap(await this.appService.approveLeave(body));
+  }
+
+  @Get("payroll/overview")
+  async payrollOverview() {
+    return this.wrap(await this.appService.getPayrollOverview());
+  }
+
+  @Get("payroll/components")
+  async payrollComponents() {
+    return this.wrap(await this.appService.getPayrollComponents());
+  }
+
+  @Post("payroll/components")
+  async createPayrollComponent(@Body() body: CreatePayrollComponentDto) {
+    return this.wrap(await this.appService.createPayrollComponent(body));
+  }
+
+  @Patch("payroll/components/:id")
+  async updatePayrollComponent(@Param("id") id: string, @Body() body: UpdatePayrollComponentDto) {
+    return this.wrap(await this.appService.updatePayrollComponent(id, body));
+  }
+
+  @Get("payroll/runs")
+  async payRuns() {
+    return this.wrap(await this.appService.getPayRuns());
+  }
+
+  @Post("payroll/runs")
+  async generatePayrollRun(@Body() body: GeneratePayrollRunDto) {
+    return this.wrap(await this.appService.generatePayrollRun(body));
+  }
+
+  @Post("payroll/runs/publish")
+  async publishPayrollRun(@Body() body: PublishPayrollRunDto) {
+    return this.wrap(await this.appService.publishPayrollRun(body));
+  }
+
+  @Get("payroll/payslips")
+  async payslips(@Query("userId") userId?: string) {
+    return this.wrap(await this.appService.getPayslips(userId));
+  }
+
+  @Post("payroll/payslips/export")
+  async exportPayslip(@Body() body: ExportPayslipDto) {
+    return this.wrap(await this.appService.exportPayslip(body));
   }
 
   @Post("reports/export")

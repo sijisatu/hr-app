@@ -1,5 +1,5 @@
 ﻿import { Type } from "class-transformer";
-import { IsEmail, IsIn, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 export class CreateEmployeeDto {
   @IsString()
@@ -233,6 +233,121 @@ export class LeaveApproveDto {
 
   @IsString()
   actor!: string;
+}
+
+export class CreatePayrollComponentDto {
+  @IsString()
+  code!: string;
+
+  @IsString()
+  name!: string;
+
+  @IsIn(["earning", "deduction"])
+  type!: "earning" | "deduction";
+
+  @IsIn(["fixed", "percentage"])
+  calculationType!: "fixed" | "percentage";
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  percentage?: number | null;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  taxable!: boolean;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  active!: boolean;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  appliesToAll!: boolean;
+
+  @IsOptional()
+  employeeIds?: string[];
+
+  @IsString()
+  description!: string;
+}
+
+export class UpdatePayrollComponentDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsIn(["earning", "deduction"])
+  type?: "earning" | "deduction";
+
+  @IsOptional()
+  @IsIn(["fixed", "percentage"])
+  calculationType?: "fixed" | "percentage";
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  percentage?: number | null;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  taxable?: boolean;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  appliesToAll?: boolean;
+
+  @IsOptional()
+  employeeIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class GeneratePayrollRunDto {
+  @IsString()
+  periodLabel!: string;
+
+  @IsString()
+  periodStart!: string;
+
+  @IsString()
+  periodEnd!: string;
+
+  @IsString()
+  payDate!: string;
+}
+
+export class PublishPayrollRunDto {
+  @IsString()
+  payRunId!: string;
+}
+
+export class ExportPayslipDto {
+  @IsString()
+  payslipId!: string;
 }
 
 export class CreateExportDto {

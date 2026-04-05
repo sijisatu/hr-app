@@ -1,18 +1,19 @@
-import { ShieldCheck } from "lucide-react";
+﻿import { ShieldCheck } from "lucide-react";
 
 export function IntegrityCard() {
   return (
-    <div className="rounded-[30px] bg-[var(--primary)] p-6 text-white shadow-soft">
-      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/55">System Integrity</p>
-      <div className="mt-8 flex items-start gap-4">
-        <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10">
-          <ShieldCheck className="h-6 w-6" />
+    <div className="page-card bg-[var(--primary)] p-6 text-white">
+      <p className="text-[12px] font-medium uppercase tracking-[0.12em] text-white/70">System Integrity</p>
+      <div className="mt-6 flex items-start gap-4">
+        <div className="grid h-12 w-12 place-items-center rounded-[12px] bg-white/12">
+          <ShieldCheck className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-lg font-semibold">Biometric scanners</p>
-          <p className="mt-2 text-sm text-white/70">All 14 nodes synchronized with geofence policy.</p>
+          <p className="text-[18px] font-semibold">Biometric Scanners</p>
+          <p className="mt-1 text-[14px] leading-5 text-white/75">All active nodes synchronized with local attendance storage.</p>
         </div>
       </div>
     </div>
   );
 }
+

@@ -11,15 +11,15 @@ import {
 } from "@/lib/api";
 
 const shiftTone = {
-  active: "bg-emerald-50 text-emerald-700",
-  scheduled: "bg-sky-50 text-sky-700",
-  maintenance: "bg-amber-50 text-amber-700"
+  active: "success",
+  scheduled: "neutral",
+  maintenance: "warning"
 } as const;
 
 const overtimeTone = {
-  approved: "bg-emerald-50 text-emerald-700",
-  pending: "bg-amber-50 text-amber-700",
-  paid: "bg-slate-100 text-slate-700"
+  approved: "success",
+  pending: "warning",
+  paid: "neutral"
 } as const;
 
 export default async function AttendancePage() {
@@ -50,74 +50,75 @@ export default async function AttendancePage() {
 
   return (
     <AppShell
-      title={session.role === "employee" ? "My Attendance" : "Attendance Operations"}
-      subtitle={session.role === "employee" ? "Pantau check-in, GPS compliance, shift kamu, dan overtime pribadi dari satu tempat." : "Track check-in accuracy, GPS compliance, shift coverage, and overtime movement from one operational command board."}
+      title={session.role === "employee" ? "My Attendance" : "Attendance Logs"}
+      subtitle={session.role === "employee" ? "Monitor your attendance, GPS compliance, shifts, and overtime." : "Track attendance records, shift coverage, and overtime in one operational workspace."}
       actions={session.role === "employee" ? undefined : (
-        <div className="flex gap-2">
-          <button className="flex items-center gap-2 rounded-2xl bg-[var(--panel-alt)] px-4 py-3 text-sm font-semibold text-[var(--primary)]">
+        <div className="flex flex-wrap gap-2">
+          <button className="secondary-button">
             <Download className="h-4 w-4" />
             Export PDF
           </button>
-          <button className="flex items-center gap-2 rounded-2xl bg-[var(--panel-alt)] px-4 py-3 text-sm font-semibold text-[var(--primary)]">
+          <button className="secondary-button">
             <Download className="h-4 w-4" />
             Export CSV
           </button>
         </div>
       )}
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
         <AttendanceTable logs={scopedLogs} punctuality={punctuality} overview={scopedOverview} />
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          <section className="panel rounded-[30px] p-6">
-            <div className="mb-4 flex items-center justify-between gap-4">
+        <div className="grid gap-6 xl:grid-cols-2">
+          <section className="page-card p-6">
+            <div className="mb-5 flex items-center justify-between gap-4">
               <div>
-                <p className="section-title text-2xl font-semibold text-[var(--primary)]">{session.role === "employee" ? "My Shift Schedule" : "Shift And Schedule Management"}</p>
-                <p className="mt-2 text-sm text-muted">{session.role === "employee" ? "Window kerja aktif dan rotasi shift yang terkait dengan akun kamu." : "Department rotations, operating windows, and upcoming shift maintenance."}</p>
+                <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{session.role === "employee" ? "My Shift Schedule" : "Shift Schedule"}</p>
+                <p className="mt-1 text-[14px] text-[var(--text-muted)]">Working windows and assignment coverage.</p>
               </div>
-              <div className="rounded-2xl bg-[var(--panel-alt)] px-4 py-3 text-sm text-muted">{scopedOverview.activeShifts} active / {scopedOverview.scheduledShifts} queued</div>
             </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               {scopedShifts.map((shift) => (
-                <div key={shift.id} className="rounded-[24px] border border-border bg-[var(--panel-alt)] p-5">
+                <div key={shift.id} className="panel-muted p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-[var(--primary)]">{shift.name}</p>
-                      <p className="mt-1 text-sm text-muted">{shift.department}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-[15px] font-semibold text-[var(--text)]">{shift.name}</p>
+                      <p className="mt-1 text-[13px] text-[var(--text-muted)]">{shift.department}</p>
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${shiftTone[shift.status]}`}>{shift.status}</span>
+                    <span className={`inline-flex rounded-full px-3 py-1 text-[12px] font-semibold ${shiftTone[shift.status] === 'success' ? 'bg-[var(--success-soft)] text-[var(--success)]' : shiftTone[shift.status] === 'warning' ? 'bg-[var(--warning-soft)] text-[var(--warning)]' : 'bg-[#eef2f7] text-[var(--text-muted)]'}`}>{shift.status}</span>
                   </div>
-                  <div className="mt-5 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
-                    <div><p className="text-xs uppercase tracking-[0.18em] text-muted">Window</p><p className="mt-2 font-semibold text-[var(--primary)]">{shift.startTime} - {shift.endTime}</p></div>
-                    <div><p className="text-xs uppercase tracking-[0.18em] text-muted">Assigned</p><p className="mt-2 font-semibold text-[var(--primary)]">{shift.employeesAssigned} employees</p></div>
-                    <div><p className="text-xs uppercase tracking-[0.18em] text-muted">Location</p><p className="mt-2 font-semibold text-[var(--primary)]">{shift.workLocation}</p></div>
-                    <div><p className="text-xs uppercase tracking-[0.18em] text-muted">Workdays</p><p className="mt-2 font-semibold text-[var(--primary)]">{shift.workDays.join(", ")}</p></div>
+                  <div className="mt-4 grid gap-3 text-[13px] text-[var(--text-muted)] sm:grid-cols-2">
+                    <div><p className="font-medium text-[var(--text)]">Window</p><p className="mt-1">{shift.startTime} - {shift.endTime}</p></div>
+                    <div><p className="font-medium text-[var(--text)]">Assigned</p><p className="mt-1">{shift.employeesAssigned} employees</p></div>
+                    <div><p className="font-medium text-[var(--text)]">Location</p><p className="mt-1">{shift.workLocation}</p></div>
+                    <div><p className="font-medium text-[var(--text)]">Days</p><p className="mt-1 break-words">{shift.workDays.join(", ")}</p></div>
                   </div>
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="panel rounded-[30px] p-6">
-            <div className="mb-4">
-              <p className="section-title text-2xl font-semibold text-[var(--primary)]">{session.role === "employee" ? "My Overtime" : "Overtime Queue"}</p>
-              <p className="mt-2 text-sm text-muted">{session.role === "employee" ? "Ringkasan overtime dan status approval milik akun kamu." : "Supervisor review list and hours already flowing into payroll baseline."}</p>
+          <section className="page-card p-6">
+            <div className="mb-5">
+              <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{session.role === "employee" ? "My Overtime" : "Overtime Queue"}</p>
+              <p className="mt-1 text-[14px] text-[var(--text-muted)]">Supervisor review and payout visibility.</p>
             </div>
+
             <div className="space-y-4">
               {scopedOvertime.map((item) => (
-                <div key={item.id} className="rounded-[24px] border border-border bg-[var(--panel-alt)] p-5">
+                <div key={item.id} className="panel-muted p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-[var(--primary)]">{item.employeeName}</p>
-                      <p className="mt-1 text-sm text-muted">{item.department}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-[15px] font-semibold text-[var(--text)]">{item.employeeName}</p>
+                      <p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.department}</p>
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${overtimeTone[item.status]}`}>{formatOvertimeStatus(item.status)}</span>
+                    <span className={`inline-flex rounded-full px-3 py-1 text-[12px] font-semibold ${overtimeTone[item.status] === 'success' ? 'bg-[var(--success-soft)] text-[var(--success)]' : overtimeTone[item.status] === 'warning' ? 'bg-[var(--warning-soft)] text-[var(--warning)]' : 'bg-[#eef2f7] text-[var(--text-muted)]'}`}>{formatOvertimeStatus(item.status)}</span>
                   </div>
-                  <div className="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
-                    <div><p className="text-xs uppercase tracking-[0.18em] text-muted">Date</p><p className="mt-2 font-semibold text-[var(--primary)]">{item.date}</p></div>
-                    <div><p className="text-xs uppercase tracking-[0.18em] text-muted">Duration</p><p className="mt-2 font-semibold text-[var(--primary)]">{item.minutes} minutes</p></div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 text-[13px] text-[var(--text-muted)]">
+                    <div><p className="font-medium text-[var(--text)]">Date</p><p className="mt-1">{item.date}</p></div>
+                    <div><p className="font-medium text-[var(--text)]">Duration</p><p className="mt-1">{item.minutes} minutes</p></div>
                   </div>
-                  <p className="mt-4 text-sm text-muted">{item.reason}</p>
+                  <p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{item.reason}</p>
                 </div>
               ))}
             </div>
@@ -127,3 +128,4 @@ export default async function AttendancePage() {
     </AppShell>
   );
 }
+

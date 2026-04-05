@@ -11,6 +11,10 @@ import {
   LeaveRecord,
   LeaveType,
   OvertimeRecord,
+  PayRunRecord,
+  PayslipLineItem,
+  PayslipRecord,
+  PayrollComponentRecord,
   ShiftRecord
 } from "./types";
 import {
@@ -19,9 +23,14 @@ import {
   CreateEmployeeDto,
   CreateExportDto,
   CreateOvertimeDto,
+  CreatePayrollComponentDto,
+  ExportPayslipDto,
+  GeneratePayrollRunDto,
   LeaveApproveDto,
   LeaveRequestDto,
-  UpdateEmployeeDto
+  PublishPayrollRunDto,
+  UpdateEmployeeDto,
+  UpdatePayrollComponentDto
 } from "./dtos";
 
 type SiteConfig = {
@@ -50,34 +59,26 @@ export class AppService {
       mkdir(path.join(this.storageRoot, "documents"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "exports"), { recursive: true })
     ]);
+
     if (!existsSync(this.dbPath)) {
       await writeFile(this.dbPath, JSON.stringify(seedData, null, 2), "utf8");
     }
 
     const current = await this.readDb();
     current.employees = current.employees.map((employee, index) => this.normalizeEmployee(employee, index));
-    current.attendanceLogs = (current.attendanceLogs ?? []).map((attendance, index) =>
-      this.normalizeAttendance(attendance, current.employees, index)
-    );
-    current.shifts = (current.shifts?.length ? current.shifts : seedData.shifts).map((shift, index) =>
-      this.normalizeShift(shift, index)
-    );
-    current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : seedData.overtimeRequests).map((record, index) =>
-      this.normalizeOvertime(record, index)
-    );
-    current.leaveRequests = (current.leaveRequests ?? []).map((record, index) =>
-      this.normalizeLeave(record, current.employees, index)
-    );
+    current.attendanceLogs = (current.attendanceLogs ?? []).map((attendance, index) => this.normalizeAttendance(attendance, current.employees, index));
+    current.shifts = (current.shifts?.length ? current.shifts : seedData.shifts).map((shift, index) => this.normalizeShift(shift, index));
+    current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : seedData.overtimeRequests).map((record, index) => this.normalizeOvertime(record, index));
+    current.leaveRequests = (current.leaveRequests ?? []).map((record, index) => this.normalizeLeave(record, current.employees, index));
+    current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : seedData.payrollComponents).map((component, index) => this.normalizePayrollComponent(component, index));
+    current.payRuns = (current.payRuns?.length ? current.payRuns : seedData.payRuns).map((run, index) => this.normalizePayRun(run, index));
+    current.payslips = (current.payslips?.length ? current.payslips : seedData.payslips).map((slip, index) => this.normalizePayslip(slip, current.employees, index));
     await this.writeDb(current);
   }
 
   private normalizeEmployee(employee: Partial<EmployeeRecord> & Record<string, unknown>, index: number): EmployeeRecord {
     const padded = String(index + 1).padStart(3, "0");
-    const leaveBalances = (employee.leaveBalances as EmployeeRecord["leaveBalances"] | undefined) ?? {
-      annual: 12,
-      sick: 10,
-      permission: 4
-    };
+    const leaveBalances = (employee.leaveBalances as EmployeeRecord["leaveBalances"] | undefined) ?? { annual: 12, sick: 10, permission: 4 };
     return {
       id: String(employee.id ?? `emp-${padded}`),
       employeeNumber: String(employee.employeeNumber ?? `EMP-2024-${padded}`),
@@ -109,11 +110,7 @@ export class AppService {
     };
   }
 
-  private normalizeAttendance(
-    attendance: Partial<AttendanceRecord> & Record<string, unknown>,
-    employees: EmployeeRecord[],
-    index: number
-  ): AttendanceRecord {
+  private normalizeAttendance(attendance: Partial<AttendanceRecord> & Record<string, unknown>, employees: EmployeeRecord[], index: number): AttendanceRecord {
     const employee = employees.find((entry) => entry.id === String(attendance.userId ?? ""));
     const location = String(attendance.location ?? employee?.workLocation ?? "Jakarta HQ");
     const shift = this.resolveShift(location, employee?.department);
@@ -169,11 +166,7 @@ export class AppService {
     };
   }
 
-  private normalizeLeave(
-    record: Partial<LeaveRecord> & Record<string, unknown>,
-    employees: EmployeeRecord[],
-    index: number
-  ): LeaveRecord {
+  private normalizeLeave(record: Partial<LeaveRecord> & Record<string, unknown>, employees: EmployeeRecord[], index: number): LeaveRecord {
     const employee = employees.find((entry) => entry.id === String(record.userId ?? ""));
     const type = (record.type as LeaveType | undefined) ?? "Annual Leave";
     const daysRequested = Number(record.daysRequested ?? this.calculateLeaveDays(String(record.startDate ?? new Date().toISOString().slice(0, 10)), String(record.endDate ?? new Date().toISOString().slice(0, 10))));
@@ -191,6 +184,83 @@ export class AppService {
       requestedAt: String(record.requestedAt ?? new Date().toISOString()),
       daysRequested,
       autoApproved: Boolean(record.autoApproved ?? false)
+    };
+  }
+
+  private normalizePayrollComponent(component: Partial<PayrollComponentRecord> & Record<string, unknown>, index: number): PayrollComponentRecord {
+    return {
+      id: String(component.id ?? `paycomp-${String(index + 1).padStart(3, "0")}`),
+      code: String(component.code ?? `COMP-${String(index + 1).padStart(3, "0")}`),
+      name: String(component.name ?? `Component ${index + 1}`),
+      type: (component.type as PayrollComponentRecord["type"]) ?? "earning",
+      calculationType: (component.calculationType as PayrollComponentRecord["calculationType"]) ?? "fixed",
+      amount: Number(component.amount ?? 0),
+      percentage: component.percentage == null ? null : Number(component.percentage),
+      taxable: Boolean(component.taxable ?? true),
+      active: Boolean(component.active ?? true),
+      appliesToAll: Boolean(component.appliesToAll ?? true),
+      employeeIds: Array.isArray(component.employeeIds) ? component.employeeIds.map((entry) => String(entry)) : [],
+      description: String(component.description ?? "Payroll component")
+    };
+  }
+  private normalizePayRun(run: Partial<PayRunRecord> & Record<string, unknown>, index: number): PayRunRecord {
+    return {
+      id: String(run.id ?? `payrun-${String(index + 1).padStart(3, "0")}`),
+      periodLabel: String(run.periodLabel ?? `Payroll ${index + 1}`),
+      periodStart: String(run.periodStart ?? new Date().toISOString().slice(0, 10)),
+      periodEnd: String(run.periodEnd ?? new Date().toISOString().slice(0, 10)),
+      payDate: String(run.payDate ?? new Date().toISOString().slice(0, 10)),
+      status: (run.status as PayRunRecord["status"]) ?? "draft",
+      totalGross: Number(run.totalGross ?? 0),
+      totalNet: Number(run.totalNet ?? 0),
+      totalTax: Number(run.totalTax ?? 0),
+      employeeCount: Number(run.employeeCount ?? 0),
+      createdAt: String(run.createdAt ?? new Date().toISOString()),
+      publishedAt: run.publishedAt == null ? null : String(run.publishedAt)
+    };
+  }
+
+  private normalizePayslip(slip: Partial<PayslipRecord> & Record<string, unknown>, employees: EmployeeRecord[], index: number): PayslipRecord {
+    const employee = employees.find((entry) => entry.id === String(slip.userId ?? ""));
+    return {
+      id: String(slip.id ?? `payslip-${String(index + 1).padStart(3, "0")}`),
+      payRunId: String(slip.payRunId ?? "payrun-seed"),
+      userId: String(slip.userId ?? employee?.id ?? `emp-${String(index + 1).padStart(3, "0")}`),
+      employeeName: String(slip.employeeName ?? employee?.name ?? "Unknown Employee"),
+      employeeNumber: String(slip.employeeNumber ?? employee?.employeeNumber ?? `EMP-2024-${String(index + 1).padStart(3, "0")}`),
+      department: String(slip.department ?? employee?.department ?? "General Operations"),
+      position: String(slip.position ?? employee?.position ?? "Staff"),
+      periodLabel: String(slip.periodLabel ?? "Current Payroll"),
+      periodStart: String(slip.periodStart ?? new Date().toISOString().slice(0, 10)),
+      periodEnd: String(slip.periodEnd ?? new Date().toISOString().slice(0, 10)),
+      payDate: String(slip.payDate ?? new Date().toISOString().slice(0, 10)),
+      status: (slip.status as PayslipRecord["status"]) ?? "draft",
+      baseSalary: Number(slip.baseSalary ?? employee?.baseSalary ?? 0),
+      allowance: Number(slip.allowance ?? employee?.allowance ?? 0),
+      overtimePay: Number(slip.overtimePay ?? 0),
+      additionalEarnings: Number(slip.additionalEarnings ?? 0),
+      grossPay: Number(slip.grossPay ?? 0),
+      taxDeduction: Number(slip.taxDeduction ?? 0),
+      otherDeductions: Number(slip.otherDeductions ?? 0),
+      netPay: Number(slip.netPay ?? 0),
+      bankName: String(slip.bankName ?? employee?.bankName ?? "BCA"),
+      bankAccountMasked: String(slip.bankAccountMasked ?? employee?.bankAccountMasked ?? "***0000"),
+      taxProfile: String(slip.taxProfile ?? employee?.taxProfile ?? "PPh 21 TK/0"),
+      components: Array.isArray(slip.components)
+        ? slip.components.map((entry, componentIndex) => this.normalizePayslipLine(entry as Partial<PayslipLineItem> & Record<string, unknown>, componentIndex))
+        : [],
+      generatedFileUrl: slip.generatedFileUrl == null ? null : String(slip.generatedFileUrl)
+    };
+  }
+
+  private normalizePayslipLine(line: Partial<PayslipLineItem> & Record<string, unknown>, index: number): PayslipLineItem {
+    return {
+      code: String(line.code ?? `LINE-${index + 1}`),
+      name: String(line.name ?? `Line ${index + 1}`),
+      type: (line.type as PayslipLineItem["type"]) ?? "earning",
+      amount: Number(line.amount ?? 0),
+      taxable: Boolean(line.taxable ?? true),
+      source: (line.source as PayslipLineItem["source"]) ?? "component"
     };
   }
 
@@ -300,6 +370,123 @@ export class AppService {
     }
   }
 
+  private getTaxRate(profile: string) {
+    const normalized = profile.toUpperCase();
+    if (normalized.includes("K/0")) {
+      return 0.06;
+    }
+    if (normalized.includes("TK/1")) {
+      return 0.045;
+    }
+    if (normalized.includes("TK/0")) {
+      return 0.05;
+    }
+    return 0.05;
+  }
+
+  private calculateOvertimePay(baseSalary: number, minutes: number) {
+    const hourlyRate = baseSalary / 173;
+    const minuteRate = hourlyRate / 60;
+    return Math.round(minuteRate * minutes * 1.5);
+  }
+
+  private resolvePayrollComponents(components: PayrollComponentRecord[], employeeId: string) {
+    return components.filter((component) => component.active && (component.appliesToAll || component.employeeIds.includes(employeeId)));
+  }
+  private buildPayslip(employee: EmployeeRecord, db: DatabaseShape, payload: GeneratePayrollRunDto, payRunId: string): PayslipRecord {
+    const overtimeMinutes = db.overtimeRequests
+      .filter((entry) => entry.userId === employee.id && ["approved", "paid"].includes(entry.status) && entry.date >= payload.periodStart && entry.date <= payload.periodEnd)
+      .reduce((total, entry) => total + entry.minutes, 0);
+    const overtimePay = this.calculateOvertimePay(employee.baseSalary, overtimeMinutes);
+    const components = this.resolvePayrollComponents(db.payrollComponents, employee.id);
+
+    const lineItems: PayslipLineItem[] = [
+      { code: "BASE", name: "Base Salary", type: "earning", amount: employee.baseSalary, taxable: true, source: "base-salary" },
+      { code: "ALLOW", name: "Fixed Allowance", type: "earning", amount: employee.allowance, taxable: true, source: "allowance" }
+    ];
+
+    if (overtimePay > 0) {
+      lineItems.push({ code: "OVERTIME", name: "Overtime Pay", type: "earning", amount: overtimePay, taxable: true, source: "overtime" });
+    }
+
+    for (const component of components) {
+      const amount = component.calculationType === "percentage"
+        ? Math.round(employee.baseSalary * ((component.percentage ?? 0) / 100))
+        : component.amount;
+      lineItems.push({
+        code: component.code,
+        name: component.name,
+        type: component.type,
+        amount,
+        taxable: component.taxable,
+        source: "component"
+      });
+    }
+
+    const earningLines = lineItems.filter((entry) => entry.type === "earning");
+    const deductionLines = lineItems.filter((entry) => entry.type === "deduction");
+    const grossPay = earningLines.reduce((sum, entry) => sum + entry.amount, 0);
+    const taxableBase = lineItems.filter((entry) => entry.taxable && entry.type === "earning").reduce((sum, entry) => sum + entry.amount, 0);
+    const taxDeduction = Math.round(taxableBase * this.getTaxRate(employee.taxProfile));
+    const otherDeductions = deductionLines.reduce((sum, entry) => sum + entry.amount, 0);
+    const additionalEarnings = Math.max(0, grossPay - employee.baseSalary - employee.allowance - overtimePay);
+    const netPay = grossPay - otherDeductions - taxDeduction;
+
+    lineItems.push({ code: "PPH21", name: "PPh 21", type: "deduction", amount: taxDeduction, taxable: false, source: "tax" });
+
+    return {
+      id: `payslip-${randomUUID().slice(0, 8)}`,
+      payRunId,
+      userId: employee.id,
+      employeeName: employee.name,
+      employeeNumber: employee.employeeNumber,
+      department: employee.department,
+      position: employee.position,
+      periodLabel: payload.periodLabel,
+      periodStart: payload.periodStart,
+      periodEnd: payload.periodEnd,
+      payDate: payload.payDate,
+      status: "draft",
+      baseSalary: employee.baseSalary,
+      allowance: employee.allowance,
+      overtimePay,
+      additionalEarnings,
+      grossPay,
+      taxDeduction,
+      otherDeductions,
+      netPay,
+      bankName: employee.bankName,
+      bankAccountMasked: employee.bankAccountMasked,
+      taxProfile: employee.taxProfile,
+      components: lineItems,
+      generatedFileUrl: null
+    };
+  }
+
+  private buildPayslipExportContent(payslip: PayslipRecord) {
+    const lines = [
+      `Payslip: ${payslip.periodLabel}`,
+      `Employee: ${payslip.employeeName} (${payslip.employeeNumber})`,
+      `Department: ${payslip.department}`,
+      `Position: ${payslip.position}`,
+      `Pay Date: ${payslip.payDate}`,
+      `Bank: ${payslip.bankName} ${payslip.bankAccountMasked}`,
+      "",
+      "Components:"
+    ];
+
+    for (const line of payslip.components) {
+      lines.push(`- ${line.name} [${line.type}]: ${line.amount}`);
+    }
+
+    lines.push("");
+    lines.push(`Gross: ${payslip.grossPay}`);
+    lines.push(`Tax: ${payslip.taxDeduction}`);
+    lines.push(`Other Deductions: ${payslip.otherDeductions}`);
+    lines.push(`Net: ${payslip.netPay}`);
+    return lines.join("\n");
+  }
+
   async health() {
     const db = await this.readDb();
     return {
@@ -312,7 +499,10 @@ export class AppService {
         attendanceLogs: db.attendanceLogs.length,
         shifts: db.shifts.length,
         overtimeRequests: db.overtimeRequests.length,
-        leaveRequests: db.leaveRequests.length
+        leaveRequests: db.leaveRequests.length,
+        payrollComponents: db.payrollComponents.length,
+        payRuns: db.payRuns.length,
+        payslips: db.payslips.length
       }
     };
   }
@@ -392,9 +582,7 @@ export class AppService {
     const openCheckIns = today.filter((entry) => !entry.checkOut).length;
     const gpsValidated = today.filter((entry) => entry.gpsValidated).length;
     const selfieCaptured = today.filter((entry) => Boolean(entry.photoUrl)).length;
-    const overtimeMinutes = db.overtimeRequests
-      .filter((entry) => entry.status === "approved" || entry.status === "paid" || entry.status === "pending")
-      .reduce((total, entry) => total + entry.minutes, 0);
+    const overtimeMinutes = db.overtimeRequests.filter((entry) => ["approved", "paid", "pending"].includes(entry.status)).reduce((total, entry) => total + entry.minutes, 0);
     const activeShifts = db.shifts.filter((entry) => entry.status === "active").length;
     const scheduledShifts = db.shifts.filter((entry) => entry.status === "scheduled").length;
     return {
@@ -417,7 +605,6 @@ export class AppService {
     const db = await this.readDb();
     return db.overtimeRequests;
   }
-
   async checkIn(payload: CheckInDto, photoUrl: string | null) {
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === payload.userId);
@@ -558,6 +745,120 @@ export class AppService {
 
     await this.writeDb(db);
     return leave;
+  }
+
+  async getPayrollOverview() {
+    const db = await this.readDb();
+    const latestRun = [...db.payRuns].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))[0] ?? null;
+    const draftCount = db.payRuns.filter((run) => run.status === "draft").length;
+    const publishedCount = db.payslips.filter((slip) => slip.status === "published").length;
+    return {
+      latestRun,
+      payrollComponents: db.payrollComponents.length,
+      activeEmployees: db.employees.filter((employee) => employee.status === "active").length,
+      draftRuns: draftCount,
+      publishedPayslips: publishedCount
+    };
+  }
+
+  async getPayrollComponents() {
+    const db = await this.readDb();
+    return db.payrollComponents;
+  }
+
+  async createPayrollComponent(payload: CreatePayrollComponentDto) {
+    const db = await this.readDb();
+    const component: PayrollComponentRecord = {
+      id: `paycomp-${randomUUID().slice(0, 8)}`,
+      code: payload.code.toUpperCase(),
+      name: payload.name,
+      type: payload.type,
+      calculationType: payload.calculationType,
+      amount: payload.amount,
+      percentage: payload.percentage ?? null,
+      taxable: payload.taxable,
+      active: payload.active,
+      appliesToAll: payload.appliesToAll,
+      employeeIds: payload.employeeIds ?? [],
+      description: payload.description
+    };
+    db.payrollComponents.unshift(component);
+    await this.writeDb(db);
+    return component;
+  }
+
+  async updatePayrollComponent(id: string, payload: UpdatePayrollComponentDto) {
+    const db = await this.readDb();
+    const component = db.payrollComponents.find((entry) => entry.id === id);
+    if (!component) {
+      throw new NotFoundException("Payroll component not found");
+    }
+    Object.assign(component, payload, payload.employeeIds ? { employeeIds: payload.employeeIds } : {});
+    await this.writeDb(db);
+    return component;
+  }
+
+  async getPayRuns() {
+    const db = await this.readDb();
+    return [...db.payRuns].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
+  }
+
+  async generatePayrollRun(payload: GeneratePayrollRunDto) {
+    const db = await this.readDb();
+    const activeEmployees = db.employees.filter((employee) => employee.status === "active");
+    const payRunId = `payrun-${randomUUID().slice(0, 8)}`;
+    const slips = activeEmployees.map((employee) => this.buildPayslip(employee, db, payload, payRunId));
+    const payRun: PayRunRecord = {
+      id: payRunId,
+      periodLabel: payload.periodLabel,
+      periodStart: payload.periodStart,
+      periodEnd: payload.periodEnd,
+      payDate: payload.payDate,
+      status: "draft",
+      totalGross: slips.reduce((sum, slip) => sum + slip.grossPay, 0),
+      totalNet: slips.reduce((sum, slip) => sum + slip.netPay, 0),
+      totalTax: slips.reduce((sum, slip) => sum + slip.taxDeduction, 0),
+      employeeCount: slips.length,
+      createdAt: new Date().toISOString(),
+      publishedAt: null
+    };
+    db.payRuns.unshift(payRun);
+    db.payslips = [...slips, ...db.payslips.filter((slip) => slip.payRunId !== payRunId)];
+    await this.writeDb(db);
+    return { payRun, payslips: slips };
+  }
+
+  async publishPayrollRun(payload: PublishPayrollRunDto) {
+    const db = await this.readDb();
+    const payRun = db.payRuns.find((entry) => entry.id === payload.payRunId);
+    if (!payRun) {
+      throw new NotFoundException("Pay run not found");
+    }
+    payRun.status = "published";
+    payRun.publishedAt = new Date().toISOString();
+    db.payslips = db.payslips.map((slip) => slip.payRunId === payRun.id ? { ...slip, status: "published" } : slip);
+    await this.writeDb(db);
+    return payRun;
+  }
+
+  async getPayslips(userId?: string) {
+    const db = await this.readDb();
+    const slips = userId ? db.payslips.filter((slip) => slip.userId === userId) : db.payslips;
+    return [...slips].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
+  }
+
+  async exportPayslip(payload: ExportPayslipDto) {
+    const db = await this.readDb();
+    const payslip = db.payslips.find((entry) => entry.id === payload.payslipId);
+    if (!payslip) {
+      throw new NotFoundException("Payslip not found");
+    }
+    const fileName = `${payslip.employeeNumber.toLowerCase()}-${payslip.periodLabel.replace(/\s+/g, "-").toLowerCase()}.txt`;
+    const fullPath = path.join(this.storageRoot, "documents", fileName);
+    await writeFile(fullPath, this.buildPayslipExportContent(payslip), "utf8");
+    payslip.generatedFileUrl = `/storage/documents/${fileName}`;
+    await this.writeDb(db);
+    return { fileName, fileUrl: payslip.generatedFileUrl, payslipId: payslip.id };
   }
 
   async generateExport(payload: CreateExportDto) {

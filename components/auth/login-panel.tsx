@@ -31,58 +31,50 @@ export function LoginPanel() {
   };
 
   return (
-    <div className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,_rgba(33,62,118,0.16),_transparent_38%),linear-gradient(180deg,_#f8fbff_0%,_#eef3fa_100%)] px-4 py-10">
-      <div className="w-full max-w-5xl rounded-[40px] border border-white/70 bg-white/90 p-6 shadow-2xl backdrop-blur sm:p-8 lg:grid lg:grid-cols-[0.95fr_1.05fr] lg:gap-8">
-        <section className="rounded-[32px] bg-[var(--primary)] p-8 text-white">
-          <div className="flex items-center gap-3 text-white/75">
+    <div className="grid min-h-screen place-items-center bg-[var(--background)] px-4 py-10">
+      <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <section className="page-card bg-[var(--primary)] p-8 text-white">
+          <div className="flex items-center gap-3 text-white/76">
             <ShieldCheck className="h-5 w-5" />
-            <span className="text-sm font-semibold uppercase tracking-[0.18em]">White-label Access</span>
+            <span className="text-[12px] font-medium uppercase tracking-[0.08em]">White-label Access</span>
           </div>
-          <h1 className="section-title mt-8 text-4xl font-semibold leading-tight">Masuk sebagai HRD, manager, atau employee.</h1>
-          <p className="mt-4 max-w-md text-sm leading-7 text-white/75">
-            Demo auth ini dipakai buat ngetes role-based access dari sudut pandang yang berbeda. Tinggal pilih account, tanpa perlu setup password dulu.
-          </p>
-          <div className="mt-10 space-y-4 text-sm text-white/75">
-            <div className="rounded-[24px] bg-white/10 p-4">`HRD` bisa review leave, lihat report, dan kelola data employee.</div>
-            <div className="rounded-[24px] bg-white/10 p-4">`Employee` cuma lihat data sendiri, absensi sendiri, dan request cuti pribadi.</div>
-            <div className="rounded-[24px] bg-white/10 p-4">`Manager` bisa lihat operasional tim dan bantu approval workflow.</div>
-          </div>
+          <h1 className="section-title mt-6 text-[32px] font-semibold leading-tight">Sign in by role.</h1>
+          <p className="mt-3 text-[14px] leading-6 text-white/76">Use the demo accounts to review the app from HR, manager, employee, and admin points of view.</p>
         </section>
 
-        <section className="mt-6 space-y-4 lg:mt-0">
+        <section className="page-card p-6 lg:p-8">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Demo Accounts</p>
-            <h2 className="section-title mt-3 text-3xl font-semibold text-[var(--primary)]">Choose your point of view</h2>
-            <p className="mt-3 text-sm text-muted">Klik salah satu account di bawah untuk masuk ke aplikasi dengan permission yang sesuai role.</p>
+            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">Demo Accounts</p>
+            <h2 className="section-title mt-2 text-[30px] font-semibold text-[var(--primary)]">Choose your session</h2>
+            <p className="mt-2 text-[14px] text-[var(--text-muted)]">Select a role to test access and page restrictions.</p>
           </div>
 
-          <div className="space-y-4">
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
             {demoUsers.map((user) => (
               <button
                 key={user.sessionKey}
                 type="button"
                 onClick={() => loginAs(user)}
                 disabled={pending}
-                className="w-full rounded-[28px] border border-border bg-[var(--panel-alt)] p-5 text-left transition hover:border-[var(--primary)]/20 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="page-card p-5 text-left shadow-none hover:border-[var(--primary)]/25 hover:bg-[var(--surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-lg font-semibold text-[var(--primary)]">{user.name}</p>
-                    <p className="mt-1 text-sm text-muted">{user.position}</p>
-                    <p className="mt-3 text-sm text-slate-600">{user.department} | {user.email}</p>
+                  <div className="min-w-0">
+                    <p className="truncate text-[16px] font-semibold text-[var(--text)]">{user.name}</p>
+                    <p className="mt-1 text-[14px] text-[var(--text-muted)]">{user.position}</p>
+                    <p className="mt-3 break-words text-[13px] leading-5 text-[var(--text-muted)]">{user.department} • {user.email}</p>
                   </div>
-                  <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--primary)]">
-                    {user.role}
-                  </span>
+                  <span className="inline-flex rounded-full bg-[var(--primary-soft)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary)]">{user.role}</span>
                 </div>
               </button>
             ))}
           </div>
 
-          {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-          {pending ? <div className="flex items-center gap-2 text-sm text-muted"><LoaderCircle className="h-4 w-4 animate-spin" /> Menyiapkan session login...</div> : null}
+          {error ? <div className="mt-4 rounded-[12px] border border-[var(--danger-soft)] bg-[var(--danger-soft)] px-4 py-3 text-[14px] text-[var(--danger)]">{error}</div> : null}
+          {pending ? <div className="mt-4 flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><LoaderCircle className="h-4 w-4 animate-spin" /> Preparing session...</div> : null}
         </section>
       </div>
     </div>
   );
 }
+

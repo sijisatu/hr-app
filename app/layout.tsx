@@ -1,12 +1,11 @@
 ﻿import type { Metadata } from "next";
-import { Manrope, Sora } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers/app-providers";
 import { activeTenant } from "@/lib/tenant";
 import { getCurrentSession } from "@/lib/auth";
 
-const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
-const sora = Sora({ subsets: ["latin"], variable: "--font-sora" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: `${activeTenant.productName} | White-label HRIS Attendance`,
@@ -26,9 +25,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
 
   return (
     <html lang="en">
-      <body className={`${manrope.variable} ${sora.variable}`} style={themeVars}>
+      <body className={inter.variable} style={themeVars}>
         <AppProviders currentUser={currentUser}>{children}</AppProviders>
       </body>
     </html>
   );
 }
+

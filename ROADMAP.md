@@ -22,14 +22,14 @@
 - [x] Leave balance tracking
 
 ## Phase 4 - Payroll
-- [ ] Salary component engine
-- [ ] Automatic payroll calculation
-- [ ] Tax deduction (PPh)
-- [ ] Payslip generation
+- [x] Salary component engine
+- [x] Automatic payroll calculation
+- [x] Tax deduction (PPh)
+- [x] Payslip generation
 
 ## Phase 5 - Employee Self Service and Reporting
-- [ ] Employee self-service portal
-- [ ] Payslip download
-- [ ] Payroll reports
-- [ ] Employee reports
-- [ ] Attendance reports
+- [x] Employee self-service portal
+- [x] Payslip download
+- [x] Payroll reports
+- [x] Employee reports
+- [x] Attendance reports

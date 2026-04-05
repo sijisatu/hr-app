@@ -14,17 +14,17 @@ export default async function EmployeesPage() {
   const payrollBaseline = employees.reduce((sum, item) => sum + item.baseSalary + item.allowance, 0);
 
   const summary = [
-    { label: session.role === "employee" ? "My Profile" : "Total Headcount", value: employees.length.toLocaleString("en-US"), note: `${activeEmployees} active employees`, tone: "neutral" },
-    { label: "Departments", value: departments.toLocaleString("en-US"), note: `${contractAlerts} contract items need review`, tone: "success" },
-    { label: "Payroll Baseline", value: currency(payrollBaseline), note: "Base salary + allowance preview", tone: "warning" }
+    { label: session.role === "employee" ? "My Profile" : "Headcount", value: employees.length.toLocaleString("en-US"), note: `${activeEmployees} active employees`, tone: "neutral" },
+    { label: "Departments", value: departments.toLocaleString("en-US"), note: `${contractAlerts} contracts to review`, tone: "success" },
+    { label: "Payroll Baseline", value: currency(payrollBaseline), note: "Base salary + allowance", tone: "warning" }
   ] as const;
 
   return (
     <AppShell
-      title={session.role === "employee" ? "My Employee Profile" : "Employee Management"}
-      subtitle={session.role === "employee" ? "Lihat data profil, kontrak, dan baseline payroll milik akun kamu sendiri." : "Employee master, job structure, contract lifecycle, and payroll baseline for the white-label HRIS foundation."}
+      title={session.role === "employee" ? "My Profile" : "Employee Management"}
+      subtitle={session.role === "employee" ? "Review your profile, contract, and payroll baseline." : "Employee master data, job structure, and contract overview."}
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-3">
           {summary.map((item) => (
             <MetricCard key={item.label} {...item} />
@@ -35,3 +35,4 @@ export default async function EmployeesPage() {
     </AppShell>
   );
 }
+

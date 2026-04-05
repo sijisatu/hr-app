@@ -27,13 +27,13 @@ export default async function DashboardPage() {
   const metrics = session.role === "employee"
     ? [
         { label: "My Records", value: scopedLogs.length.toLocaleString("en-US"), note: `${scopedLeaves.length} leave requests`, tone: "neutral" },
-        { label: "On-time", value: scopedLogs.filter((item) => item.status === "on-time").length.toLocaleString("en-US"), note: "Personal attendance", tone: "success" },
+        { label: "On-Time", value: scopedLogs.filter((item) => item.status === "on-time").length.toLocaleString("en-US"), note: "Personal attendance", tone: "success" },
         { label: "Late", value: scopedLogs.filter((item) => item.status === "late").length.toLocaleString("en-US"), note: "Needs follow-up", tone: "danger" },
-        { label: "Open Sessions", value: scopedLogs.filter((item) => !item.checkOut).length.toLocaleString("en-US"), note: "Check-out pending", tone: "warning" }
+        { label: "Open Sessions", value: scopedLogs.filter((item) => !item.checkOut).length.toLocaleString("en-US"), note: "Pending check-out", tone: "warning" }
       ] as const
     : [
         { label: "Employees", value: summary.employees.toLocaleString("en-US"), note: `${summary.storageMode} storage`, tone: "neutral" },
-        { label: "On-time", value: summary.onTime.toLocaleString("en-US"), note: "Live attendance", tone: "success" },
+        { label: "On-Time", value: summary.onTime.toLocaleString("en-US"), note: "Live attendance", tone: "success" },
         { label: "Late", value: summary.late.toLocaleString("en-US"), note: "Review required", tone: "danger" },
         { label: "Absent", value: summary.absent.toLocaleString("en-US"), note: `${summary.leavePending} leave pending`, tone: "warning" }
       ] as const;
@@ -43,25 +43,29 @@ export default async function DashboardPage() {
 
   return (
     <AppShell
-      title={session.role === "employee" ? "My Presence" : "Daily Presence"}
-      subtitle={session.role === "employee" ? "Personal attendance summary, leave status, and live check-in access for your own account." : "Centralized attendance intelligence for real-time oversight, geofence validation, and shift compliance."}
+      title={session.role === "employee" ? "My Presence" : "Dashboard"}
+      subtitle={session.role === "employee" ? "Personal attendance summary, leave status, and live check-in access for your own account." : "Attendance overview, activity feed, and operational signals in one workspace."}
       actions={<AttendanceQuickAction compact label="Clock In" />}
     >
-      <div className="data-grid">
-        <section className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {metrics.map((metric) => (
-              <MetricCard key={metric.label} {...metric} />
-            ))}
-          </div>
-          <AttendanceChart series={series} />
-        </section>
+      <div className="space-y-6">
+        <div className="kpi-grid">
+          {metrics.map((metric) => (
+            <MetricCard key={metric.label} {...metric} />
+          ))}
+        </div>
 
-        <section className="space-y-5">
-          <ActivityPanel entries={activity} />
-          <IntegrityCard />
-        </section>
+        <div className="content-grid">
+          <div className="space-y-6">
+            <AttendanceChart series={series} />
+          </div>
+
+          <div className="space-y-6">
+            <ActivityPanel entries={activity} />
+            <IntegrityCard />
+          </div>
+        </div>
       </div>
     </AppShell>
   );
 }
+

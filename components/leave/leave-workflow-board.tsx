@@ -94,35 +94,36 @@ export function LeaveWorkflowBoard() {
   });
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_420px]">
-        <section className="rounded-[32px] bg-[var(--primary)] p-6 text-white shadow-soft sm:p-8">
-          <div className="flex items-center gap-3 text-white/70">
+    <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_380px]">
+        <section className="rounded-[16px] bg-[var(--primary)] px-8 py-8 text-white">
+          <div className="flex items-center gap-3 text-white/74">
             <WalletCards className="h-5 w-5" />
-            <p className="text-xs font-semibold uppercase tracking-[0.22em]">Leave Balance</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.22em]">Leave Balance</p>
           </div>
-          <p className="mt-4 max-w-2xl text-sm text-white/75">
+          <p className="mt-6 max-w-[760px] text-[15px] leading-[1.55] text-white/78">
             {currentUser?.role === "employee"
               ? "Ringkasan kuota cuti milik akun kamu. Ini yang paling penting buat dilihat sebelum bikin request baru."
               : "Ringkasan balance cuti aktif untuk bantu HR dan manager lihat kapasitas cuti tim sebelum approve request."}
           </p>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
+
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
             {scopedEmployees.filter((employee) => employee.status === "active").map((employee) => (
-              <div key={employee.id} className="rounded-[24px] bg-white/10 p-5 backdrop-blur-sm">
-                <p className="text-lg font-semibold text-white">{employee.name}</p>
-                <p className="mt-2 text-sm text-white/65">{employee.position}</p>
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl bg-white/10 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.16em] text-white/60">Annual</p>
-                    <p className="mt-2 text-2xl font-semibold">{employee.leaveBalances.annual}</p>
+              <div key={employee.id} className="min-w-0 rounded-[14px] bg-white/10 px-6 py-6">
+                <p className="text-[18px] font-semibold leading-tight text-white">{employee.name}</p>
+                <p className="mt-2 text-[14px] leading-[1.45] text-white/62">{employee.position}</p>
+                <div className="mt-6 grid grid-cols-3 gap-3">
+                  <div className="min-w-0 rounded-[12px] bg-white/10 px-3 py-4 text-center">
+                    <p className="text-[10px] font-semibold uppercase leading-[1.2] tracking-[0.08em] text-white/62 break-words">Annual</p>
+                    <p className="mt-3 text-[28px] font-semibold leading-none text-white">{employee.leaveBalances.annual}</p>
                   </div>
-                  <div className="rounded-2xl bg-white/10 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.16em] text-white/60">Sick</p>
-                    <p className="mt-2 text-2xl font-semibold">{employee.leaveBalances.sick}</p>
+                  <div className="min-w-0 rounded-[12px] bg-white/10 px-3 py-4 text-center">
+                    <p className="text-[10px] font-semibold uppercase leading-[1.2] tracking-[0.08em] text-white/62 break-words">Sick</p>
+                    <p className="mt-3 text-[28px] font-semibold leading-none text-white">{employee.leaveBalances.sick}</p>
                   </div>
-                  <div className="rounded-2xl bg-white/10 px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.16em] text-white/60">Permission</p>
-                    <p className="mt-2 text-2xl font-semibold">{employee.leaveBalances.permission}</p>
+                  <div className="min-w-0 rounded-[12px] bg-white/10 px-3 py-4 text-center">
+                    <p className="text-[10px] font-semibold uppercase leading-[1.2] tracking-[0.04em] text-white/62 break-words">Permission</p>
+                    <p className="mt-3 text-[28px] font-semibold leading-none text-white">{employee.leaveBalances.permission}</p>
                   </div>
                 </div>
               </div>
@@ -130,63 +131,69 @@ export function LeaveWorkflowBoard() {
           </div>
         </section>
 
-        <section className="panel rounded-[30px] p-6">
-          <div className="flex items-center gap-2">
+        <section className="panel rounded-[14px] p-6">
+          <div className="flex items-center gap-3">
             <Send className="h-5 w-5 text-[var(--primary)]" />
-            <p className="section-title text-2xl font-semibold text-[var(--primary)]">New Leave Request</p>
+            <p className="section-title text-[24px] font-semibold text-[var(--primary)]">New Leave Request</p>
           </div>
-          <p className="mt-3 text-sm text-muted">Bikin request cuti baru setelah cek balance di panel sebelah.</p>
-          <div className="mt-5 space-y-4">
-            <label className="block space-y-2 text-sm font-medium text-[var(--primary)]">
-              Employee
+          <p className="mt-3 text-[14px] leading-[1.5] text-[var(--muted)]">Bikin request cuti baru setelah cek balance di panel sebelah.</p>
+
+          <div className="mt-6 space-y-4">
+            <label className="block space-y-2 text-[14px] font-medium text-[var(--primary)]">
+              <span>Employee</span>
               <select
                 value={employeeId}
                 onChange={(event) => setEmployeeId(event.target.value)}
                 disabled={currentUser?.role === "employee"}
-                className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px] text-[var(--primary)] disabled:bg-slate-50 disabled:text-slate-500"
               >
                 {scopedEmployees.map((employee) => (
                   <option key={employee.id} value={employee.id}>{employee.name} - {employee.position}</option>
                 ))}
               </select>
             </label>
-            <label className="block space-y-2 text-sm font-medium text-[var(--primary)]">
-              Request Type
-              <select value={type} onChange={(event) => setType(event.target.value as LeaveType)} className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm text-slate-700">
+
+            <label className="block space-y-2 text-[14px] font-medium text-[var(--primary)]">
+              <span>Request Type</span>
+              <select value={type} onChange={(event) => setType(event.target.value as LeaveType)} className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px] text-[var(--primary)]">
                 {leaveTypes.map((item) => (
                   <option key={item} value={item}>{item}</option>
                 ))}
               </select>
             </label>
+
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block space-y-2 text-sm font-medium text-[var(--primary)]">
-                Start Date
-                <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm text-slate-700" />
+              <label className="block space-y-2 text-[14px] font-medium text-[var(--primary)]">
+                <span>Start Date</span>
+                <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px] text-[var(--primary)]" />
               </label>
-              <label className="block space-y-2 text-sm font-medium text-[var(--primary)]">
-                End Date
-                <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm text-slate-700" />
+              <label className="block space-y-2 text-[14px] font-medium text-[var(--primary)]">
+                <span>End Date</span>
+                <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px] text-[var(--primary)]" />
               </label>
             </div>
-            <label className="block space-y-2 text-sm font-medium text-[var(--primary)]">
-              Reason
-              <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={4} className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm text-slate-700" />
+
+            <label className="block space-y-2 text-[14px] font-medium text-[var(--primary)]">
+              <span>Reason</span>
+              <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={4} className="w-full resize-none rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px] text-[var(--primary)]" />
             </label>
-            {message ? <div className="rounded-2xl border border-border bg-[var(--panel-alt)] px-4 py-3 text-sm text-muted">{message}</div> : null}
-            <button onClick={() => requestMutation.mutate()} disabled={requestMutation.isPending || employeesQuery.isLoading} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--primary)] px-4 py-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
+
+            {message ? <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel-alt)] px-4 py-3 text-[14px] leading-[1.5] text-[var(--muted)]">{message}</div> : null}
+
+            <button onClick={() => requestMutation.mutate()} disabled={requestMutation.isPending || employeesQuery.isLoading} className="flex h-[50px] w-full items-center justify-center gap-2 rounded-[10px] bg-[var(--primary)] px-4 text-[14px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
               {requestMutation.isPending ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Creating...</> : <>Create Request</>}
             </button>
           </div>
         </section>
       </div>
 
-      <section className="panel rounded-[30px] p-6">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <p className="section-title text-2xl font-semibold text-[var(--primary)]">{currentUser?.role === "employee" ? "My Leave Queue" : "Approval Queue"}</p>
-            <p className="mt-2 text-sm text-muted">{currentUser?.role === "employee" ? "Pantau request cuti milik akun kamu dan status approval terbaru." : `Queue approval aktif dengan ${pendingCount} request belum selesai dan ${autoApprovedCount} auto-approved.`}</p>
+      <section className="panel rounded-[14px] p-6">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{currentUser?.role === "employee" ? "My Leave Queue" : "Approval Queue"}</p>
+            <p className="mt-2 max-w-[760px] text-[14px] leading-[1.55] text-[var(--muted)]">{currentUser?.role === "employee" ? "Pantau request cuti milik akun kamu dan status approval terbaru." : `Queue approval aktif dengan ${pendingCount} request belum selesai dan ${autoApprovedCount} auto-approved.`}</p>
           </div>
-          <button className="rounded-2xl bg-[var(--panel-alt)] px-4 py-3 text-sm font-semibold text-[var(--primary)]">Export Queue</button>
+          <button className="shrink-0 rounded-[10px] bg-[var(--panel-alt)] px-4 py-3 text-[14px] font-semibold text-[var(--primary)]">Export Queue</button>
         </div>
 
         <div className="space-y-4">
@@ -194,27 +201,30 @@ export function LeaveWorkflowBoard() {
             const statusLabel = formatLeaveStatus(request.status);
             const range = request.startDate === request.endDate ? request.startDate : `${request.startDate} - ${request.endDate}`;
             return (
-              <div key={request.id} className="rounded-[28px] bg-[var(--panel-alt)] p-5">
+              <div key={request.id} className="rounded-[12px] bg-[var(--panel-alt)] p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <p className="font-semibold text-[var(--primary)]">{request.employeeName}</p>
-                    <p className="mt-1 text-sm text-muted">{request.type} | {range} | {request.daysRequested} day(s)</p>
+                  <div className="min-w-0">
+                    <p className="text-[16px] font-semibold text-[var(--primary)]">{request.employeeName}</p>
+                    <p className="mt-1 break-words text-[14px] leading-[1.5] text-[var(--muted)]">{request.type} | {range} | {request.daysRequested} day(s)</p>
                   </div>
-                  <StatusPill tone={toneMap[statusLabel as keyof typeof toneMap]}>{statusLabel}</StatusPill>
+                  <div className="shrink-0">
+                    <StatusPill tone={toneMap[statusLabel as keyof typeof toneMap]}>{statusLabel}</StatusPill>
+                  </div>
                 </div>
-                <div className="mt-5 grid gap-4 text-sm text-muted md:grid-cols-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em]">Approvers</p>
-                    <p className="mt-2 font-medium text-slate-700">{request.approverFlow.join(" | ")}</p>
+
+                <div className="mt-5 grid gap-4 text-[14px] text-[var(--muted)] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">Approvers</p>
+                    <p className="mt-2 break-words font-medium text-slate-700">{request.approverFlow.join(" | ")}</p>
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em]">Balance</p>
-                    <p className="mt-2 font-medium text-slate-700">{request.balanceLabel}</p>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">Balance</p>
+                    <p className="mt-2 break-words font-medium text-slate-700">{request.balanceLabel}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 md:justify-end">
                     {canApprove && request.status !== "approved" ? (
                       <button
-                        className="rounded-2xl bg-white px-4 py-3 font-semibold text-[var(--primary)]"
+                        className="rounded-[10px] bg-white px-4 py-3 text-[14px] font-semibold text-[var(--primary)]"
                         onClick={() => approveMutation.mutate({ leaveId: request.id, status: "awaiting-hr", actor: "Manager Review" })}
                         disabled={approveMutation.isPending}
                       >
@@ -223,7 +233,7 @@ export function LeaveWorkflowBoard() {
                     ) : null}
                     {canApprove && request.status !== "approved" ? (
                       <button
-                        className="rounded-2xl bg-[var(--primary)] px-4 py-3 font-semibold text-white"
+                        className="rounded-[10px] bg-[var(--primary)] px-4 py-3 text-[14px] font-semibold text-white"
                         onClick={() => approveMutation.mutate({ leaveId: request.id, status: "approved", actor: "HR Lead" })}
                         disabled={approveMutation.isPending}
                       >
@@ -238,14 +248,15 @@ export function LeaveWorkflowBoard() {
         </div>
       </section>
 
-      <section className="panel rounded-[30px] p-6">
-        <p className="section-title text-2xl font-semibold text-[var(--primary)]">Workflow Rules</p>
-        <div className="mt-5 space-y-4 text-sm text-muted">
-          <div className="flex gap-3"><Clock3 className="mt-0.5 h-4 w-4 text-[var(--primary)]" /> Sick leave 1 hari dan permission 1 hari langsung auto-approved.</div>
-          <div className="flex gap-3"><Check className="mt-0.5 h-4 w-4 text-[var(--accent)]" /> Annual leave masuk ke HR queue dan mengurangi balance saat approved.</div>
-          <div className="flex gap-3"><FileSpreadsheet className="mt-0.5 h-4 w-4 text-[var(--primary)]" /> Queue sekarang live, role-aware, dan ngikut session login.</div>
+      <section className="panel rounded-[14px] p-6">
+        <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Workflow Rules</p>
+        <div className="mt-5 space-y-4 text-[14px] leading-[1.55] text-[var(--muted)]">
+          <div className="flex gap-3"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Sick leave 1 hari dan permission 1 hari langsung auto-approved.</span></div>
+          <div className="flex gap-3"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]" /> <span>Annual leave masuk ke HR queue dan mengurangi balance saat approved.</span></div>
+          <div className="flex gap-3"><FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Queue sekarang live, role-aware, dan ngikut session login.</span></div>
         </div>
       </section>
     </div>
   );
 }
+
