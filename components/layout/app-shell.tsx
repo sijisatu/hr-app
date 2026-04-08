@@ -26,7 +26,7 @@ import { LogoutButton } from "@/components/auth/logout-button";
 const iconMap = {
   Dashboard: LayoutGrid,
   "Employee List": Users,
-  "Attendance Logs": ClipboardList,
+  "Employee Attendance": ClipboardList,
   Payroll: WalletCards,
   "Self Service": UserRound,
   Reports: ChartColumn,

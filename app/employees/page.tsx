@@ -5,24 +5,24 @@ import { requireSession } from "@/lib/auth";
 import { currency, getEmployees } from "@/lib/api";
 
 export default async function EmployeesPage() {
-  const session = await requireSession(["admin", "hr", "manager", "employee"]);
+  await requireSession(["admin", "hr", "manager"]);
   const allEmployees = await getEmployees();
-  const employees = session.role === "employee" ? allEmployees.filter((item) => item.id === session.id) : allEmployees;
+  const employees = allEmployees;
   const activeEmployees = employees.filter((item) => item.status === "active").length;
   const departments = new Set(employees.map((item) => item.department)).size;
   const contractAlerts = employees.filter((item) => item.contractStatus === "ending-soon" || item.contractStatus === "probation").length;
   const payrollBaseline = employees.reduce((sum, item) => sum + item.baseSalary + item.allowance, 0);
 
   const summary = [
-    { label: session.role === "employee" ? "My Profile" : "Headcount", value: employees.length.toLocaleString("en-US"), note: `${activeEmployees} active employees`, tone: "neutral" },
+    { label: "Headcount", value: employees.length.toLocaleString("en-US"), note: `${activeEmployees} active employees`, tone: "neutral" },
     { label: "Departments", value: departments.toLocaleString("en-US"), note: `${contractAlerts} contracts to review`, tone: "success" },
     { label: "Payroll Baseline", value: currency(payrollBaseline), note: "Base salary + allowance", tone: "warning" }
   ] as const;
 
   return (
     <AppShell
-      title={session.role === "employee" ? "My Profile" : "Employee Management"}
-      subtitle={session.role === "employee" ? "Review your profile, contract, and payroll baseline." : "Employee master data, job structure, and contract overview."}
+      title="Employee Management"
+      subtitle="Employee master data, job structure, and contract overview."
     >
       <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-3">
@@ -35,4 +35,3 @@ export default async function EmployeesPage() {
     </AppShell>
   );
 }
-

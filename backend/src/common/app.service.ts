@@ -168,7 +168,7 @@ export class AppService {
 
   private normalizeLeave(record: Partial<LeaveRecord> & Record<string, unknown>, employees: EmployeeRecord[], index: number): LeaveRecord {
     const employee = employees.find((entry) => entry.id === String(record.userId ?? ""));
-    const type = (record.type as LeaveType | undefined) ?? "Annual Leave";
+    const type = (record.type as LeaveType | undefined) ?? "Leave Request";
     const daysRequested = Number(record.daysRequested ?? this.calculateLeaveDays(String(record.startDate ?? new Date().toISOString().slice(0, 10)), String(record.endDate ?? new Date().toISOString().slice(0, 10))));
     return {
       id: String(record.id ?? `leave-${String(index + 1).padStart(3, "0")}`),
@@ -327,10 +327,14 @@ export class AppService {
       return `${daysRequested} day request`;
     }
     switch (type) {
+      case "Leave Request":
       case "Annual Leave":
         return `Annual leave ${employee.leaveBalances.annual} days, ${daysRequested} requested`;
+      case "Sick Submission":
       case "Sick Leave":
         return `Sick leave ${employee.leaveBalances.sick} days, ${daysRequested} used`;
+      case "Half Day Leave":
+        return `Permission quota ${employee.leaveBalances.permission} half-day request`;
       case "Permission":
         return `Permission quota ${employee.leaveBalances.permission} days, ${daysRequested} requested`;
       default:
@@ -339,18 +343,21 @@ export class AppService {
   }
 
   private shouldAutoApprove(type: LeaveType, daysRequested: number) {
-    return (type === "Sick Leave" || type === "Permission") && daysRequested === 1;
+    return (type === "Sick Submission" || type === "Sick Leave" || type === "Permission" || type === "Half Day Leave") && daysRequested === 1;
   }
 
   private applyLeaveBalance(employee: EmployeeRecord, type: LeaveType, daysRequested: number) {
-    if (type === "Annual Leave") {
+    if (type === "Leave Request" || type === "Annual Leave") {
       employee.leaveBalances.annual = Math.max(0, employee.leaveBalances.annual - daysRequested);
     }
-    if (type === "Sick Leave") {
+    if (type === "Sick Submission" || type === "Sick Leave") {
       employee.leaveBalances.sick = Math.max(0, employee.leaveBalances.sick - daysRequested);
     }
     if (type === "Permission") {
       employee.leaveBalances.permission = Math.max(0, employee.leaveBalances.permission - daysRequested);
+    }
+    if (type === "Half Day Leave") {
+      employee.leaveBalances.permission = Math.max(0, employee.leaveBalances.permission - 0.5);
     }
   }
 
@@ -359,10 +366,14 @@ export class AppService {
       return "Balance updated";
     }
     switch (type) {
+      case "Leave Request":
       case "Annual Leave":
         return `${employee.leaveBalances.annual} annual leave days remaining`;
+      case "Sick Submission":
       case "Sick Leave":
         return `${employee.leaveBalances.sick} sick leave days remaining`;
+      case "Half Day Leave":
+        return `${employee.leaveBalances.permission} permission days remaining after half-day request`;
       case "Permission":
         return `${employee.leaveBalances.permission} permission days remaining`;
       default:
@@ -705,10 +716,10 @@ export class AppService {
     const leave: LeaveRecord = {
       id: `leave-${randomUUID().slice(0, 8)}`,
       requestedAt: new Date().toISOString(),
-      status: autoApproved ? "approved" : payload.type === "Annual Leave" ? "awaiting-hr" : "pending-manager",
+      status: autoApproved ? "approved" : payload.type === "Leave Request" || payload.type === "Annual Leave" ? "awaiting-hr" : "pending-manager",
       approverFlow: autoApproved
         ? ["Manager Auto-approved", "HR Confirmed"]
-        : payload.type === "Annual Leave"
+        : payload.type === "Leave Request" || payload.type === "Annual Leave"
           ? ["Manager Approved", "HR Pending"]
           : ["Manager Pending", "HR Pending"],
       balanceLabel: this.describeBalance(employee, payload.type, daysRequested),

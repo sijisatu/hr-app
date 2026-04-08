@@ -80,7 +80,15 @@ export type OvertimeRecord = {
   status: "pending" | "approved" | "paid";
 };
 
-export type LeaveType = "Annual Leave" | "Sick Leave" | "Permission" | "Remote Work";
+export type LeaveType =
+  | "Leave Request"
+  | "Sick Submission"
+  | "On Duty Request"
+  | "Half Day Leave"
+  | "Annual Leave"
+  | "Sick Leave"
+  | "Permission"
+  | "Remote Work";
 
 export type LeaveRecord = {
   id: string;
@@ -203,6 +211,17 @@ export async function getAttendanceShifts() {
 
 export async function getAttendanceOvertime() {
   return apiFetch<OvertimeRecord[]>("/api/attendance/overtime");
+}
+
+export async function createOvertimeRequest(payload: {
+  userId: string;
+  employeeName: string;
+  department: string;
+  date: string;
+  minutes: number;
+  reason: string;
+}) {
+  return apiPostJson<OvertimeRecord>("/api/attendance/overtime", payload);
 }
 
 export async function createCheckIn(payload: {
@@ -365,6 +384,21 @@ export function formatLeaveStatus(status: LeaveRecord["status"]) {
       return "Rejected";
     default:
       return status;
+  }
+}
+
+export function formatLeaveType(type: LeaveType) {
+  switch (type) {
+    case "Annual Leave":
+      return "Leave Request";
+    case "Sick Leave":
+      return "Sick Submission";
+    case "Permission":
+      return "Half Day Leave";
+    case "Remote Work":
+      return "On Duty Request";
+    default:
+      return type;
   }
 }
 

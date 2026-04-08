@@ -3,12 +3,12 @@ import { LeaveWorkflowBoard } from "@/components/leave/leave-workflow-board";
 import { requireSession } from "@/lib/auth";
 
 export default async function LeavePage() {
-  const session = await requireSession(["admin", "hr", "manager", "employee"]);
+  await requireSession(["admin", "hr", "manager"]);
 
   return (
     <AppShell
-      title={session.role === "employee" ? "My Leave Requests" : "Leave Workflow"}
-      subtitle={session.role === "employee" ? "Ajukan cuti, lihat status approval, dan pantau balance cuti milik akun kamu." : "Multi-level approval board for annual leave, sick leave, permission flow, and auto-approval rules."}
+      title="Leave Workflow"
+      subtitle="Multi-level approval board for employee request review and leave balance control."
     >
       <LeaveWorkflowBoard />
     </AppShell>

@@ -21,13 +21,13 @@ const toneMap = {
   Rejected: "danger"
 } as const;
 
-const leaveTypes: LeaveType[] = ["Annual Leave", "Sick Leave", "Permission", "Remote Work"];
+const leaveTypes: LeaveType[] = ["Leave Request", "Sick Submission", "On Duty Request", "Half Day Leave"];
 
 export function LeaveWorkflowBoard() {
   const queryClient = useQueryClient();
   const { currentUser } = useSession();
   const [employeeId, setEmployeeId] = useState("");
-  const [type, setType] = useState<LeaveType>("Annual Leave");
+  const [type, setType] = useState<LeaveType>("Leave Request");
   const [startDate, setStartDate] = useState("2026-04-10");
   const [endDate, setEndDate] = useState("2026-04-10");
   const [reason, setReason] = useState("");
@@ -259,4 +259,3 @@ export function LeaveWorkflowBoard() {
     </div>
   );
 }
-

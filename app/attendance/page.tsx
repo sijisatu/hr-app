@@ -1,4 +1,5 @@
 ﻿import { Download } from "lucide-react";
+import { EmployeeAttendanceWorkspace } from "@/components/attendance/employee-attendance-workspace";
 import { AppShell } from "@/components/layout/app-shell";
 import { AttendanceTable } from "@/components/tables/attendance-table";
 import { requireSession } from "@/lib/auth";
@@ -48,11 +49,22 @@ export default async function AttendancePage() {
 
   const punctuality = scopedLogs.length === 0 ? 0 : (scopedLogs.filter((item) => item.status === "on-time").length / scopedLogs.length) * 100;
 
+  if (session.role === "employee") {
+    return (
+      <AppShell
+        title="Employee Attendance"
+        subtitle="Semua kebutuhan attendance employee sekarang dipusatkan di satu modul, termasuk request dan history attendance."
+      >
+        <EmployeeAttendanceWorkspace />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
-      title={session.role === "employee" ? "My Attendance" : "Attendance Logs"}
-      subtitle={session.role === "employee" ? "Monitor your attendance, GPS compliance, shifts, and overtime." : "Track attendance records, shift coverage, and overtime in one operational workspace."}
-      actions={session.role === "employee" ? undefined : (
+      title="Employee Attendance"
+      subtitle="Track attendance records, shift coverage, and overtime in one operational workspace."
+      actions={(
         <div className="flex flex-wrap gap-2">
           <button className="secondary-button">
             <Download className="h-4 w-4" />
@@ -72,7 +84,7 @@ export default async function AttendancePage() {
           <section className="page-card p-6">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
-                <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{session.role === "employee" ? "My Shift Schedule" : "Shift Schedule"}</p>
+                <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Shift Schedule</p>
                 <p className="mt-1 text-[14px] text-[var(--text-muted)]">Working windows and assignment coverage.</p>
               </div>
             </div>
@@ -100,7 +112,7 @@ export default async function AttendancePage() {
 
           <section className="page-card p-6">
             <div className="mb-5">
-              <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{session.role === "employee" ? "My Overtime" : "Overtime Queue"}</p>
+              <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Overtime Queue</p>
               <p className="mt-1 text-[14px] text-[var(--text-muted)]">Supervisor review and payout visibility.</p>
             </div>
 
@@ -128,4 +140,3 @@ export default async function AttendancePage() {
     </AppShell>
   );
 }
-

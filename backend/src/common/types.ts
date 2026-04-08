@@ -1,6 +1,14 @@
 ﻿export type AttendanceStatus = "on-time" | "late" | "absent" | "early-leave";
 export type LeaveStatus = "pending-manager" | "awaiting-hr" | "approved" | "rejected";
-export type LeaveType = "Annual Leave" | "Sick Leave" | "Permission" | "Remote Work";
+export type LeaveType =
+  | "Leave Request"
+  | "Sick Submission"
+  | "On Duty Request"
+  | "Half Day Leave"
+  | "Annual Leave"
+  | "Sick Leave"
+  | "Permission"
+  | "Remote Work";
 export type EmploymentType = "permanent" | "contract" | "probation";
 export type ContractStatus = "active" | "probation" | "ending-soon" | "expired";
 export type ShiftStatus = "active" | "scheduled" | "maintenance";
