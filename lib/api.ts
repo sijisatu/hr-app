@@ -1,4 +1,4 @@
-﻿export type ApiResponse<T> = {
+export type ApiResponse<T> = {
   success: boolean;
   data: T;
   error: string | null;
@@ -47,9 +47,7 @@ export type AttendanceRecord = {
   location: string;
   latitude: number;
   longitude: number;
-  shiftName: string;
-  scheduledStart: string;
-  scheduledEnd: string;
+  description: string;
   gpsValidated: boolean;
   gpsDistanceMeters: number;
   photoUrl: string | null;
@@ -57,17 +55,6 @@ export type AttendanceRecord = {
   overtimeMinutes: number;
 };
 
-export type ShiftRecord = {
-  id: string;
-  name: string;
-  department: string;
-  startTime: string;
-  endTime: string;
-  workDays: string[];
-  workLocation: string;
-  employeesAssigned: number;
-  status: "active" | "scheduled" | "maintenance";
-};
 
 export type OvertimeRecord = {
   id: string;
@@ -77,7 +64,7 @@ export type OvertimeRecord = {
   date: string;
   minutes: number;
   reason: string;
-  status: "pending" | "approved" | "paid";
+  status: "pending" | "approved" | "rejected" | "paid";
 };
 
 export type LeaveType =
@@ -121,8 +108,6 @@ export type AttendanceOverview = {
   gpsValidated: number;
   selfieCaptured: number;
   overtimeHours: number;
-  activeShifts: number;
-  scheduledShifts: number;
 };
 
 export type AttendanceSeriesItem = {
@@ -132,6 +117,7 @@ export type AttendanceSeriesItem = {
 };
 
 export type ActivityItem = {
+  id: string;
   name: string;
   time: string;
   detail: string;
@@ -205,9 +191,6 @@ export async function getAttendanceOverview() {
   return apiFetch<AttendanceOverview>("/api/attendance/overview");
 }
 
-export async function getAttendanceShifts() {
-  return apiFetch<ShiftRecord[]>("/api/attendance/shifts");
-}
 
 export async function getAttendanceOvertime() {
   return apiFetch<OvertimeRecord[]>("/api/attendance/overtime");
@@ -229,7 +212,6 @@ export async function createCheckIn(payload: {
   employeeName: string;
   department: string;
   location: string;
-  shiftName?: string;
   latitude: number;
   longitude: number;
   photo?: File | null;
@@ -241,9 +223,6 @@ export async function createCheckIn(payload: {
   formData.set("location", payload.location);
   formData.set("latitude", String(payload.latitude));
   formData.set("longitude", String(payload.longitude));
-  if (payload.shiftName) {
-    formData.set("shiftName", payload.shiftName);
-  }
   if (payload.photo) {
     formData.set("photo", payload.photo);
   }
@@ -271,12 +250,20 @@ export async function createLeaveRequest(payload: {
 
 export async function approveLeaveRequest(payload: {
   leaveId: string;
-  status: "approved" | "rejected" | "awaiting-hr";
+  status: "approved" | "rejected";
   actor: string;
 }) {
   return apiPostJson<LeaveRecord>("/api/leave/approve", payload);
 }
 
+
+export async function approveOvertimeRequest(payload: {
+  overtimeId: string;
+  status: "approved" | "rejected" | "paid";
+  actor: string;
+}) {
+  return apiPostJson<OvertimeRecord>("/api/attendance/overtime/approve", payload);
+}
 export function deriveAttendanceSeries(logs: AttendanceRecord[]): AttendanceSeriesItem[] {
   const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const seeded = weekdays.map((label) => ({ label, present: 0, absent: 0 }));
@@ -300,6 +287,7 @@ export function deriveAttendanceSeries(logs: AttendanceRecord[]): AttendanceSeri
 
 export function deriveActivityStream(logs: AttendanceRecord[]): ActivityItem[] {
   return logs.slice(0, 4).map((log) => ({
+    id: log.id,
     name: log.employeeName,
     time: log.checkIn,
     detail: `${labelForStatus(log.status)} | ${log.department}`,
@@ -352,7 +340,7 @@ export function deriveAnomalies(logs: AttendanceRecord[], leaves: LeaveRecord[])
 
   return [
     { title: late > 0 ? "Late Arrival Spike" : "Stable Arrival Pattern", subtitle: `${late} late check-ins flagged this cycle` },
-    { title: earlyLeave > 0 ? "Early Leave Pattern" : "Shift Completion Healthy", subtitle: `${earlyLeave} early leave records detected` },
+    { title: earlyLeave > 0 ? "Early Leave Pattern" : "Attendance Completion Healthy", subtitle: `${earlyLeave} early leave records detected` },
     { title: pendingLeave > 0 ? "Pending Leave Queue" : "Leave Queue Clear", subtitle: `${pendingLeave} requests still need approval` }
   ];
 }
@@ -377,7 +365,7 @@ export function formatLeaveStatus(status: LeaveRecord["status"]) {
     case "awaiting-hr":
       return "Awaiting HR";
     case "pending-manager":
-      return "Review";
+      return "Pending Manager";
     case "approved":
       return "Approved";
     case "rejected":
@@ -409,7 +397,9 @@ export function formatOvertimeStatus(status: OvertimeRecord["status"]) {
     case "paid":
       return "Paid Out";
     case "pending":
-      return "Pending Review";
+      return "Pending Manager";
+    case "rejected":
+      return "Rejected";
     default:
       return status;
   }
@@ -422,3 +412,15 @@ export function currency(value: number) {
     maximumFractionDigits: 0
   }).format(value);
 }
+
+
+
+
+
+
+
+
+
+
+
+

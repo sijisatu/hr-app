@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   createContext,
@@ -17,7 +17,6 @@ import { useRouter } from "next/navigation";
 import {
   createCheckIn,
   createCheckOut,
-  getAttendanceShifts,
   getAttendanceToday,
   getEmployees,
   type AttendanceRecord
@@ -68,7 +67,6 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
   const [locationName, setLocationName] = useState("Jakarta HQ");
   const [latitude, setLatitude] = useState("-6.200000");
   const [longitude, setLongitude] = useState("106.816666");
-  const [shiftName, setShiftName] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -125,11 +123,9 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
 
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: getEmployees, enabled: open });
   const todayQuery = useQuery({ queryKey: ["attendance-today"], queryFn: getAttendanceToday, enabled: open });
-  const shiftsQuery = useQuery({ queryKey: ["attendance-shifts"], queryFn: getAttendanceShifts, enabled: open });
 
   const employees = employeesQuery.data ?? [];
   const todayRecords = todayQuery.data ?? [];
-  const shifts = shiftsQuery.data ?? [];
   const scopedEmployees = currentUser?.role === "employee" ? employees.filter((employee) => employee.id === currentUser.id) : employees;
 
   useEffect(() => {
@@ -146,32 +142,18 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
     [employeeId, scopedEmployees]
   );
 
-  const recommendedShifts = useMemo(() => {
-    if (!selectedEmployee) {
-      return shifts;
-    }
-    const scoped = shifts.filter((shift) => shift.department === selectedEmployee.department || shift.workLocation === selectedEmployee.workLocation);
-    return scoped.length > 0 ? scoped : shifts;
-  }, [selectedEmployee, shifts]);
-
   useEffect(() => {
     if (!selectedEmployee) {
       return;
     }
     setLocationName(selectedEmployee.workLocation);
-    const matchedShift =
-      recommendedShifts.find((shift) => shift.workLocation === selectedEmployee.workLocation) ??
-      recommendedShifts.find((shift) => shift.department === selectedEmployee.department) ??
-      null;
-    setShiftName(matchedShift?.name ?? "");
-  }, [recommendedShifts, selectedEmployee]);
+  }, [selectedEmployee]);
 
   const openRecord = selectedEmployee ? findOpenRecord(todayRecords, selectedEmployee.id) : null;
 
   const closeAndRefresh = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["attendance-today"] }),
-      queryClient.invalidateQueries({ queryKey: ["attendance-shifts"] }),
       queryClient.invalidateQueries({ queryKey: ["employees"] })
     ]);
     router.refresh();
@@ -196,7 +178,6 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
         employeeName: selectedEmployee.name,
         department: selectedEmployee.department,
         location: locationName,
-        shiftName: shiftName || undefined,
         latitude: numericLat,
         longitude: numericLng,
         photo
@@ -312,17 +293,7 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
                       <option key={employee.id} value={employee.id}>{employee.name} - {employee.position}</option>
                     ))}
                   </select>
-                </label>
-                <label className="space-y-2 text-sm font-medium text-[var(--primary)]">
-                  Shift
-                  <select value={shiftName} onChange={(event) => setShiftName(event.target.value)} className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm text-slate-700">
-                    <option value="">Auto match by department</option>
-                    {recommendedShifts.map((shift) => (
-                      <option key={shift.id} value={shift.name}>{shift.name} - {shift.startTime} to {shift.endTime}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+                </label>              </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="space-y-2 text-sm font-medium text-[var(--primary)] sm:col-span-3">
@@ -425,3 +396,6 @@ export function useAttendanceModal() {
   }
   return context;
 }
+
+
+

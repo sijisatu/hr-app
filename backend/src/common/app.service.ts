@@ -1,4 +1,4 @@
-﻿import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -14,8 +14,7 @@ import {
   PayRunRecord,
   PayslipLineItem,
   PayslipRecord,
-  PayrollComponentRecord,
-  ShiftRecord
+  PayrollComponentRecord
 } from "./types";
 import {
   CheckInDto,
@@ -24,6 +23,7 @@ import {
   CreateExportDto,
   CreateOvertimeDto,
   CreatePayrollComponentDto,
+  OvertimeApproveDto,
   ExportPayslipDto,
   GeneratePayrollRunDto,
   LeaveApproveDto,
@@ -46,6 +46,9 @@ const siteDirectory: Record<string, SiteConfig> = {
   "Remote - Yogyakarta": { latitude: -7.797068, longitude: 110.370529, radiusMeters: 500 }
 };
 
+const NON_SHIFT_START = "09:00";
+const NON_SHIFT_END = "17:00";
+
 @Injectable()
 export class AppService {
   private readonly storageRoot = path.resolve(process.cwd(), "storage");
@@ -67,7 +70,6 @@ export class AppService {
     const current = await this.readDb();
     current.employees = current.employees.map((employee, index) => this.normalizeEmployee(employee, index));
     current.attendanceLogs = (current.attendanceLogs ?? []).map((attendance, index) => this.normalizeAttendance(attendance, current.employees, index));
-    current.shifts = (current.shifts?.length ? current.shifts : seedData.shifts).map((shift, index) => this.normalizeShift(shift, index));
     current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : seedData.overtimeRequests).map((record, index) => this.normalizeOvertime(record, index));
     current.leaveRequests = (current.leaveRequests ?? []).map((record, index) => this.normalizeLeave(record, current.employees, index));
     current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : seedData.payrollComponents).map((component, index) => this.normalizePayrollComponent(component, index));
@@ -113,7 +115,7 @@ export class AppService {
   private normalizeAttendance(attendance: Partial<AttendanceRecord> & Record<string, unknown>, employees: EmployeeRecord[], index: number): AttendanceRecord {
     const employee = employees.find((entry) => entry.id === String(attendance.userId ?? ""));
     const location = String(attendance.location ?? employee?.workLocation ?? "Jakarta HQ");
-    const shift = this.resolveShift(location, employee?.department);
+    
     const latitude = Number(attendance.latitude ?? siteDirectory[location]?.latitude ?? -6.2);
     const longitude = Number(attendance.longitude ?? siteDirectory[location]?.longitude ?? 106.816666);
     const gpsDistanceMeters = Number(attendance.gpsDistanceMeters ?? this.measureDistanceMeters(location, latitude, longitude));
@@ -123,33 +125,17 @@ export class AppService {
       employeeName: String(attendance.employeeName ?? employee?.name ?? "Unknown Employee"),
       department: String(attendance.department ?? employee?.department ?? "General Operations"),
       timestamp: String(attendance.timestamp ?? new Date().toISOString()),
-      checkIn: String(attendance.checkIn ?? shift.startTime),
+      checkIn: String(attendance.checkIn ?? NON_SHIFT_START),
       checkOut: attendance.checkOut == null ? null : String(attendance.checkOut),
       location,
       latitude,
       longitude,
-      shiftName: String(attendance.shiftName ?? shift.name),
-      scheduledStart: String(attendance.scheduledStart ?? shift.startTime),
-      scheduledEnd: String(attendance.scheduledEnd ?? shift.endTime),
+      description: String(attendance.description ?? "Regular attendance check-in"),
       gpsValidated: typeof attendance.gpsValidated === "boolean" ? attendance.gpsValidated : gpsDistanceMeters <= this.getRadius(location),
       gpsDistanceMeters,
       photoUrl: attendance.photoUrl == null ? null : String(attendance.photoUrl),
       status: (attendance.status as AttendanceRecord["status"]) ?? "on-time",
       overtimeMinutes: Number(attendance.overtimeMinutes ?? 0)
-    };
-  }
-
-  private normalizeShift(shift: Partial<ShiftRecord> & Record<string, unknown>, index: number): ShiftRecord {
-    return {
-      id: String(shift.id ?? `shift-${String(index + 1).padStart(3, "0")}`),
-      name: String(shift.name ?? `Shift ${index + 1}`),
-      department: String(shift.department ?? "General Operations"),
-      startTime: String(shift.startTime ?? "09:00"),
-      endTime: String(shift.endTime ?? "17:00"),
-      workDays: Array.isArray(shift.workDays) ? shift.workDays.map((entry) => String(entry)) : ["Mon", "Tue", "Wed", "Thu", "Fri"],
-      workLocation: String(shift.workLocation ?? "Jakarta HQ"),
-      employeesAssigned: Number(shift.employeesAssigned ?? 0),
-      status: (shift.status as ShiftRecord["status"]) ?? "scheduled"
     };
   }
 
@@ -278,13 +264,6 @@ export class AppService {
     await writeFile(this.dbPath, JSON.stringify(next, null, 2), "utf8");
   }
 
-  private resolveShift(location: string, department?: string) {
-    const defaultShift = { name: "Core Shift", startTime: "09:00", endTime: "17:00" };
-    const byLocation = seedData.shifts.find((shift) => shift.workLocation === location);
-    const byDepartment = seedData.shifts.find((shift) => shift.department === department);
-    return byLocation ?? byDepartment ?? defaultShift;
-  }
-
   private getRadius(location: string) {
     return siteDirectory[location]?.radiusMeters ?? 150;
   }
@@ -322,6 +301,48 @@ export class AppService {
     return Math.max(1, diff + 1);
   }
 
+
+  private buildOnDutyAttendanceRecords(employee: EmployeeRecord, leave: LeaveRecord, existing: AttendanceRecord[]) {
+    const location = leave.type === "Remote Work" ? "Remote - Yogyakarta" : employee.workLocation;
+    
+    const site = siteDirectory[location] ?? siteDirectory["Jakarta HQ"];
+    const records: AttendanceRecord[] = [];
+    const start = new Date(`${leave.startDate}T00:00:00`);
+    const end = new Date(`${leave.endDate}T00:00:00`);
+
+    for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+      const year = cursor.getFullYear();
+      const month = String(cursor.getMonth() + 1).padStart(2, "0");
+      const day = String(cursor.getDate()).padStart(2, "0");
+      const dateKey = `${year}-${month}-${day}`;
+      const alreadyExists = existing.some((entry) => entry.userId === employee.id && entry.timestamp.slice(0, 10) === dateKey);
+      if (alreadyExists) {
+        continue;
+      }
+
+      const timestamp = new Date(`${dateKey}T08:00:00.000Z`).toISOString();
+      records.push({
+        id: `att-${randomUUID().slice(0, 8)}`,
+        userId: employee.id,
+        employeeName: employee.name,
+        department: employee.department,
+        timestamp,
+        checkIn: NON_SHIFT_START,
+        checkOut: NON_SHIFT_END,
+        location,
+        latitude: site.latitude,
+        longitude: site.longitude,
+        description: leave.reason,
+        gpsValidated: true,
+        gpsDistanceMeters: 0,
+        photoUrl: null,
+        status: "on-time",
+        overtimeMinutes: 0
+      });
+    }
+
+    return records;
+  }
   private describeBalance(employee: EmployeeRecord | undefined, type: LeaveType, daysRequested: number) {
     if (!employee) {
       return `${daysRequested} day request`;
@@ -332,7 +353,7 @@ export class AppService {
         return `Annual leave ${employee.leaveBalances.annual} days, ${daysRequested} requested`;
       case "Sick Submission":
       case "Sick Leave":
-        return `Sick leave ${employee.leaveBalances.sick} days, ${daysRequested} used`;
+        return `Sick submission recorded for ${daysRequested} day(s)`;
       case "Half Day Leave":
         return `Permission quota ${employee.leaveBalances.permission} half-day request`;
       case "Permission":
@@ -342,16 +363,9 @@ export class AppService {
     }
   }
 
-  private shouldAutoApprove(type: LeaveType, daysRequested: number) {
-    return (type === "Sick Submission" || type === "Sick Leave" || type === "Permission" || type === "Half Day Leave") && daysRequested === 1;
-  }
-
   private applyLeaveBalance(employee: EmployeeRecord, type: LeaveType, daysRequested: number) {
     if (type === "Leave Request" || type === "Annual Leave") {
       employee.leaveBalances.annual = Math.max(0, employee.leaveBalances.annual - daysRequested);
-    }
-    if (type === "Sick Submission" || type === "Sick Leave") {
-      employee.leaveBalances.sick = Math.max(0, employee.leaveBalances.sick - daysRequested);
     }
     if (type === "Permission") {
       employee.leaveBalances.permission = Math.max(0, employee.leaveBalances.permission - daysRequested);
@@ -371,7 +385,7 @@ export class AppService {
         return `${employee.leaveBalances.annual} annual leave days remaining`;
       case "Sick Submission":
       case "Sick Leave":
-        return `${employee.leaveBalances.sick} sick leave days remaining`;
+        return "Sick leave recorded without balance limit";
       case "Half Day Leave":
         return `${employee.leaveBalances.permission} permission days remaining after half-day request`;
       case "Permission":
@@ -508,7 +522,6 @@ export class AppService {
         storage: this.storageRoot,
         employees: db.employees.length,
         attendanceLogs: db.attendanceLogs.length,
-        shifts: db.shifts.length,
         overtimeRequests: db.overtimeRequests.length,
         leaveRequests: db.leaveRequests.length,
         payrollComponents: db.payrollComponents.length,
@@ -594,22 +607,13 @@ export class AppService {
     const gpsValidated = today.filter((entry) => entry.gpsValidated).length;
     const selfieCaptured = today.filter((entry) => Boolean(entry.photoUrl)).length;
     const overtimeMinutes = db.overtimeRequests.filter((entry) => ["approved", "paid", "pending"].includes(entry.status)).reduce((total, entry) => total + entry.minutes, 0);
-    const activeShifts = db.shifts.filter((entry) => entry.status === "active").length;
-    const scheduledShifts = db.shifts.filter((entry) => entry.status === "scheduled").length;
     return {
       checkedInToday: today.length,
       openCheckIns,
       gpsValidated,
       selfieCaptured,
-      overtimeHours: Number((overtimeMinutes / 60).toFixed(1)),
-      activeShifts,
-      scheduledShifts
+      overtimeHours: Number((overtimeMinutes / 60).toFixed(1))
     };
-  }
-
-  async getShifts() {
-    const db = await this.readDb();
-    return db.shifts;
   }
 
   async getOvertimeRequests() {
@@ -618,10 +622,8 @@ export class AppService {
   }
   async checkIn(payload: CheckInDto, photoUrl: string | null) {
     const db = await this.readDb();
-    const employee = db.employees.find((entry) => entry.id === payload.userId);
-    const shift = db.shifts.find((entry) => entry.name === payload.shiftName) ?? this.resolveShift(payload.location, payload.department);
     const now = new Date();
-    const schedule = this.parseClock(shift.startTime);
+    const schedule = this.parseClock(NON_SHIFT_START);
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     const scheduledMinutes = schedule.hour * 60 + schedule.minute;
     const gpsDistanceMeters = this.measureDistanceMeters(payload.location, payload.latitude, payload.longitude);
@@ -636,9 +638,7 @@ export class AppService {
       location: payload.location,
       latitude: payload.latitude,
       longitude: payload.longitude,
-      shiftName: shift.name,
-      scheduledStart: shift.startTime,
-      scheduledEnd: shift.endTime,
+      description: "Regular attendance check-in",
       gpsValidated: gpsDistanceMeters <= this.getRadius(payload.location),
       gpsDistanceMeters,
       photoUrl,
@@ -646,19 +646,6 @@ export class AppService {
       overtimeMinutes: 0
     };
     db.attendanceLogs.unshift(record);
-    if (employee && !db.shifts.some((entry) => entry.name === shift.name && entry.department === employee.department)) {
-      db.shifts.unshift({
-        id: `shift-${randomUUID().slice(0, 8)}`,
-        name: shift.name,
-        department: employee.department,
-        startTime: shift.startTime,
-        endTime: shift.endTime,
-        workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-        workLocation: employee.workLocation,
-        employeesAssigned: 1,
-        status: "scheduled"
-      });
-    }
     await this.writeDb(db);
     return record;
   }
@@ -673,7 +660,7 @@ export class AppService {
     const checkOutTime = payload.checkOut ?? this.formatClock(now);
     record.checkOut = checkOutTime;
 
-    const scheduled = this.parseClock(record.scheduledEnd);
+    const scheduled = this.parseClock(NON_SHIFT_END);
     const actual = payload.checkOut ? this.parseClock(payload.checkOut.replace(/\s?(AM|PM)$/i, "").trim()) : { hour: now.getHours(), minute: now.getMinutes() };
     const overtimeMinutes = Math.max(0, actual.hour * 60 + actual.minute - (scheduled.hour * 60 + scheduled.minute));
     record.overtimeMinutes = overtimeMinutes;
@@ -686,7 +673,7 @@ export class AppService {
         department: record.department,
         date: record.timestamp.slice(0, 10),
         minutes: overtimeMinutes,
-        reason: `Auto captured from ${record.shiftName} check-out`,
+        reason: "Auto captured from attendance check-out",
         status: "pending"
       });
     }
@@ -703,41 +690,39 @@ export class AppService {
     return record;
   }
 
+  async approveOvertimeRequest(payload: OvertimeApproveDto) {
+    const db = await this.readDb();
+    const overtime = db.overtimeRequests.find((entry) => entry.id === payload.overtimeId);
+    if (!overtime) {
+      throw new NotFoundException("Overtime request not found");
+    }
+    overtime.status = payload.status;
+    await this.writeDb(db);
+    return overtime;
+  }
+
   async getLeaveHistory() {
     const db = await this.readDb();
     return db.leaveRequests;
-  }
-
-  async requestLeave(payload: LeaveRequestDto) {
+  }  async requestLeave(payload: LeaveRequestDto) {
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === payload.userId);
     const daysRequested = this.calculateLeaveDays(payload.startDate, payload.endDate);
-    const autoApproved = this.shouldAutoApprove(payload.type, daysRequested);
     const leave: LeaveRecord = {
       id: `leave-${randomUUID().slice(0, 8)}`,
       requestedAt: new Date().toISOString(),
-      status: autoApproved ? "approved" : payload.type === "Leave Request" || payload.type === "Annual Leave" ? "awaiting-hr" : "pending-manager",
-      approverFlow: autoApproved
-        ? ["Manager Auto-approved", "HR Confirmed"]
-        : payload.type === "Leave Request" || payload.type === "Annual Leave"
-          ? ["Manager Approved", "HR Pending"]
-          : ["Manager Pending", "HR Pending"],
+      status: "pending-manager",
+      approverFlow: ["Manager Pending"],
       balanceLabel: this.describeBalance(employee, payload.type, daysRequested),
       daysRequested,
-      autoApproved,
+      autoApproved: false,
       ...payload
     };
-
-    if (employee && autoApproved) {
-      this.applyLeaveBalance(employee, payload.type, daysRequested);
-      leave.balanceLabel = this.leaveBalanceLabelAfterApproval(employee, payload.type);
-    }
 
     db.leaveRequests.unshift(leave);
     await this.writeDb(db);
     return leave;
   }
-
   async approveLeave(payload: LeaveApproveDto) {
     const db = await this.readDb();
     const leave = db.leaveRequests.find((entry) => entry.id === payload.leaveId);
@@ -752,6 +737,13 @@ export class AppService {
     if (payload.status === "approved" && employee && !wasApproved) {
       this.applyLeaveBalance(employee, leave.type, leave.daysRequested);
       leave.balanceLabel = this.leaveBalanceLabelAfterApproval(employee, leave.type);
+
+      if (leave.type === "On Duty Request" || leave.type === "Remote Work") {
+        const generated = this.buildOnDutyAttendanceRecords(employee, leave, db.attendanceLogs);
+        if (generated.length > 0) {
+          db.attendanceLogs = [...generated.reverse(), ...db.attendanceLogs];
+        }
+      }
     }
 
     await this.writeDb(db);
@@ -880,3 +872,33 @@ export class AppService {
     return { fileName, fileUrl: `/storage/exports/${fileName}` };
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

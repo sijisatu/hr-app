@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -21,6 +22,7 @@ import {
   CreateEmployeeDto,
   CreateExportDto,
   CreateOvertimeDto,
+  OvertimeApproveDto,
   CreatePayrollComponentDto,
   ExportPayslipDto,
   GeneratePayrollRunDto,
@@ -33,7 +35,7 @@ import {
 
 @Controller("api")
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(@Inject(AppService) private readonly appService: AppService) {}
 
   @Get("health")
   async health() {
@@ -80,11 +82,6 @@ export class AppController {
     return this.wrap(await this.appService.getAttendanceOverview());
   }
 
-  @Get("attendance/shifts")
-  async attendanceShifts() {
-    return this.wrap(await this.appService.getShifts());
-  }
-
   @Get("attendance/overtime")
   async attendanceOvertime() {
     return this.wrap(await this.appService.getOvertimeRequests());
@@ -115,6 +112,11 @@ export class AppController {
   @Post("attendance/overtime")
   async createOvertime(@Body() body: CreateOvertimeDto) {
     return this.wrap(await this.appService.createOvertimeRequest(body));
+  }
+
+  @Post("attendance/overtime/approve")
+  async approveOvertime(@Body() body: OvertimeApproveDto) {
+    return this.wrap(await this.appService.approveOvertimeRequest(body));
   }
 
   @Get("leave/history")
@@ -190,3 +192,19 @@ export class AppController {
     };
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

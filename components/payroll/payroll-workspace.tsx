@@ -142,7 +142,7 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
       { label: "Active Employees", value: overview.activeEmployees.toString(), note: "Included in payroll engine" },
       { label: "Components", value: overview.payrollComponents.toString(), note: "Salary earning & deduction rules" },
       { label: "Draft Runs", value: overview.draftRuns.toString(), note: "Need review before publish" },
-      { label: "Published Payslips", value: overview.publishedPayslips.toString(), note: "Available in employee self-service" }
+      { label: "Published Payslips", value: overview.publishedPayslips.toString(), note: "Available for employee download" }
     ];
   }, [overviewQuery.data]);
 
@@ -407,3 +407,4 @@ function InfoMetric({ label, value, compact = false }: { label: string; value: s
     </div>
   );
 }
+

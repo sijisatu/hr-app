@@ -1,4 +1,4 @@
-﻿import { Clock3 } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import type { ActivityItem } from "@/lib/api";
 
@@ -41,4 +41,5 @@ export function ActivityPanel({ entries }: { entries: ActivityItem[] }) {
     </div>
   );
 }
+
 

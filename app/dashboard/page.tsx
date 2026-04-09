@@ -1,9 +1,10 @@
-﻿import { AttendanceQuickAction } from "@/components/layout/attendance-quick-action";
+import { AttendanceQuickAction } from "@/components/layout/attendance-quick-action";
 import { AppShell } from "@/components/layout/app-shell";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { AttendanceChart } from "@/components/dashboard/attendance-chart";
 import { ActivityPanel } from "@/components/dashboard/activity-panel";
 import { IntegrityCard } from "@/components/dashboard/integrity-card";
+import { EmployeeDashboardOverview } from "@/components/dashboard/employee-dashboard-overview";
 import { requireSession } from "@/lib/auth";
 import {
   deriveActivityStream,
@@ -21,10 +22,11 @@ export default async function DashboardPage() {
     getLeaveHistory()
   ]);
 
-  const scopedLogs = session.role === "employee" ? attendanceLogs.filter((log) => log.userId === session.id) : attendanceLogs;
-  const scopedLeaves = session.role === "employee" ? leaveRequests.filter((leave) => leave.userId === session.id) : leaveRequests;
+  const isEmployeeView = session.role === "employee" || session.role === "manager";
+  const scopedLogs = isEmployeeView ? attendanceLogs.filter((log) => log.userId === session.id) : attendanceLogs;
+  const scopedLeaves = isEmployeeView ? leaveRequests.filter((leave) => leave.userId === session.id) : leaveRequests;
 
-  const metrics = session.role === "employee"
+  const metrics = isEmployeeView
     ? [
         { label: "My Records", value: scopedLogs.length.toLocaleString("en-US"), note: `${scopedLeaves.length} leave requests`, tone: "neutral" },
         { label: "On-Time", value: scopedLogs.filter((item) => item.status === "on-time").length.toLocaleString("en-US"), note: "Personal attendance", tone: "success" },
@@ -43,8 +45,8 @@ export default async function DashboardPage() {
 
   return (
     <AppShell
-      title={session.role === "employee" ? "My Presence" : "Dashboard"}
-      subtitle={session.role === "employee" ? "Personal attendance summary, leave status, and live check-in access for your own account." : "Attendance overview, activity feed, and operational signals in one workspace."}
+      title="Dashboard"
+      subtitle={isEmployeeView ? "Grafik attendance dan ringkasan kehadiran untuk akun kamu sendiri." : "Attendance overview, activity feed, and operational signals in one workspace."}
       actions={<AttendanceQuickAction compact label="Clock In" />}
     >
       <div className="space-y-6">
@@ -54,18 +56,21 @@ export default async function DashboardPage() {
           ))}
         </div>
 
-        <div className="content-grid">
-          <div className="space-y-6">
-            <AttendanceChart series={series} />
-          </div>
+        {isEmployeeView ? (
+          <EmployeeDashboardOverview logs={scopedLogs} leaves={scopedLeaves} />
+        ) : (
+          <div className="content-grid">
+            <div className="space-y-6">
+              <AttendanceChart series={series} />
+            </div>
 
-          <div className="space-y-6">
-            <ActivityPanel entries={activity} />
-            <IntegrityCard />
+            <div className="space-y-6">
+              <ActivityPanel entries={activity} />
+              <IntegrityCard />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </AppShell>
   );
 }
-

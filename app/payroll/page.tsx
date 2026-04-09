@@ -1,21 +1,21 @@
-﻿import { AppShell } from "@/components/layout/app-shell";
+import { AppShell } from "@/components/layout/app-shell";
 import { PayrollWorkspace } from "@/components/payroll/payroll-workspace";
 import { requireSession } from "@/lib/auth";
 import { getPayRuns, getPayrollComponents, getPayrollOverview, getPayslips } from "@/lib/payroll";
 
 export default async function PayrollPage() {
-  const session = await requireSession(["admin", "hr", "employee"]);
+  const session = await requireSession(["admin", "hr", "manager", "employee"]);
   const [overview, components, runs, payslips] = await Promise.all([
     getPayrollOverview(),
     getPayrollComponents(),
     getPayRuns(),
-    getPayslips(session.role === "employee" ? session.id : undefined)
+    getPayslips(session.role === "admin" || session.role === "hr" ? undefined : session.id)
   ]);
 
   return (
     <AppShell
       title="Payroll"
-      subtitle={session.role === "employee" ? "Lihat payroll kamu sendiri dan generate slip gaji yang sudah dipublish." : "Kelola komponen gaji, hitung payroll otomatis, review draft, dan publish payslip ke employee self-service."}
+      subtitle={session.role === "employee" || session.role === "manager" ? "Generate slip gaji dan lihat history slip gaji untuk akun kamu sendiri." : "Kelola komponen gaji, hitung payroll otomatis, review draft, dan publish payslip karyawan."}
     >
       <PayrollWorkspace
         role={session.role}
@@ -28,3 +28,5 @@ export default async function PayrollPage() {
     </AppShell>
   );
 }
+
+

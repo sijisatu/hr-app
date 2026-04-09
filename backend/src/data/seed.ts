@@ -1,4 +1,4 @@
-﻿import { DatabaseShape } from "../common/types";
+import { DatabaseShape } from "../common/types";
 
 export const seedData: DatabaseShape = {
   employees: [
@@ -115,9 +115,7 @@ export const seedData: DatabaseShape = {
       location: "Bandung Hub",
       latitude: -6.917464,
       longitude: 107.619123,
-      shiftName: "Engineering Core",
-      scheduledStart: "09:00",
-      scheduledEnd: "17:00",
+      description: "Regular attendance check-in",
       gpsValidated: true,
       gpsDistanceMeters: 42,
       photoUrl: null,
@@ -135,9 +133,7 @@ export const seedData: DatabaseShape = {
       location: "Surabaya Office",
       latitude: -7.257472,
       longitude: 112.752088,
-      shiftName: "Ops Control",
-      scheduledStart: "09:00",
-      scheduledEnd: "18:00",
+      description: "Regular attendance check-in",
       gpsValidated: true,
       gpsDistanceMeters: 31,
       photoUrl: null,
@@ -155,9 +151,7 @@ export const seedData: DatabaseShape = {
       location: "Remote - Yogyakarta",
       latitude: -7.797068,
       longitude: 110.370529,
-      shiftName: "Product Insight",
-      scheduledStart: "08:30",
-      scheduledEnd: "17:00",
+      description: "Regular attendance check-in",
       gpsValidated: false,
       gpsDistanceMeters: 820,
       photoUrl: null,
@@ -175,60 +169,12 @@ export const seedData: DatabaseShape = {
       location: "Jakarta HQ",
       latitude: -6.2,
       longitude: 106.816666,
-      shiftName: "Creative Leadership",
-      scheduledStart: "08:30",
-      scheduledEnd: "17:30",
+      description: "Regular attendance check-in",
       gpsValidated: true,
       gpsDistanceMeters: 28,
       photoUrl: "/storage/attendance-selfies/demo-sarah.jpg",
       status: "on-time",
       overtimeMinutes: 0
-    }
-  ],
-  shifts: [
-    {
-      id: "shift-001",
-      name: "Creative Leadership",
-      department: "Brand Identity & Strategy",
-      startTime: "08:30",
-      endTime: "17:30",
-      workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-      workLocation: "Jakarta HQ",
-      employeesAssigned: 12,
-      status: "active"
-    },
-    {
-      id: "shift-002",
-      name: "Engineering Core",
-      department: "Systems Infrastructure",
-      startTime: "09:00",
-      endTime: "17:00",
-      workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-      workLocation: "Bandung Hub",
-      employeesAssigned: 18,
-      status: "active"
-    },
-    {
-      id: "shift-003",
-      name: "Ops Control",
-      department: "Logistics & Supply Chain",
-      startTime: "09:00",
-      endTime: "18:00",
-      workDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-      workLocation: "Surabaya Office",
-      employeesAssigned: 10,
-      status: "scheduled"
-    },
-    {
-      id: "shift-004",
-      name: "Product Insight",
-      department: "Consumer Insights",
-      startTime: "08:30",
-      endTime: "17:00",
-      workDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-      workLocation: "Remote - Yogyakarta",
-      employeesAssigned: 7,
-      status: "maintenance"
     }
   ],
   overtimeRequests: [
@@ -351,7 +297,7 @@ export const seedData: DatabaseShape = {
       active: true,
       appliesToAll: false,
       employeeIds: ["emp-003"],
-      description: "Shift meal support for operations employees"
+      description: "Meal support for operations employees"
     }
   ],
   payRuns: [
@@ -472,3 +418,6 @@ export const seedData: DatabaseShape = {
     }
   ]
 };
+
+
+

@@ -28,12 +28,12 @@ const iconMap = {
   "Employee List": Users,
   "Employee Attendance": ClipboardList,
   Payroll: WalletCards,
-  "Self Service": UserRound,
+  Profile: UserRound,
   Reports: ChartColumn,
   "Leave Flow": CalendarClock
 };
 
-export function AppShell({ title, subtitle, actions, children }: { title: string; subtitle: string; actions?: React.ReactNode; children: React.ReactNode }) {
+export function AppShell({ title, subtitle, actions, children, compact = false }: { title: string; subtitle: string; actions?: React.ReactNode; children: React.ReactNode; compact?: boolean }) {
   const pathname = usePathname();
   const { currentUser } = useSession();
   const visibleNav = navItems.filter((item) => !item.roles || (currentUser ? item.roles.includes(currentUser.role) : false));
@@ -55,7 +55,7 @@ export function AppShell({ title, subtitle, actions, children }: { title: string
           <nav className="mt-8 space-y-2">
             {visibleNav.map((item) => {
               const Icon = iconMap[item.label as keyof typeof iconMap];
-              const active = pathname === item.href;
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
               return (
                 <Link key={item.href} href={item.href} className={clsx("nav-item", active && "nav-item-active")}>
@@ -123,11 +123,11 @@ export function AppShell({ title, subtitle, actions, children }: { title: string
           </div>
         </header>
 
-        <main className="px-6 py-6 lg:px-8 lg:py-8">
-          <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <main className={clsx("px-6 py-6 lg:px-8", compact ? "lg:py-6" : "lg:py-8")}>
+          <div className={clsx("flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between", compact ? "mb-6" : "mb-8")}>
             <div className="min-w-0">
-              <h1 className="section-title text-[36px] font-semibold leading-tight text-[var(--primary)] lg:text-[44px]">{title}</h1>
-              <p className="mt-2 max-w-3xl text-[15px] leading-6 text-[var(--text-muted)]">{subtitle}</p>
+              <h1 className={clsx("section-title font-semibold leading-tight text-[var(--primary)]", compact ? "text-[32px] lg:text-[36px]" : "text-[36px] lg:text-[44px]")}>{title}</h1>
+              <p className={clsx("mt-2 max-w-3xl text-[var(--text-muted)]", compact ? "text-[14px] leading-5" : "text-[15px] leading-6")}>{subtitle}</p>
             </div>
             {actions ? <div className="shrink-0">{actions}</div> : null}
           </div>
@@ -138,3 +138,4 @@ export function AppShell({ title, subtitle, actions, children }: { title: string
     </div>
   );
 }
+

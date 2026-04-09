@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Clock3, FileSpreadsheet, LoaderCircle, Send, WalletCards } from "lucide-react";
+import { Check, FileSpreadsheet, LoaderCircle, Send, UserCheck, WalletCards, X } from "lucide-react";
 import {
   approveLeaveRequest,
   createLeaveRequest,
@@ -16,8 +16,8 @@ import { StatusPill } from "@/components/ui/status-pill";
 
 const toneMap = {
   "Awaiting HR": "warning",
+  "Pending Manager": "warning",
   Approved: "success",
-  Review: "danger",
   Rejected: "danger"
 } as const;
 
@@ -40,7 +40,7 @@ export function LeaveWorkflowBoard() {
   const leaveRequests = leavesQuery.data ?? [];
   const scopedEmployees = currentUser?.role === "employee" ? employees.filter((employee) => employee.id === currentUser.id) : employees;
   const visibleRequests = currentUser?.role === "employee" ? leaveRequests.filter((item) => item.userId === currentUser.id) : leaveRequests;
-  const canApprove = currentUser?.role === "admin" || currentUser?.role === "hr" || currentUser?.role === "manager";
+  const canApprove = currentUser?.role === "manager" || currentUser?.role === "admin";
 
   useEffect(() => {
     if (!employeeId && scopedEmployees.length > 0) {
@@ -49,8 +49,7 @@ export function LeaveWorkflowBoard() {
   }, [employeeId, scopedEmployees]);
 
   const selectedEmployee = scopedEmployees.find((employee) => employee.id === employeeId) ?? null;
-  const pendingCount = visibleRequests.filter((item) => item.status !== "approved").length;
-  const autoApprovedCount = visibleRequests.filter((item) => item.autoApproved).length;
+  const pendingCount = visibleRequests.filter((item) => item.status !== "approved" && item.status !== "rejected").length;
 
   const requestMutation = useMutation({
     mutationFn: async () => {
@@ -81,7 +80,7 @@ export function LeaveWorkflowBoard() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: async (payload: { leaveId: string; status: "approved" | "rejected" | "awaiting-hr"; actor: string }) =>
+    mutationFn: async (payload: { leaveId: string; status: "approved" | "rejected"; actor: string }) =>
       approveLeaveRequest(payload),
     onSuccess: async (result) => {
       setMessage(`Request ${result.employeeName} diupdate ke ${formatLeaveStatus(result.status)}.`);
@@ -102,9 +101,7 @@ export function LeaveWorkflowBoard() {
             <p className="text-[12px] font-semibold uppercase tracking-[0.22em]">Leave Balance</p>
           </div>
           <p className="mt-6 max-w-[760px] text-[15px] leading-[1.55] text-white/78">
-            {currentUser?.role === "employee"
-              ? "Ringkasan kuota cuti milik akun kamu. Ini yang paling penting buat dilihat sebelum bikin request baru."
-              : "Ringkasan balance cuti aktif untuk bantu HR dan manager lihat kapasitas cuti tim sebelum approve request."}
+            Ringkasan cuti aktif untuk bantu manager/leader validasi request employee sebelum approve. Sick leave ditampilkan sebagai jumlah pemakaian.
           </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-2">
@@ -118,8 +115,8 @@ export function LeaveWorkflowBoard() {
                     <p className="mt-3 text-[28px] font-semibold leading-none text-white">{employee.leaveBalances.annual}</p>
                   </div>
                   <div className="min-w-0 rounded-[12px] bg-white/10 px-3 py-4 text-center">
-                    <p className="text-[10px] font-semibold uppercase leading-[1.2] tracking-[0.08em] text-white/62 break-words">Sick</p>
-                    <p className="mt-3 text-[28px] font-semibold leading-none text-white">{employee.leaveBalances.sick}</p>
+                    <p className="text-[10px] font-semibold uppercase leading-[1.2] tracking-[0.08em] text-white/62 break-words">Sick Used</p>
+                    <p className="mt-3 text-[28px] font-semibold leading-none text-white">{leaveRequests.filter((item) => item.userId === employee.id && item.status === "approved" && (item.type === "Sick Submission" || item.type === "Sick Leave")).length}</p>
                   </div>
                   <div className="min-w-0 rounded-[12px] bg-white/10 px-3 py-4 text-center">
                     <p className="text-[10px] font-semibold uppercase leading-[1.2] tracking-[0.04em] text-white/62 break-words">Permission</p>
@@ -136,7 +133,7 @@ export function LeaveWorkflowBoard() {
             <Send className="h-5 w-5 text-[var(--primary)]" />
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">New Leave Request</p>
           </div>
-          <p className="mt-3 text-[14px] leading-[1.5] text-[var(--muted)]">Bikin request cuti baru setelah cek balance di panel sebelah.</p>
+          <p className="mt-3 text-[14px] leading-[1.5] text-[var(--muted)]">Semua request yang dibuat akan otomatis masuk ke queue manager approval.</p>
 
           <div className="mt-6 space-y-4">
             <label className="block space-y-2 text-[14px] font-medium text-[var(--primary)]">
@@ -190,8 +187,8 @@ export function LeaveWorkflowBoard() {
       <section className="panel rounded-[14px] p-6">
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{currentUser?.role === "employee" ? "My Leave Queue" : "Approval Queue"}</p>
-            <p className="mt-2 max-w-[760px] text-[14px] leading-[1.55] text-[var(--muted)]">{currentUser?.role === "employee" ? "Pantau request cuti milik akun kamu dan status approval terbaru." : `Queue approval aktif dengan ${pendingCount} request belum selesai dan ${autoApprovedCount} auto-approved.`}</p>
+            <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Manager Approval Queue</p>
+            <p className="mt-2 max-w-[760px] text-[14px] leading-[1.55] text-[var(--muted)]">Queue approval request employee. Saat ini ada {pendingCount} request yang menunggu keputusan manager/leader.</p>
           </div>
           <button className="shrink-0 rounded-[10px] bg-[var(--panel-alt)] px-4 py-3 text-[14px] font-semibold text-[var(--primary)]">Export Queue</button>
         </div>
@@ -200,6 +197,7 @@ export function LeaveWorkflowBoard() {
           {visibleRequests.map((request) => {
             const statusLabel = formatLeaveStatus(request.status);
             const range = request.startDate === request.endDate ? request.startDate : `${request.startDate} - ${request.endDate}`;
+            const needsDecision = request.status !== "approved" && request.status !== "rejected";
             return (
               <div key={request.id} className="rounded-[12px] bg-[var(--panel-alt)] p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -214,7 +212,7 @@ export function LeaveWorkflowBoard() {
 
                 <div className="mt-5 grid gap-4 text-[14px] text-[var(--muted)] md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">Approvers</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]">Approver Flow</p>
                     <p className="mt-2 break-words font-medium text-slate-700">{request.approverFlow.join(" | ")}</p>
                   </div>
                   <div className="min-w-0">
@@ -222,22 +220,22 @@ export function LeaveWorkflowBoard() {
                     <p className="mt-2 break-words font-medium text-slate-700">{request.balanceLabel}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                    {canApprove && request.status !== "approved" ? (
+                    {canApprove && needsDecision ? (
                       <button
-                        className="rounded-[10px] bg-white px-4 py-3 text-[14px] font-semibold text-[var(--primary)]"
-                        onClick={() => approveMutation.mutate({ leaveId: request.id, status: "awaiting-hr", actor: "Manager Review" })}
+                        className="inline-flex items-center gap-2 rounded-[10px] bg-white px-4 py-3 text-[14px] font-semibold text-[var(--danger)]"
+                        onClick={() => approveMutation.mutate({ leaveId: request.id, status: "rejected", actor: "Manager/Leader" })}
                         disabled={approveMutation.isPending}
                       >
-                        Review
+                        <X className="h-4 w-4" /> Reject
                       </button>
                     ) : null}
-                    {canApprove && request.status !== "approved" ? (
+                    {canApprove && needsDecision ? (
                       <button
-                        className="rounded-[10px] bg-[var(--primary)] px-4 py-3 text-[14px] font-semibold text-white"
-                        onClick={() => approveMutation.mutate({ leaveId: request.id, status: "approved", actor: "HR Lead" })}
+                        className="inline-flex items-center gap-2 rounded-[10px] bg-[var(--primary)] px-4 py-3 text-[14px] font-semibold text-white"
+                        onClick={() => approveMutation.mutate({ leaveId: request.id, status: "approved", actor: "Manager/Leader" })}
                         disabled={approveMutation.isPending}
                       >
-                        Approve
+                        <UserCheck className="h-4 w-4" /> Approve
                       </button>
                     ) : null}
                   </div>
@@ -251,11 +249,12 @@ export function LeaveWorkflowBoard() {
       <section className="panel rounded-[14px] p-6">
         <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Workflow Rules</p>
         <div className="mt-5 space-y-4 text-[14px] leading-[1.55] text-[var(--muted)]">
-          <div className="flex gap-3"><Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Sick leave 1 hari dan permission 1 hari langsung auto-approved.</span></div>
-          <div className="flex gap-3"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]" /> <span>Annual leave masuk ke HR queue dan mengurangi balance saat approved.</span></div>
-          <div className="flex gap-3"><FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Queue sekarang live, role-aware, dan ngikut session login.</span></div>
+          <div className="flex gap-3"><UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Semua employee request wajib status <strong>Pending Manager</strong> dulu sebelum bisa approved/rejected.</span></div>
+          <div className="flex gap-3"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]" /> <span>Saldo cuti employee baru dikurangi saat manager/leader menekan Approve.</span></div>
+          <div className="flex gap-3"><FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Queue approval live, role-aware, dan update otomatis setelah keputusan manager.</span></div>
         </div>
       </section>
     </div>
   );
 }
+

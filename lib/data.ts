@@ -8,10 +8,14 @@ export type NavItem = {
 
 export const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", roles: ["admin", "hr", "manager", "employee"] },
-  { href: "/employees", label: "Employee List", roles: ["admin", "hr", "manager"] },
+  { href: "/employees", label: "Employee List", roles: ["admin", "hr"] },
   { href: "/attendance", label: "Employee Attendance", roles: ["admin", "hr", "manager", "employee"] },
-  { href: "/payroll", label: "Payroll", roles: ["admin", "hr", "employee"] },
-  { href: "/self-service", label: "Self Service", roles: ["employee"] },
-  { href: "/reports", label: "Reports", roles: ["admin", "hr", "manager"] },
-  { href: "/leave", label: "Leave Flow", roles: ["admin", "hr", "manager"] }
+  { href: "/payroll", label: "Payroll", roles: ["admin", "hr", "manager", "employee"] },  { href: "/profile", label: "Profile", roles: ["manager", "employee"] },
+  { href: "/reports", label: "Reports", roles: ["admin", "hr"] },
+  { href: "/leave", label: "Leave Flow", roles: ["admin", "hr"] }
 ];
+
+
+
+
+

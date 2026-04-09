@@ -1,4 +1,4 @@
-﻿export type AttendanceStatus = "on-time" | "late" | "absent" | "early-leave";
+export type AttendanceStatus = "on-time" | "late" | "absent" | "early-leave";
 export type LeaveStatus = "pending-manager" | "awaiting-hr" | "approved" | "rejected";
 export type LeaveType =
   | "Leave Request"
@@ -11,8 +11,7 @@ export type LeaveType =
   | "Remote Work";
 export type EmploymentType = "permanent" | "contract" | "probation";
 export type ContractStatus = "active" | "probation" | "ending-soon" | "expired";
-export type ShiftStatus = "active" | "scheduled" | "maintenance";
-export type OvertimeStatus = "pending" | "approved" | "paid";
+export type OvertimeStatus = "pending" | "approved" | "rejected" | "paid";
 export type PayrollComponentType = "earning" | "deduction";
 export type PayrollCalculationType = "fixed" | "percentage";
 export type PayRunStatus = "draft" | "published";
@@ -61,9 +60,7 @@ export type AttendanceRecord = {
   location: string;
   latitude: number;
   longitude: number;
-  shiftName: string;
-  scheduledStart: string;
-  scheduledEnd: string;
+  description: string;
   gpsValidated: boolean;
   gpsDistanceMeters: number;
   photoUrl: string | null;
@@ -71,17 +68,6 @@ export type AttendanceRecord = {
   overtimeMinutes: number;
 };
 
-export type ShiftRecord = {
-  id: string;
-  name: string;
-  department: string;
-  startTime: string;
-  endTime: string;
-  workDays: string[];
-  workLocation: string;
-  employeesAssigned: number;
-  status: ShiftStatus;
-};
 
 export type OvertimeRecord = {
   id: string;
@@ -180,10 +166,12 @@ export type PayRunRecord = {
 export type DatabaseShape = {
   employees: EmployeeRecord[];
   attendanceLogs: AttendanceRecord[];
-  shifts: ShiftRecord[];
   overtimeRequests: OvertimeRecord[];
   leaveRequests: LeaveRecord[];
   payrollComponents: PayrollComponentRecord[];
   payRuns: PayRunRecord[];
   payslips: PayslipRecord[];
 };
+
+
+

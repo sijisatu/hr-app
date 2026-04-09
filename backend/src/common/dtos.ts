@@ -1,4 +1,4 @@
-﻿import { Type } from "class-transformer";
+import { Type } from "class-transformer";
 import { IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 export class CreateEmployeeDto {
@@ -160,10 +160,6 @@ export class CheckInDto {
   @IsString()
   location!: string;
 
-  @IsOptional()
-  @IsString()
-  shiftName?: string;
-
   @Type(() => Number)
   @IsNumber()
   latitude!: number;
@@ -228,8 +224,20 @@ export class LeaveApproveDto {
   @IsString()
   leaveId!: string;
 
-  @IsIn(["approved", "rejected", "awaiting-hr"])
-  status!: "approved" | "rejected" | "awaiting-hr";
+  @IsIn(["approved", "rejected"])
+  status!: "approved" | "rejected";
+
+  @IsString()
+  actor!: string;
+}
+
+
+export class OvertimeApproveDto {
+  @IsString()
+  overtimeId!: string;
+
+  @IsIn(["approved", "rejected", "paid"])
+  status!: "approved" | "rejected" | "paid";
 
   @IsString()
   actor!: string;
@@ -358,3 +366,9 @@ export class CreateExportDto {
   @IsString()
   content?: string;
 }
+
+
+
+
+
+

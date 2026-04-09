@@ -1,4 +1,4 @@
-﻿import { Camera, Clock3, MapPinned, MoreVertical } from "lucide-react";
+import { Camera, Clock3, MapPinned, MoreVertical } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import type { AttendanceOverview, AttendanceRecord } from "@/lib/api";
 
@@ -29,7 +29,7 @@ export function AttendanceTable({
     { label: "Checked In Today", value: `${overview.checkedInToday}`, detail: `${overview.openCheckIns} still open` },
     { label: "GPS Validated", value: `${overview.gpsValidated}`, detail: `${Math.max(overview.checkedInToday - overview.gpsValidated, 0)} flagged` },
     { label: "Selfie Captured", value: `${overview.selfieCaptured}`, detail: `${overview.checkedInToday === 0 ? 0 : Math.round((overview.selfieCaptured / overview.checkedInToday) * 100)}% coverage` },
-    { label: "Overtime Hours", value: `${overview.overtimeHours}`, detail: `${overview.activeShifts} active shifts` }
+    { label: "Overtime Hours", value: `${overview.overtimeHours}`, detail: "Accumulated from attendance check-out." }
   ];
 
   return (
@@ -48,7 +48,7 @@ export function AttendanceTable({
         <div className="page-card bg-[var(--primary)] p-5 text-white">
           <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-white/72">Average Punctuality</p>
           <p className="mt-3 text-[30px] font-semibold leading-none">{punctuality.toFixed(1)}%</p>
-          <p className="mt-3 text-[14px] leading-5 text-white/75">{overview.scheduledShifts} shifts are queued for the next rotation window.</p>
+          <p className="mt-3 text-[14px] leading-5 text-white/75">Non-shift attendance mode is active for all employees.</p>
         </div>
       </div>
 
@@ -75,7 +75,7 @@ export function AttendanceTable({
             <thead>
               <tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
                 <th className="px-4 pb-2">Employee</th>
-                <th className="px-4 pb-2">Shift</th>
+                <th className="px-4 pb-2">Description</th>
                 <th className="px-4 pb-2">Check Window</th>
                 <th className="px-4 pb-2">GPS</th>
                 <th className="px-4 pb-2">Status</th>
@@ -94,7 +94,7 @@ export function AttendanceTable({
                     </p>
                   </td>
                   <td className="px-4 py-4 align-top">
-                    <p className="text-[14px] font-semibold text-[var(--text)]">{log.shiftName}</p>
+                    <p className="text-[14px] font-semibold text-[var(--text)]">{log.description}</p>
                     <p className="mt-1 text-[13px] text-[var(--text-muted)]">{log.location}</p>
                   </td>
                   <td className="px-4 py-4 align-top text-[13px] text-[var(--text-muted)]">
@@ -102,7 +102,7 @@ export function AttendanceTable({
                       <Clock3 className="h-4 w-4" />
                       {log.checkIn} - {log.checkOut ?? "Open"}
                     </div>
-                    <p className="mt-2">Planned {log.scheduledStart} - {log.scheduledEnd}</p>
+                    <p className="mt-2">{log.location}</p>
                   </td>
                   <td className="px-4 py-4 align-top text-[13px] text-[var(--text-muted)]">
                     <div className="flex items-center gap-2 font-medium text-[var(--text)]">
@@ -135,4 +135,5 @@ export function AttendanceTable({
     </div>
   );
 }
+
 

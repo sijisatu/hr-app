@@ -85,7 +85,7 @@ export async function getReportCenterOverview(): Promise<ReportCenterOverview> {
     },
     payroll: {
       metrics: [
-        { label: "Published Payslips", value: String(publishedPayslips.length), note: "Available to employee self-service" },
+        { label: "Published Payslips", value: String(publishedPayslips.length), note: "Available for employee download" },
         { label: "Active Components", value: String(components.filter((entry) => entry.active).length), note: "Earning and deduction rules" },
         { label: "Latest Pay Run", value: latestRun ? latestRun.periodLabel : "Not generated", note: latestRun ? `${latestRun.employeeCount} employees | status ${latestRun.status}` : "Generate a payroll run to start" }
       ],
@@ -123,3 +123,4 @@ export function toAssetUrl(fileUrl: string | null) {
 export function formatNetPay(value: number) {
   return money(value);
 }
+
