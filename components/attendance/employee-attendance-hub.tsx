@@ -1,10 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChartNoAxesColumn } from "lucide-react";
 import { actionCards, getEmployeeActionHref } from "@/components/attendance/employee-attendance-workspace";
 
-export function EmployeeAttendanceHub() {
+export function EmployeeAttendanceHub({ showAttendanceReport = false }: { showAttendanceReport?: boolean }) {
+  const cards = [
+    ...actionCards.map((item) => ({ ...item, href: getEmployeeActionHref(item.key) })),
+    ...(showAttendanceReport
+      ? [
+        {
+          key: "attendance-report",
+          label: "Attendance Report",
+          description: "Lihat rekap kehadiran seluruh karyawan khusus untuk HRD.",
+          icon: ChartNoAxesColumn,
+          href: "/attendance/team-report"
+        }
+      ]
+      : [])
+  ];
+
   return (
     <div className="space-y-6">
       <section className="rounded-[18px] bg-[var(--primary)] px-6 py-6 text-white lg:px-8">
@@ -17,12 +32,12 @@ export function EmployeeAttendanceHub() {
 
       <section className="page-card p-6">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {actionCards.map((item) => {
+          {cards.map((item) => {
             const Icon = item.icon;
             return (
               <Link
                 key={item.key}
-                href={getEmployeeActionHref(item.key)}
+                href={item.href}
                 className="group rounded-[16px] border border-[var(--border)] bg-[var(--surface-muted)] px-5 py-5 text-left text-[var(--primary)] transition hover:border-[var(--primary)] hover:bg-white"
               >
                 <Icon className="h-5 w-5" />

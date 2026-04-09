@@ -39,13 +39,15 @@ export default async function AttendancePage() {
 
   const punctuality = scopedLogs.length === 0 ? 0 : (scopedLogs.filter((item) => item.status === "on-time").length / scopedLogs.length) * 100;
 
-  if (session.role === "employee" || session.role === "manager") {
+  if (session.role === "employee" || session.role === "manager" || session.role === "hr") {
     return (
       <AppShell
         title="Employee Attendance"
-        subtitle="Setiap request attendance dipisah ke halaman khusus. Manager juga bisa approve request di setiap halaman menu."
+        subtitle={session.role === "hr"
+          ? "HRD memakai modul attendance yang sama seperti karyawan, dengan tambahan akses report kehadiran seluruh karyawan."
+          : "Setiap request attendance dipisah ke halaman khusus. Manager juga bisa approve request di setiap halaman menu."}
       >
-        <EmployeeAttendanceHub />
+        <EmployeeAttendanceHub showAttendanceReport={session.role === "hr"} />
       </AppShell>
     );
   }

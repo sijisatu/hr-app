@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { requireSession } from "@/lib/auth";
 
 export default async function OnDutyRequestPage() {
-  await requireSession(["employee", "manager"]);
+  await requireSession(["employee", "manager", "hr"]);
 
   return (
     <AppShell
@@ -14,4 +14,3 @@ export default async function OnDutyRequestPage() {
     </AppShell>
   );
 }
-
