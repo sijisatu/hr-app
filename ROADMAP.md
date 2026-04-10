@@ -47,41 +47,57 @@ Modul hr-app karyawan:
    - On duty request
    - Sick submission
    - Leave request
+     cuti ada annual, keagamaan, lahiran. tambahin balance setiap cuti di leave request (NEW)
    - Half day leave
    - Attendance summary
    - Submit overtime (karyawan submit overtime, atasan acc overtime)
    - Semua Records (Summary) disamain kaya attendance records semua
+   - Tombol clock in kalo udah disubmit jadi clock out (NEW)
 
 2. Modul payroll
    - Generate slip gaji
    - History slip gaji
+   - Slip gaji jadiin pdf terus dirapihin yang proper (NEW)
 
 3. Modul Profil
    - Data karyawan
 
 4. Modul Reimbursement (Future Feature)
+   1. medical
+      - 10 jt rawat jalan out patient & flexi (claim yang bisa digunakan untuk keperluan pekerjaan)
+      - lahiran (normal & cesar)
+   2. other reimbursement
+   3. upload dokumen receipt/struk
 
 5. Dashboard
    - Grafik attendance
+
+6. modul dinas luar buat tracking berapa lamanya, budget perjalanan dinas nya (NEW)
 
 Modul hr-app HR:
 
 1. Modul Kehadiran
    - Report kehadiran karyawan
+   - Biar bisa liat selfie karyawan clock in (NEW)
 
 2. Modul Employee List
-   - Masukin data karyawan termasuk gaji, tunjangan, deduction (bpjs, pajak)
+   - Masukin data karyawan termasuk gaji, tunjangan, deduction (bpjs, pajak), akun portal hr (Done)
+   - upload dokumen karyawan kaya ktp, ijazah, sertifikat (Done)
 
-   employee directory dibikin list kaya attendance report aja, kalo mau liat detail 1 karyawan baru bisa diklik si karyawan itu. jadi kalo ada banyak data ga terlalu banyak scroll nya. terus yang di capture (headcount, departments, payroll baseline) gua lo hapus aja deh itu. abis itu rapihin ulang layout employee management nya
-
-3. Modul Payroll
+3. Modul Payroll (Belakangan)
    - Data gaji karyawan, termasuk kalkulasi kehadiran. Nanti di akhir bulan biar keliatan gaji karyawan tersebut berapa
-4. Modul report
+   - pertimbangin payroll pro-rate buat karyawan yang baru masuk, perhitungan THR & Bonus (perkalian atau amount) gimana
+   - payroll otomatis kirim email
+   - di add employee financial detail perlu ada total gaji, base salary + allowances - deduction. perhitungan pajak nya dikalkulasiin sama gaji gross. minta perhitungan pajaknya otomatis, dan diambil perhitungan pajaknya dari sumber pajak resmi di indonesia
+   - sebelum submit ke bank bikin approval 2 step, dari hrd ke dan manager hrd
+   - kita mau bikin sistem yang pake payroll dan ga pake payroll. sistem yang ga pake payroll semua financial things disembunyiin, yang pake payroll tampilin semua financial things
+
+4. Modul report (NY Done)
    - Generate report attendance, employee list, payroll
    - Grafik attendance, grafik jumlah karyawan
-5. Dashboard
+5. Dashboard (NY Done)
    - Grafik attendance, grafik jumlah karyawan, grafik payroll (jumlah gaji yang dibayarkan tiap bulan)
 
-6. Modul buat ngatur cuti karyawan
+6. Modul buat ngatur cuti karyawan (NY Done)
 
 Beresin login page
