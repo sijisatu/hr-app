@@ -3,10 +3,47 @@ import { IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Min } from "c
 
 export class CreateEmployeeDto {
   @IsString()
+  nik!: string;
+
+  @IsString()
   name!: string;
 
   @IsEmail()
   email!: string;
+
+  @IsString()
+  birthPlace!: string;
+
+  @IsString()
+  birthDate!: string;
+
+  @IsIn(["male", "female"])
+  gender!: "male" | "female";
+
+  @IsIn(["single", "married", "divorced", "widowed"])
+  maritalStatus!: "single" | "married" | "divorced" | "widowed";
+
+  @IsOptional()
+  @IsString()
+  marriageDate?: string | null;
+
+  @IsString()
+  address!: string;
+
+  @IsString()
+  idCardNumber!: string;
+
+  @IsString()
+  education!: string;
+
+  @IsString()
+  workExperience!: string;
+
+  @IsOptional()
+  educationHistory?: unknown[];
+
+  @IsOptional()
+  workExperiences?: unknown[];
 
   @IsString()
   department!: string;
@@ -32,11 +69,11 @@ export class CreateEmployeeDto {
   @IsString()
   managerName!: string;
 
-  @IsIn(["permanent", "contract", "probation"])
-  employmentType!: "permanent" | "contract" | "probation";
+  @IsIn(["permanent", "contract", "intern"])
+  employmentType!: "permanent" | "contract" | "intern";
 
-  @IsIn(["active", "probation", "ending-soon", "expired"])
-  contractStatus!: "active" | "probation" | "ending-soon" | "expired";
+  @IsIn(["permanent", "contract", "intern"])
+  contractStatus!: "permanent" | "contract" | "intern";
 
   @IsString()
   contractStart!: string;
@@ -55,6 +92,17 @@ export class CreateEmployeeDto {
   @Min(0)
   allowance!: number;
 
+  @IsOptional()
+  @IsString()
+  positionSalaryId?: string | null;
+
+  @IsOptional()
+  financialComponentIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  taxProfileId?: string | null;
+
   @IsString()
   taxProfile!: string;
 
@@ -68,11 +116,57 @@ export class CreateEmployeeDto {
 export class UpdateEmployeeDto {
   @IsOptional()
   @IsString()
+  nik?: string;
+
+  @IsOptional()
+  @IsString()
   name?: string;
 
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @IsOptional()
+  @IsString()
+  birthPlace?: string;
+
+  @IsOptional()
+  @IsString()
+  birthDate?: string;
+
+  @IsOptional()
+  @IsIn(["male", "female"])
+  gender?: "male" | "female";
+
+  @IsOptional()
+  @IsIn(["single", "married", "divorced", "widowed"])
+  maritalStatus?: "single" | "married" | "divorced" | "widowed";
+
+  @IsOptional()
+  @IsString()
+  marriageDate?: string | null;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  idCardNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  education?: string;
+
+  @IsOptional()
+  @IsString()
+  workExperience?: string;
+
+  @IsOptional()
+  educationHistory?: unknown[];
+
+  @IsOptional()
+  workExperiences?: unknown[];
 
   @IsOptional()
   @IsString()
@@ -107,12 +201,12 @@ export class UpdateEmployeeDto {
   managerName?: string;
 
   @IsOptional()
-  @IsIn(["permanent", "contract", "probation"])
-  employmentType?: "permanent" | "contract" | "probation";
+  @IsIn(["permanent", "contract", "intern"])
+  employmentType?: "permanent" | "contract" | "intern";
 
   @IsOptional()
-  @IsIn(["active", "probation", "ending-soon", "expired"])
-  contractStatus?: "active" | "probation" | "ending-soon" | "expired";
+  @IsIn(["permanent", "contract", "intern"])
+  contractStatus?: "permanent" | "contract" | "intern";
 
   @IsOptional()
   @IsString()
@@ -133,6 +227,17 @@ export class UpdateEmployeeDto {
   @IsNumber()
   @Min(0)
   allowance?: number;
+
+  @IsOptional()
+  @IsString()
+  positionSalaryId?: string | null;
+
+  @IsOptional()
+  financialComponentIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  taxProfileId?: string | null;
 
   @IsOptional()
   @IsString()
@@ -286,7 +391,87 @@ export class CreatePayrollComponentDto {
   description!: string;
 }
 
+export class CreateCompensationProfileDto {
+  @IsString()
+  position!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  baseSalary!: number;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  active!: boolean;
+
+  @IsString()
+  notes!: string;
+}
+
+export class UpdateCompensationProfileDto {
+  @IsOptional()
+  @IsString()
+  position?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  baseSalary?: number;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class CreateTaxProfileDto {
+  @IsString()
+  name!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  rate!: number;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  active!: boolean;
+
+  @IsString()
+  description!: string;
+}
+
+export class UpdateTaxProfileDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  rate?: number;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
 export class UpdatePayrollComponentDto {
+  @IsOptional()
+  @IsString()
+  code?: string;
+
   @IsOptional()
   @IsString()
   name?: string;
@@ -366,9 +551,6 @@ export class CreateExportDto {
   @IsString()
   content?: string;
 }
-
-
-
 
 
 

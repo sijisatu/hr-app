@@ -10,11 +10,74 @@ export type LeaveBalance = {
   permission: number;
 };
 
+export type Gender = "male" | "female";
+export type MaritalStatus = "single" | "married" | "divorced" | "widowed";
+export type EducationRecord = {
+  level: string;
+  institution: string;
+  major: string;
+  startYear: string;
+  endYear: string;
+};
+
+export type WorkExperienceRecord = {
+  company: string;
+  role: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+};
+
+export type CompensationProfileRecord = {
+  id: string;
+  position: string;
+  baseSalary: number;
+  active: boolean;
+  notes: string;
+};
+
+export type TaxProfileRecord = {
+  id: string;
+  name: string;
+  rate: number;
+  active: boolean;
+  description: string;
+};
+
+export type PayrollComponentType = "earning" | "deduction";
+export type PayrollCalculationType = "fixed" | "percentage";
+export type PayrollComponentRecord = {
+  id: string;
+  code: string;
+  name: string;
+  type: PayrollComponentType;
+  calculationType: PayrollCalculationType;
+  amount: number;
+  percentage: number | null;
+  taxable: boolean;
+  active: boolean;
+  appliesToAll: boolean;
+  employeeIds: string[];
+  description: string;
+};
+
 export type EmployeeRecord = {
   id: string;
   employeeNumber: string;
+  nik: string;
   name: string;
   email: string;
+  birthPlace: string;
+  birthDate: string;
+  gender: Gender;
+  maritalStatus: MaritalStatus;
+  marriageDate: string | null;
+  address: string;
+  idCardNumber: string;
+  education: string;
+  workExperience: string;
+  educationHistory: EducationRecord[];
+  workExperiences: WorkExperienceRecord[];
   department: string;
   position: string;
   role: "admin" | "hr" | "employee" | "manager";
@@ -24,12 +87,15 @@ export type EmployeeRecord = {
   workLocation: string;
   workType: "onsite" | "hybrid" | "remote";
   managerName: string;
-  employmentType: "permanent" | "contract" | "probation";
-  contractStatus: "active" | "probation" | "ending-soon" | "expired";
+  employmentType: "permanent" | "contract" | "intern";
+  contractStatus: "permanent" | "contract" | "intern";
   contractStart: string;
   contractEnd: string | null;
   baseSalary: number;
   allowance: number;
+  positionSalaryId: string | null;
+  financialComponentIds: string[];
+  taxProfileId: string | null;
   taxProfile: string;
   bankName: string;
   bankAccountMasked: string;
@@ -166,6 +232,20 @@ async function apiPostJson<T>(pathname: string, body: unknown): Promise<T> {
   return parseResponse<T>(response);
 }
 
+async function apiPatchJson<T>(pathname: string, body: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${pathname}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return parseResponse<T>(response);
+}
+
+async function apiDelete<T>(pathname: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${pathname}`, { method: "DELETE" });
+  return parseResponse<T>(response);
+}
+
 async function apiPostForm<T>(pathname: string, body: FormData): Promise<T> {
   const response = await fetch(`${API_BASE}${pathname}`, { method: "POST", body });
   return parseResponse<T>(response);
@@ -177,6 +257,113 @@ export async function getDashboardSummary() {
 
 export async function getEmployees() {
   return apiFetch<EmployeeRecord[]>("/api/employees");
+}
+
+export async function createEmployee(payload: {
+  nik: string;
+  name: string;
+  email: string;
+  birthPlace: string;
+  birthDate: string;
+  gender: Gender;
+  maritalStatus: MaritalStatus;
+  marriageDate?: string | null;
+  address: string;
+  idCardNumber: string;
+  education: string;
+  workExperience: string;
+  educationHistory: EducationRecord[];
+  workExperiences: WorkExperienceRecord[];
+  department: string;
+  position: string;
+  role: "admin" | "hr" | "employee" | "manager";
+  status: "active" | "inactive";
+  phone: string;
+  workLocation: string;
+  workType: "onsite" | "hybrid" | "remote";
+  managerName: string;
+  employmentType: "permanent" | "contract" | "intern";
+  contractStatus: "permanent" | "contract" | "intern";
+  contractStart: string;
+  contractEnd?: string | null;
+  baseSalary: number;
+  allowance: number;
+  positionSalaryId?: string | null;
+  financialComponentIds: string[];
+  taxProfileId?: string | null;
+  taxProfile: string;
+  bankName: string;
+  bankAccountMasked: string;
+}) {
+  return apiPostJson<EmployeeRecord>("/api/employees", payload);
+}
+
+export async function updateEmployee(id: string, payload: Partial<Omit<EmployeeRecord, "id" | "employeeNumber" | "leaveBalances">>) {
+  return apiPatchJson<EmployeeRecord>(`/api/employees/${id}`, payload);
+}
+
+export async function deleteEmployee(id: string) {
+  return apiDelete<{ deleted: boolean; id: string }>(`/api/employees/${id}`);
+}
+
+export async function getCompensationProfiles() {
+  return apiFetch<CompensationProfileRecord[]>("/api/compensation-profiles");
+}
+
+export async function createCompensationProfile(payload: Omit<CompensationProfileRecord, "id">) {
+  return apiPostJson<CompensationProfileRecord>("/api/compensation-profiles", payload);
+}
+
+export async function updateCompensationProfile(id: string, payload: Partial<Omit<CompensationProfileRecord, "id">>) {
+  return apiPatchJson<CompensationProfileRecord>(`/api/compensation-profiles/${id}`, payload);
+}
+
+export async function deleteCompensationProfile(id: string) {
+  return apiDelete<{ deleted: boolean; id: string }>(`/api/compensation-profiles/${id}`);
+}
+
+export async function getTaxProfiles() {
+  return apiFetch<TaxProfileRecord[]>("/api/tax-profiles");
+}
+
+export async function createTaxProfile(payload: Omit<TaxProfileRecord, "id">) {
+  return apiPostJson<TaxProfileRecord>("/api/tax-profiles", payload);
+}
+
+export async function updateTaxProfile(id: string, payload: Partial<Omit<TaxProfileRecord, "id">>) {
+  return apiPatchJson<TaxProfileRecord>(`/api/tax-profiles/${id}`, payload);
+}
+
+export async function deleteTaxProfile(id: string) {
+  return apiDelete<{ deleted: boolean; id: string }>(`/api/tax-profiles/${id}`);
+}
+
+export async function getPayrollComponents() {
+  return apiFetch<PayrollComponentRecord[]>("/api/payroll/components");
+}
+
+export async function createPayrollComponent(payload: {
+  code: string;
+  name: string;
+  type: PayrollComponentType;
+  calculationType: PayrollCalculationType;
+  amount: number;
+  percentage?: number | null;
+  taxable: boolean;
+  active: boolean;
+  appliesToAll: boolean;
+  employeeIds?: string[];
+  description: string;
+}) {
+  return apiPostJson<PayrollComponentRecord>("/api/payroll/components", payload);
+}
+
+export async function updatePayrollComponent(id: string, payload: Partial<Omit<PayrollComponentRecord, "id">>) {
+  return apiPatchJson<PayrollComponentRecord>(`/api/payroll/components/${id}`, payload);
+}
+
+export async function deletePayrollComponent(id: string) {
+  return apiDelete<{ deleted: boolean; id: string }>(`/api/payroll/components/${id}`);
 }
 
 export async function getAttendanceHistory() {
@@ -412,11 +599,6 @@ export function currency(value: number) {
     maximumFractionDigits: 0
   }).format(value);
 }
-
-
-
-
-
 
 
 

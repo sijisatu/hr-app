@@ -6,7 +6,9 @@ import { randomUUID } from "node:crypto";
 import { seedData } from "../data/seed";
 import {
   AttendanceRecord,
+  CompensationProfileRecord,
   DatabaseShape,
+  EducationRecord,
   EmployeeRecord,
   LeaveRecord,
   LeaveType,
@@ -14,21 +16,27 @@ import {
   PayRunRecord,
   PayslipLineItem,
   PayslipRecord,
-  PayrollComponentRecord
+  PayrollComponentRecord,
+  TaxProfileRecord,
+  WorkExperienceRecord
 } from "./types";
 import {
   CheckInDto,
   CheckOutDto,
+  CreateCompensationProfileDto,
   CreateEmployeeDto,
   CreateExportDto,
   CreateOvertimeDto,
   CreatePayrollComponentDto,
+  CreateTaxProfileDto,
   OvertimeApproveDto,
   ExportPayslipDto,
   GeneratePayrollRunDto,
   LeaveApproveDto,
   LeaveRequestDto,
   PublishPayrollRunDto,
+  UpdateCompensationProfileDto,
+  UpdateTaxProfileDto,
   UpdateEmployeeDto,
   UpdatePayrollComponentDto
 } from "./dtos";
@@ -72,6 +80,8 @@ export class AppService {
     current.attendanceLogs = (current.attendanceLogs ?? []).map((attendance, index) => this.normalizeAttendance(attendance, current.employees, index));
     current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : seedData.overtimeRequests).map((record, index) => this.normalizeOvertime(record, index));
     current.leaveRequests = (current.leaveRequests ?? []).map((record, index) => this.normalizeLeave(record, current.employees, index));
+    current.compensationProfiles = (current.compensationProfiles?.length ? current.compensationProfiles : seedData.compensationProfiles).map((profile, index) => this.normalizeCompensationProfile(profile, index));
+    current.taxProfiles = (current.taxProfiles?.length ? current.taxProfiles : seedData.taxProfiles).map((profile, index) => this.normalizeTaxProfile(profile, index));
     current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : seedData.payrollComponents).map((component, index) => this.normalizePayrollComponent(component, index));
     current.payRuns = (current.payRuns?.length ? current.payRuns : seedData.payRuns).map((run, index) => this.normalizePayRun(run, index));
     current.payslips = (current.payslips?.length ? current.payslips : seedData.payslips).map((slip, index) => this.normalizePayslip(slip, current.employees, index));
@@ -81,11 +91,37 @@ export class AppService {
   private normalizeEmployee(employee: Partial<EmployeeRecord> & Record<string, unknown>, index: number): EmployeeRecord {
     const padded = String(index + 1).padStart(3, "0");
     const leaveBalances = (employee.leaveBalances as EmployeeRecord["leaveBalances"] | undefined) ?? { annual: 12, sick: 10, permission: 4 };
+    const educationHistory = Array.isArray(employee.educationHistory) ? employee.educationHistory as EducationRecord[] : [];
+    const workExperiences = Array.isArray(employee.workExperiences) ? employee.workExperiences as WorkExperienceRecord[] : [];
     return {
       id: String(employee.id ?? `emp-${padded}`),
       employeeNumber: String(employee.employeeNumber ?? `EMP-2024-${padded}`),
+      nik: String(employee.nik ?? `PRX-${padded}`),
       name: String(employee.name ?? "Unnamed Employee"),
       email: String(employee.email ?? `employee${padded}@praluxstd.com`),
+      birthPlace: String(employee.birthPlace ?? "Jakarta"),
+      birthDate: String(employee.birthDate ?? "1995-01-01"),
+      gender: (employee.gender as EmployeeRecord["gender"]) ?? "male",
+      maritalStatus: (employee.maritalStatus as EmployeeRecord["maritalStatus"]) ?? "single",
+      marriageDate: employee.marriageDate == null ? null : String(employee.marriageDate),
+      address: String(employee.address ?? "Alamat belum diisi"),
+      idCardNumber: String(employee.idCardNumber ?? `3171${padded}0000000000`),
+      education: String(employee.education ?? "Belum ada data pendidikan"),
+      workExperience: String(employee.workExperience ?? "Belum ada data pengalaman kerja"),
+      educationHistory: educationHistory.length > 0 ? educationHistory.map((entry) => ({
+        level: String(entry.level ?? "Education"),
+        institution: String(entry.institution ?? "-"),
+        major: String(entry.major ?? "-"),
+        startYear: String(entry.startYear ?? ""),
+        endYear: String(entry.endYear ?? "")
+      })) : [{ level: "Education", institution: String(employee.education ?? "-"), major: "-", startYear: "", endYear: "" }],
+      workExperiences: workExperiences.length > 0 ? workExperiences.map((entry) => ({
+        company: String(entry.company ?? "-"),
+        role: String(entry.role ?? "-"),
+        startDate: String(entry.startDate ?? ""),
+        endDate: String(entry.endDate ?? ""),
+        description: String(entry.description ?? "-")
+      })) : [{ company: "-", role: String(employee.workExperience ?? "-"), startDate: "", endDate: "", description: String(employee.workExperience ?? "-") }],
       department: String(employee.department ?? "General Operations"),
       position: String(employee.position ?? "Staff"),
       role: (employee.role as EmployeeRecord["role"]) ?? "employee",
@@ -96,11 +132,14 @@ export class AppService {
       workType: (employee.workType as EmployeeRecord["workType"]) ?? "onsite",
       managerName: String(employee.managerName ?? "HR Lead"),
       employmentType: (employee.employmentType as EmployeeRecord["employmentType"]) ?? "permanent",
-      contractStatus: (employee.contractStatus as EmployeeRecord["contractStatus"]) ?? "active",
+      contractStatus: (employee.contractStatus as EmployeeRecord["contractStatus"]) ?? "permanent",
       contractStart: String(employee.contractStart ?? employee.joinDate ?? new Date().toISOString().slice(0, 10)),
       contractEnd: employee.contractEnd == null ? null : String(employee.contractEnd),
       baseSalary: Number(employee.baseSalary ?? 12000000),
       allowance: Number(employee.allowance ?? 1000000),
+      positionSalaryId: employee.positionSalaryId == null ? null : String(employee.positionSalaryId),
+      financialComponentIds: Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds.map((entry) => String(entry)) : [],
+      taxProfileId: employee.taxProfileId == null ? null : String(employee.taxProfileId),
       taxProfile: String(employee.taxProfile ?? "PPh 21 TK/0"),
       bankName: String(employee.bankName ?? "BCA"),
       bankAccountMasked: String(employee.bankAccountMasked ?? "***0000"),
@@ -109,6 +148,26 @@ export class AppService {
         sick: Number(leaveBalances.sick ?? 10),
         permission: Number(leaveBalances.permission ?? 4)
       }
+    };
+  }
+
+  private normalizeCompensationProfile(profile: Partial<CompensationProfileRecord> & Record<string, unknown>, index: number): CompensationProfileRecord {
+    return {
+      id: String(profile.id ?? `comp-${String(index + 1).padStart(3, "0")}`),
+      position: String(profile.position ?? `Position ${index + 1}`),
+      baseSalary: Number(profile.baseSalary ?? 0),
+      active: Boolean(profile.active ?? true),
+      notes: String(profile.notes ?? "Compensation profile")
+    };
+  }
+
+  private normalizeTaxProfile(profile: Partial<TaxProfileRecord> & Record<string, unknown>, index: number): TaxProfileRecord {
+    return {
+      id: String(profile.id ?? `tax-${String(index + 1).padStart(3, "0")}`),
+      name: String(profile.name ?? `Tax Profile ${index + 1}`),
+      rate: Number(profile.rate ?? 5),
+      active: Boolean(profile.active ?? true),
+      description: String(profile.description ?? "Tax profile")
     };
   }
 
@@ -395,7 +454,11 @@ export class AppService {
     }
   }
 
-  private getTaxRate(profile: string) {
+  private getTaxRate(profile: string, taxProfiles: TaxProfileRecord[], taxProfileId?: string | null) {
+    const selectedProfile = taxProfileId ? taxProfiles.find((entry) => entry.id === taxProfileId) : null;
+    if (selectedProfile) {
+      return selectedProfile.rate / 100;
+    }
     const normalized = profile.toUpperCase();
     if (normalized.includes("K/0")) {
       return 0.06;
@@ -423,11 +486,12 @@ export class AppService {
       .filter((entry) => entry.userId === employee.id && ["approved", "paid"].includes(entry.status) && entry.date >= payload.periodStart && entry.date <= payload.periodEnd)
       .reduce((total, entry) => total + entry.minutes, 0);
     const overtimePay = this.calculateOvertimePay(employee.baseSalary, overtimeMinutes);
-    const components = this.resolvePayrollComponents(db.payrollComponents, employee.id);
+    const components = employee.financialComponentIds.length > 0
+      ? db.payrollComponents.filter((component) => component.active && employee.financialComponentIds.includes(component.id))
+      : this.resolvePayrollComponents(db.payrollComponents, employee.id);
 
     const lineItems: PayslipLineItem[] = [
-      { code: "BASE", name: "Base Salary", type: "earning", amount: employee.baseSalary, taxable: true, source: "base-salary" },
-      { code: "ALLOW", name: "Fixed Allowance", type: "earning", amount: employee.allowance, taxable: true, source: "allowance" }
+      { code: "BASE", name: "Base Salary", type: "earning", amount: employee.baseSalary, taxable: true, source: "base-salary" }
     ];
 
     if (overtimePay > 0) {
@@ -452,12 +516,11 @@ export class AppService {
     const deductionLines = lineItems.filter((entry) => entry.type === "deduction");
     const grossPay = earningLines.reduce((sum, entry) => sum + entry.amount, 0);
     const taxableBase = lineItems.filter((entry) => entry.taxable && entry.type === "earning").reduce((sum, entry) => sum + entry.amount, 0);
-    const taxDeduction = Math.round(taxableBase * this.getTaxRate(employee.taxProfile));
-    const otherDeductions = deductionLines.reduce((sum, entry) => sum + entry.amount, 0);
-    const additionalEarnings = Math.max(0, grossPay - employee.baseSalary - employee.allowance - overtimePay);
-    const netPay = grossPay - otherDeductions - taxDeduction;
-
-    lineItems.push({ code: "PPH21", name: "PPh 21", type: "deduction", amount: taxDeduction, taxable: false, source: "tax" });
+      const taxDeduction = Math.round(taxableBase * this.getTaxRate(employee.taxProfile, db.taxProfiles, employee.taxProfileId));
+      const otherDeductions = deductionLines.reduce((sum, entry) => sum + entry.amount, 0);
+      const additionalEarnings = Math.max(0, grossPay - employee.baseSalary - overtimePay);
+      const netPay = grossPay - otherDeductions - taxDeduction;
+      lineItems.push({ code: "PPH21", name: "PPh 21", type: "deduction", amount: taxDeduction, taxable: false, source: "tax" });
 
     return {
       id: `payslip-${randomUUID().slice(0, 8)}`,
@@ -473,7 +536,7 @@ export class AppService {
       payDate: payload.payDate,
       status: "draft",
       baseSalary: employee.baseSalary,
-      allowance: employee.allowance,
+      allowance: lineItems.filter((entry) => entry.source === "component" && entry.type === "earning").reduce((sum, entry) => sum + entry.amount, 0),
       overtimePay,
       additionalEarnings,
       grossPay,
@@ -554,12 +617,30 @@ export class AppService {
   async createEmployee(payload: CreateEmployeeDto) {
     const db = await this.readDb();
     const sequence = String(db.employees.length + 1).padStart(3, "0");
+    const compensationProfile = payload.positionSalaryId
+      ? db.compensationProfiles.find((entry) => entry.id === payload.positionSalaryId)
+      : null;
+    const selectedComponents = db.payrollComponents.filter((entry) => (payload.financialComponentIds ?? []).includes(entry.id));
+    const allowance = selectedComponents
+      .filter((entry) => entry.type === "earning")
+      .reduce((sum, entry) => sum + (entry.calculationType === "percentage" ? Math.round((compensationProfile?.baseSalary ?? payload.baseSalary) * ((entry.percentage ?? 0) / 100)) : entry.amount), 0);
+    const selectedTaxProfile = payload.taxProfileId ? db.taxProfiles.find((entry) => entry.id === payload.taxProfileId) : null;
     const employee: EmployeeRecord = {
       id: `emp-${randomUUID().slice(0, 8)}`,
       employeeNumber: `EMP-2026-${sequence}`,
       joinDate: new Date().toISOString().slice(0, 10),
       ...payload,
+      educationHistory: Array.isArray(payload.educationHistory) ? payload.educationHistory as EducationRecord[] : [],
+      workExperiences: Array.isArray(payload.workExperiences) ? payload.workExperiences as WorkExperienceRecord[] : [],
+      position: compensationProfile?.position ?? payload.position,
+      baseSalary: compensationProfile?.baseSalary ?? payload.baseSalary,
+      allowance,
+      positionSalaryId: payload.positionSalaryId ?? null,
+      financialComponentIds: payload.financialComponentIds ?? [],
+      taxProfileId: payload.taxProfileId ?? null,
+      taxProfile: selectedTaxProfile?.name ?? payload.taxProfile,
       contractEnd: payload.contractEnd ?? null,
+      marriageDate: payload.marriageDate ?? null,
       leaveBalances: { annual: 12, sick: 10, permission: 4 }
     };
     db.employees.unshift(employee);
@@ -573,7 +654,29 @@ export class AppService {
     if (!employee) {
       throw new NotFoundException("Employee not found");
     }
-    Object.assign(employee, payload);
+    const compensationProfile = payload.positionSalaryId
+      ? db.compensationProfiles.find((entry) => entry.id === payload.positionSalaryId)
+      : null;
+    Object.assign(employee, payload, payload.positionSalaryId === null ? { positionSalaryId: null } : {});
+    if (compensationProfile) {
+      employee.position = compensationProfile.position;
+      employee.baseSalary = compensationProfile.baseSalary;
+      employee.positionSalaryId = compensationProfile.id;
+    }
+    if (payload.financialComponentIds) {
+      employee.financialComponentIds = payload.financialComponentIds;
+      const selectedComponents = db.payrollComponents.filter((entry) => employee.financialComponentIds.includes(entry.id));
+      employee.allowance = selectedComponents
+        .filter((entry) => entry.type === "earning")
+        .reduce((sum, entry) => sum + (entry.calculationType === "percentage" ? Math.round(employee.baseSalary * ((entry.percentage ?? 0) / 100)) : entry.amount), 0);
+    }
+    if (payload.taxProfileId !== undefined) {
+      employee.taxProfileId = payload.taxProfileId ?? null;
+      const selectedTaxProfile = employee.taxProfileId ? db.taxProfiles.find((entry) => entry.id === employee.taxProfileId) : null;
+      if (selectedTaxProfile) {
+        employee.taxProfile = selectedTaxProfile.name;
+      }
+    }
     await this.writeDb(db);
     return employee;
   }
@@ -585,6 +688,95 @@ export class AppService {
       throw new NotFoundException("Employee not found");
     }
     db.employees = nextEmployees;
+    await this.writeDb(db);
+    return { deleted: true, id };
+  }
+
+  async getCompensationProfiles() {
+    const db = await this.readDb();
+    return db.compensationProfiles;
+  }
+
+  async createCompensationProfile(payload: CreateCompensationProfileDto) {
+    const db = await this.readDb();
+    const profile: CompensationProfileRecord = {
+      id: `comp-${randomUUID().slice(0, 8)}`,
+      ...payload
+    };
+    db.compensationProfiles.unshift(profile);
+    await this.writeDb(db);
+    return profile;
+  }
+
+  async updateCompensationProfile(id: string, payload: UpdateCompensationProfileDto) {
+    const db = await this.readDb();
+    const profile = db.compensationProfiles.find((entry) => entry.id === id);
+    if (!profile) {
+      throw new NotFoundException("Compensation profile not found");
+    }
+
+    const previousPosition = profile.position;
+    Object.assign(profile, payload);
+    db.employees = db.employees.map((employee) => (
+      employee.positionSalaryId === id
+        ? {
+            ...employee,
+            position: profile.position || previousPosition,
+            baseSalary: profile.baseSalary
+          }
+        : employee
+    ));
+
+    await this.writeDb(db);
+    return profile;
+  }
+
+  async deleteCompensationProfile(id: string) {
+    const db = await this.readDb();
+    const exists = db.compensationProfiles.some((entry) => entry.id === id);
+    if (!exists) {
+      throw new NotFoundException("Compensation profile not found");
+    }
+
+    db.compensationProfiles = db.compensationProfiles.filter((entry) => entry.id !== id);
+    db.employees = db.employees.map((employee) => employee.positionSalaryId === id ? { ...employee, positionSalaryId: null } : employee);
+    await this.writeDb(db);
+    return { deleted: true, id };
+  }
+
+  async getTaxProfiles() {
+    const db = await this.readDb();
+    return db.taxProfiles;
+  }
+
+  async createTaxProfile(payload: CreateTaxProfileDto) {
+    const db = await this.readDb();
+    const profile: TaxProfileRecord = { id: `tax-${randomUUID().slice(0, 8)}`, ...payload };
+    db.taxProfiles.unshift(profile);
+    await this.writeDb(db);
+    return profile;
+  }
+
+  async updateTaxProfile(id: string, payload: UpdateTaxProfileDto) {
+    const db = await this.readDb();
+    const profile = db.taxProfiles.find((entry) => entry.id === id);
+    if (!profile) {
+      throw new NotFoundException("Tax profile not found");
+    }
+    Object.assign(profile, payload);
+    db.employees = db.employees.map((employee) => employee.taxProfileId === id ? { ...employee, taxProfile: profile.name } : employee);
+    await this.writeDb(db);
+    return profile;
+  }
+
+  async deleteTaxProfile(id: string) {
+    const db = await this.readDb();
+    const exists = db.taxProfiles.some((entry) => entry.id === id);
+    if (!exists) {
+      throw new NotFoundException("Tax profile not found");
+    }
+    db.taxProfiles = db.taxProfiles.filter((entry) => entry.id !== id);
+    db.employees = db.employees.map((employee) => employee.taxProfileId === id ? { ...employee, taxProfileId: null } : employee);
     await this.writeDb(db);
     return { deleted: true, id };
   }
@@ -796,9 +988,24 @@ export class AppService {
     if (!component) {
       throw new NotFoundException("Payroll component not found");
     }
-    Object.assign(component, payload, payload.employeeIds ? { employeeIds: payload.employeeIds } : {});
+    Object.assign(component, payload, payload.code ? { code: payload.code.toUpperCase() } : {}, payload.employeeIds ? { employeeIds: payload.employeeIds } : {});
     await this.writeDb(db);
     return component;
+  }
+
+  async deletePayrollComponent(id: string) {
+    const db = await this.readDb();
+    const exists = db.payrollComponents.some((entry) => entry.id === id);
+    if (!exists) {
+      throw new NotFoundException("Payroll component not found");
+    }
+    db.payrollComponents = db.payrollComponents.filter((entry) => entry.id !== id);
+    db.employees = db.employees.map((employee) => ({
+      ...employee,
+      financialComponentIds: employee.financialComponentIds.filter((componentId) => componentId !== id)
+    }));
+    await this.writeDb(db);
+    return { deleted: true, id };
   }
 
   async getPayRuns() {

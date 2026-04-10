@@ -20,8 +20,10 @@ import {
   CheckInDto,
   CheckOutDto,
   CreateEmployeeDto,
+  CreateCompensationProfileDto,
   CreateExportDto,
   CreateOvertimeDto,
+  CreateTaxProfileDto,
   OvertimeApproveDto,
   CreatePayrollComponentDto,
   ExportPayslipDto,
@@ -30,6 +32,8 @@ import {
   LeaveRequestDto,
   PublishPayrollRunDto,
   UpdateEmployeeDto,
+  UpdateCompensationProfileDto,
+  UpdateTaxProfileDto,
   UpdatePayrollComponentDto
 } from "./common/dtos";
 
@@ -65,6 +69,46 @@ export class AppController {
   @Delete("employees/:id")
   async deleteEmployee(@Param("id") id: string) {
     return this.wrap(await this.appService.deleteEmployee(id));
+  }
+
+  @Get("compensation-profiles")
+  async compensationProfiles() {
+    return this.wrap(await this.appService.getCompensationProfiles());
+  }
+
+  @Post("compensation-profiles")
+  async createCompensationProfile(@Body() body: CreateCompensationProfileDto) {
+    return this.wrap(await this.appService.createCompensationProfile(body));
+  }
+
+  @Patch("compensation-profiles/:id")
+  async updateCompensationProfile(@Param("id") id: string, @Body() body: UpdateCompensationProfileDto) {
+    return this.wrap(await this.appService.updateCompensationProfile(id, body));
+  }
+
+  @Delete("compensation-profiles/:id")
+  async deleteCompensationProfile(@Param("id") id: string) {
+    return this.wrap(await this.appService.deleteCompensationProfile(id));
+  }
+
+  @Get("tax-profiles")
+  async taxProfiles() {
+    return this.wrap(await this.appService.getTaxProfiles());
+  }
+
+  @Post("tax-profiles")
+  async createTaxProfile(@Body() body: CreateTaxProfileDto) {
+    return this.wrap(await this.appService.createTaxProfile(body));
+  }
+
+  @Patch("tax-profiles/:id")
+  async updateTaxProfile(@Param("id") id: string, @Body() body: UpdateTaxProfileDto) {
+    return this.wrap(await this.appService.updateTaxProfile(id, body));
+  }
+
+  @Delete("tax-profiles/:id")
+  async deleteTaxProfile(@Param("id") id: string) {
+    return this.wrap(await this.appService.deleteTaxProfile(id));
   }
 
   @Get("attendance/history")
@@ -154,6 +198,11 @@ export class AppController {
     return this.wrap(await this.appService.updatePayrollComponent(id, body));
   }
 
+  @Delete("payroll/components/:id")
+  async deletePayrollComponent(@Param("id") id: string) {
+    return this.wrap(await this.appService.deletePayrollComponent(id));
+  }
+
   @Get("payroll/runs")
   async payRuns() {
     return this.wrap(await this.appService.getPayRuns());
@@ -192,9 +241,6 @@ export class AppController {
     };
   }
 }
-
-
-
 
 
 

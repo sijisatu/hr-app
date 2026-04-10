@@ -9,13 +9,15 @@ export type LeaveType =
   | "Sick Leave"
   | "Permission"
   | "Remote Work";
-export type EmploymentType = "permanent" | "contract" | "probation";
-export type ContractStatus = "active" | "probation" | "ending-soon" | "expired";
+export type EmploymentType = "permanent" | "contract" | "intern";
+export type ContractStatus = "permanent" | "contract" | "intern";
 export type OvertimeStatus = "pending" | "approved" | "rejected" | "paid";
 export type PayrollComponentType = "earning" | "deduction";
 export type PayrollCalculationType = "fixed" | "percentage";
 export type PayRunStatus = "draft" | "published";
 export type PayslipStatus = "draft" | "published";
+export type Gender = "male" | "female";
+export type MaritalStatus = "single" | "married" | "divorced" | "widowed";
 
 export type LeaveBalance = {
   annual: number;
@@ -23,11 +25,39 @@ export type LeaveBalance = {
   permission: number;
 };
 
+export type EducationRecord = {
+  level: string;
+  institution: string;
+  major: string;
+  startYear: string;
+  endYear: string;
+};
+
+export type WorkExperienceRecord = {
+  company: string;
+  role: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+};
+
 export type EmployeeRecord = {
   id: string;
   employeeNumber: string;
+  nik: string;
   name: string;
   email: string;
+  birthPlace: string;
+  birthDate: string;
+  gender: Gender;
+  maritalStatus: MaritalStatus;
+  marriageDate: string | null;
+  address: string;
+  idCardNumber: string;
+  education: string;
+  workExperience: string;
+  educationHistory: EducationRecord[];
+  workExperiences: WorkExperienceRecord[];
   department: string;
   position: string;
   role: "admin" | "hr" | "employee" | "manager";
@@ -43,6 +73,9 @@ export type EmployeeRecord = {
   contractEnd: string | null;
   baseSalary: number;
   allowance: number;
+  positionSalaryId: string | null;
+  financialComponentIds: string[];
+  taxProfileId: string | null;
   taxProfile: string;
   bankName: string;
   bankAccountMasked: string;
@@ -111,6 +144,22 @@ export type PayrollComponentRecord = {
   description: string;
 };
 
+export type CompensationProfileRecord = {
+  id: string;
+  position: string;
+  baseSalary: number;
+  active: boolean;
+  notes: string;
+};
+
+export type TaxProfileRecord = {
+  id: string;
+  name: string;
+  rate: number;
+  active: boolean;
+  description: string;
+};
+
 export type PayslipLineItem = {
   code: string;
   name: string;
@@ -168,10 +217,10 @@ export type DatabaseShape = {
   attendanceLogs: AttendanceRecord[];
   overtimeRequests: OvertimeRecord[];
   leaveRequests: LeaveRecord[];
+  compensationProfiles: CompensationProfileRecord[];
+  taxProfiles: TaxProfileRecord[];
   payrollComponents: PayrollComponentRecord[];
   payRuns: PayRunRecord[];
   payslips: PayslipRecord[];
 };
-
-
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Download, Users, UserCheck, TriangleAlert } from "lucide-react";
+import { DepartmentSnapshotChart } from "@/components/attendance/department-snapshot-chart";
 import { AppShell } from "@/components/layout/app-shell";
 import { AttendanceTable } from "@/components/tables/attendance-table";
 import { requireSession } from "@/lib/auth";
@@ -49,11 +50,13 @@ export default async function TeamAttendanceReportPage() {
     .map((department) => {
       const departmentLogs = logs.filter((item) => item.department === department);
       const onTime = departmentLogs.filter((item) => item.status === "on-time").length;
+      const checkedInEmployees = new Set(departmentLogs.map((item) => item.userId)).size;
 
       return {
         department,
         records: departmentLogs.length,
-        onTimeRate: departmentLogs.length === 0 ? 0 : Math.round((onTime / departmentLogs.length) * 100)
+        onTimeRate: departmentLogs.length === 0 ? 0 : Math.round((onTime / departmentLogs.length) * 100),
+        checkedInEmployees
       };
     })
     .sort((a, b) => b.records - a.records)
@@ -95,35 +98,7 @@ export default async function TeamAttendanceReportPage() {
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <div className="page-card p-6">
-            <div className="flex items-start gap-3">
-              <div className="rounded-[14px] bg-[var(--panel-alt)] p-3 text-[var(--primary)]">
-                <Users className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Department Snapshot</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Ringkasan coverage attendance dari departemen dengan volume record terbesar.</p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {topDepartments.map((item) => (
-                <div key={item.department} className="panel-muted p-4">
-                  <p className="text-[15px] font-semibold text-[var(--text)]">{item.department}</p>
-                  <div className="mt-4 flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-[28px] font-semibold leading-none text-[var(--primary)]">{item.records}</p>
-                      <p className="mt-2 text-[13px] text-[var(--text-muted)]">attendance records</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[18px] font-semibold text-[var(--text)]">{item.onTimeRate}%</p>
-                      <p className="mt-1 text-[13px] text-[var(--text-muted)]">on-time rate</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <DepartmentSnapshotChart items={topDepartments} />
 
           <div className="page-card p-6">
             <div className="flex items-start gap-3">

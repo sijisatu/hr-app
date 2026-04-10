@@ -1,27 +1,35 @@
-﻿import { Building2, Eye, Landmark, MapPin, Pencil, ReceiptText, UserRoundCog } from "lucide-react";
+import { Building2, Eye, MapPin, Pencil, ReceiptText, Trash2, UserRoundCog } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import { currency, type EmployeeRecord } from "@/lib/api";
 
 const contractToneMap = {
-  active: "success",
-  probation: "warning",
-  "ending-soon": "danger",
-  expired: "danger"
+  permanent: "success",
+  contract: "warning",
+  intern: "danger"
 } as const;
 
 const contractLabelMap = {
-  active: "Active Contract",
-  probation: "Probation",
-  "ending-soon": "Ending Soon",
-  expired: "Expired"
+  permanent: "Permanent",
+  contract: "Contract",
+  intern: "Magang"
 } as const;
 
-export function EmployeesTable({ employees }: { employees: EmployeeRecord[] }) {
+export function EmployeesTable({
+  employees,
+  onView,
+  onEdit,
+  onDelete
+}: {
+  employees: EmployeeRecord[];
+  onView?: (employee: EmployeeRecord) => void;
+  onEdit?: (employee: EmployeeRecord) => void;
+  onDelete?: (employee: EmployeeRecord) => void;
+}) {
   return (
     <div className="page-card overflow-hidden p-0">
       <div className="border-b border-[var(--border)] px-6 py-5">
         <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Employee Directory</p>
-        <p className="mt-1 text-[14px] text-[var(--text-muted)]">Profile, contract, and payroll baseline overview.</p>
+        <p className="mt-1 text-[14px] text-[var(--text-muted)]">Data karyawan dibagi ke personal, education, job, work experience, dan financial details.</p>
       </div>
 
       <div className="divide-y divide-[var(--border)]">
@@ -38,7 +46,7 @@ export function EmployeesTable({ employees }: { employees: EmployeeRecord[] }) {
                     <StatusPill tone={employee.status}>{employee.status === "active" ? "Active" : "Inactive"}</StatusPill>
                     <StatusPill tone={contractToneMap[employee.contractStatus]}>{contractLabelMap[employee.contractStatus]}</StatusPill>
                   </div>
-                  <p className="mt-1 break-words text-[14px] text-[var(--text-muted)]">{employee.employeeNumber} • {employee.email}</p>
+                  <p className="mt-1 break-words text-[14px] text-[var(--text-muted)]">{employee.employeeNumber} • {employee.nik} • {employee.email}</p>
                   <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[14px] text-[var(--text-muted)]">
                     <span className="inline-flex items-center gap-2"><Building2 className="h-4 w-4" />{employee.department}</span>
                     <span className="inline-flex items-center gap-2"><UserRoundCog className="h-4 w-4" />{employee.position}</span>
@@ -48,16 +56,24 @@ export function EmployeesTable({ employees }: { employees: EmployeeRecord[] }) {
               </div>
 
               <div className="flex shrink-0 gap-2">
-                <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0"><Eye className="h-4 w-4" /></button>
-                <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0"><Pencil className="h-4 w-4" /></button>
+                <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => onView?.(employee)}><Eye className="h-4 w-4" /></button>
+                <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => onEdit?.(employee)}><Pencil className="h-4 w-4" /></button>
+                <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => onDelete?.(employee)}><Trash2 className="h-4 w-4" /></button>
               </div>
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <InfoBlock label="Role & Manager" value={`${employee.role.toUpperCase()} • ${employee.managerName}`} helper={`${employee.workType} setup`} />
-              <InfoBlock label="Contract Window" value={`${employee.contractStart} ? ${employee.contractEnd ?? "Open-ended"}`} helper={employee.employmentType} />
-              <InfoBlock label="Payroll Baseline" value={currency(employee.baseSalary + employee.allowance)} helper={`${currency(employee.baseSalary)} + ${currency(employee.allowance)}`} />
-              <InfoBlock label="Tax & Bank" value={`${employee.taxProfile} • ${employee.bankName}`} helper={employee.bankAccountMasked} />
+              <InfoBlock label="Personal Info" value={`${employee.birthPlace}, ${employee.birthDate}`} helper={`${employee.gender} • ${employee.maritalStatus}`} />
+              <InfoBlock label="Education" value={employee.education} helper={employee.workExperience} />
+              <InfoBlock label="Job Details" value={`${employee.role.toUpperCase()} • ${employee.managerName}`} helper={`${employee.employmentType} • ${employee.workType}`} />
+              <InfoBlock label="Financial Details" value={currency(employee.baseSalary + employee.allowance)} helper={`${currency(employee.baseSalary)} + ${currency(employee.allowance)} allowance`} />
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <InfoBlock label="Address & ID" value={employee.idCardNumber} helper={employee.address} />
+              <InfoBlock label="Contract Window" value={`${employee.contractStart} - ${employee.contractEnd ?? "Open-ended"}`} helper={employee.status} />
+              <InfoBlock label="Education & Experience" value={`${employee.educationHistory.length} education • ${employee.workExperiences.length} experiences`} helper={employee.taxProfile} />
+              <InfoBlock label="Banking" value={`${employee.bankName} • ${employee.bankAccountMasked}`} helper={employee.positionSalaryId ?? "No position salary linked"} />
             </div>
           </div>
         ))}
@@ -71,11 +87,10 @@ function InfoBlock({ label, value, helper }: { label: string; value: string; hel
     <div className="panel-muted p-4">
       <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</p>
       <p className="mt-2 break-words text-[14px] font-semibold leading-5 text-[var(--text)]">{value}</p>
-      <div className="mt-3 inline-flex items-center gap-2 text-[13px] text-[var(--text-muted)]">
-        <ReceiptText className="h-4 w-4" />
-        {helper}
+      <div className="mt-3 inline-flex items-start gap-2 text-[13px] text-[var(--text-muted)]">
+        <ReceiptText className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>{helper}</span>
       </div>
     </div>
   );
 }
-

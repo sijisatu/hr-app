@@ -78,9 +78,9 @@ export async function getReportCenterOverview(): Promise<ReportCenterOverview> {
       metrics: [
         { label: "Headcount", value: String(employees.length), note: `${activeEmployees.length} active employees` },
         { label: "Departments", value: String(headcountByDepartment.size), note: "Current org structure snapshot" },
-        { label: "Contract Alerts", value: String(employees.filter((entry) => ["probation", "ending-soon", "expired"].includes(entry.contractStatus)).length), note: "Probation, ending soon, or expired" }
+        { label: "Contract Alerts", value: String(employees.filter((entry) => entry.contractStatus !== "permanent" || Boolean(entry.contractEnd)).length), note: "Contract and intern employees to monitor" }
       ],
-      contractAlerts: employees.filter((entry) => ["probation", "ending-soon", "expired"].includes(entry.contractStatus)).slice(0, 4).map((entry) => ({ employeeName: entry.name, status: entry.contractStatus, note: `${entry.position} | ${entry.contractEnd ?? entry.contractStart}` })),
+      contractAlerts: employees.filter((entry) => entry.contractStatus !== "permanent" || Boolean(entry.contractEnd)).slice(0, 4).map((entry) => ({ employeeName: entry.name, status: entry.contractStatus, note: `${entry.position} | ${entry.contractEnd ?? entry.contractStart}` })),
       departments: [...headcountByDepartment.entries()].map(([name, headcount]) => ({ name, headcount })).sort((a, b) => b.headcount - a.headcount)
     },
     payroll: {
@@ -123,4 +123,3 @@ export function toAssetUrl(fileUrl: string | null) {
 export function formatNetPay(value: number) {
   return money(value);
 }
-
