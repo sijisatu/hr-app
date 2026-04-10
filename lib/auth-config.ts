@@ -11,6 +11,7 @@ export type SessionUser = {
 };
 
 export const authCookieName = "pp_session";
+export const authProfileCookieName = "pp_session_profile";
 
 export const demoUsers: SessionUser[] = [
   {
@@ -67,5 +68,25 @@ export function defaultRouteForRole(role: UserRole) {
     case "admin":
     default:
       return "/dashboard";
+  }
+}
+
+export function encodeSessionProfile(user: SessionUser) {
+  return Buffer.from(JSON.stringify(user), "utf8").toString("base64url");
+}
+
+export function decodeSessionProfile(value: string | undefined | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as SessionUser;
+    if (!parsed?.sessionKey || !parsed?.id || !parsed?.role) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
   }
 }

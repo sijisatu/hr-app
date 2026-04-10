@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { seedData } from "../data/seed";
@@ -9,6 +9,7 @@ import {
   CompensationProfileRecord,
   DatabaseShape,
   EducationRecord,
+  EmployeeDocumentRecord,
   EmployeeRecord,
   LeaveRecord,
   LeaveType,
@@ -35,6 +36,7 @@ import {
   LeaveApproveDto,
   LeaveRequestDto,
   PublishPayrollRunDto,
+  UploadEmployeeDocumentDto,
   UpdateCompensationProfileDto,
   UpdateTaxProfileDto,
   UpdateEmployeeDto,
@@ -68,6 +70,7 @@ export class AppService {
     await Promise.all([
       mkdir(path.join(this.storageRoot, "attendance-selfies"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "documents"), { recursive: true }),
+      mkdir(path.join(this.storageRoot, "documents", "employee-files"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "exports"), { recursive: true })
     ]);
 
@@ -93,6 +96,7 @@ export class AppService {
     const leaveBalances = (employee.leaveBalances as EmployeeRecord["leaveBalances"] | undefined) ?? { annual: 12, sick: 10, permission: 4 };
     const educationHistory = Array.isArray(employee.educationHistory) ? employee.educationHistory as EducationRecord[] : [];
     const workExperiences = Array.isArray(employee.workExperiences) ? employee.workExperiences as WorkExperienceRecord[] : [];
+    const documents = Array.isArray(employee.documents) ? employee.documents as EmployeeDocumentRecord[] : [];
     return {
       id: String(employee.id ?? `emp-${padded}`),
       employeeNumber: String(employee.employeeNumber ?? `EMP-2024-${padded}`),
@@ -143,6 +147,19 @@ export class AppService {
       taxProfile: String(employee.taxProfile ?? "PPh 21 TK/0"),
       bankName: String(employee.bankName ?? "BCA"),
       bankAccountMasked: String(employee.bankAccountMasked ?? "***0000"),
+      appLoginEnabled: Boolean(employee.appLoginEnabled ?? true),
+      loginUsername: employee.loginUsername == null ? String(employee.nik ?? `PRX-${padded}`) : String(employee.loginUsername),
+      loginPassword: employee.loginPassword == null ? "employee123" : String(employee.loginPassword),
+      documents: documents.map((entry, documentIndex) => ({
+        id: String(entry.id ?? `doc-${padded}-${documentIndex + 1}`),
+        employeeId: String(entry.employeeId ?? employee.id ?? `emp-${padded}`),
+        type: (entry.type as EmployeeDocumentRecord["type"]) ?? "lainnya",
+        title: String(entry.title ?? "Employee Document"),
+        fileName: String(entry.fileName ?? "document.bin"),
+        fileUrl: String(entry.fileUrl ?? `/storage/documents/employee-files/${employee.id ?? `emp-${padded}`}/document.bin`),
+        uploadedAt: String(entry.uploadedAt ?? new Date().toISOString()),
+        notes: String(entry.notes ?? "")
+      })),
       leaveBalances: {
         annual: Number(leaveBalances.annual ?? 12),
         sick: Number(leaveBalances.sick ?? 10),
@@ -641,6 +658,10 @@ export class AppService {
       taxProfile: selectedTaxProfile?.name ?? payload.taxProfile,
       contractEnd: payload.contractEnd ?? null,
       marriageDate: payload.marriageDate ?? null,
+      appLoginEnabled: payload.appLoginEnabled ?? true,
+      loginUsername: payload.appLoginEnabled === false ? null : (payload.loginUsername?.trim() || payload.nik),
+      loginPassword: payload.appLoginEnabled === false ? null : (payload.loginPassword?.trim() || "employee123"),
+      documents: [],
       leaveBalances: { annual: 12, sick: 10, permission: 4 }
     };
     db.employees.unshift(employee);
@@ -677,6 +698,19 @@ export class AppService {
         employee.taxProfile = selectedTaxProfile.name;
       }
     }
+    if (payload.appLoginEnabled !== undefined) {
+      employee.appLoginEnabled = payload.appLoginEnabled;
+      if (!payload.appLoginEnabled) {
+        employee.loginUsername = null;
+        employee.loginPassword = null;
+      }
+    }
+    if (payload.loginUsername !== undefined) {
+      employee.loginUsername = payload.loginUsername?.trim() || null;
+    }
+    if (payload.loginPassword !== undefined) {
+      employee.loginPassword = payload.loginPassword?.trim() || null;
+    }
     await this.writeDb(db);
     return employee;
   }
@@ -690,6 +724,67 @@ export class AppService {
     db.employees = nextEmployees;
     await this.writeDb(db);
     return { deleted: true, id };
+  }
+
+  async getEmployeeDocuments(employeeId: string) {
+    const db = await this.readDb();
+    const employee = db.employees.find((entry) => entry.id === employeeId);
+    if (!employee) {
+      throw new NotFoundException("Employee not found");
+    }
+    return employee.documents;
+  }
+
+  async uploadEmployeeDocument(
+    employeeId: string,
+    payload: UploadEmployeeDocumentDto,
+    file?: Express.Multer.File,
+    fileUrl?: string | null
+  ) {
+    const db = await this.readDb();
+    const employee = db.employees.find((entry) => entry.id === employeeId);
+    if (!employee) {
+      throw new NotFoundException("Employee not found");
+    }
+    if (!file || !fileUrl) {
+      throw new NotFoundException("Document file is required");
+    }
+
+    const document: EmployeeDocumentRecord = {
+      id: `doc-${randomUUID().slice(0, 8)}`,
+      employeeId,
+      type: payload.type,
+      title: payload.title,
+      fileName: file.originalname,
+      fileUrl,
+      uploadedAt: new Date().toISOString(),
+      notes: payload.notes ?? ""
+    };
+
+    employee.documents.unshift(document);
+    await this.writeDb(db);
+    return document;
+  }
+
+  async deleteEmployeeDocument(employeeId: string, documentId: string) {
+    const db = await this.readDb();
+    const employee = db.employees.find((entry) => entry.id === employeeId);
+    if (!employee) {
+      throw new NotFoundException("Employee not found");
+    }
+
+    const document = employee.documents.find((entry) => entry.id === documentId);
+    if (!document) {
+      throw new NotFoundException("Employee document not found");
+    }
+
+    employee.documents = employee.documents.filter((entry) => entry.id !== documentId);
+    const fullPath = path.join(this.storageRoot, document.fileUrl.replace(/^\/storage\//, "").replace(/\//g, path.sep));
+    if (existsSync(fullPath)) {
+      unlinkSync(fullPath);
+    }
+    await this.writeDb(db);
+    return { deleted: true, id: documentId };
   }
 
   async getCompensationProfiles() {

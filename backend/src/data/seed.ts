@@ -40,6 +40,10 @@ export const seedData: DatabaseShape = {
       taxProfile: "PPh 21 TK/0",
       bankName: "BCA",
       bankAccountMasked: "***9012",
+      appLoginEnabled: true,
+      loginUsername: "PRX-0001",
+      loginPassword: "employee123",
+      documents: [],
       leaveBalances: { annual: 12, sick: 10, permission: 4 }
     },
     {
@@ -80,6 +84,10 @@ export const seedData: DatabaseShape = {
       taxProfile: "PPh 21 K/0",
       bankName: "Mandiri",
       bankAccountMasked: "***1834",
+      appLoginEnabled: false,
+      loginUsername: null,
+      loginPassword: null,
+      documents: [],
       leaveBalances: { annual: 9, sick: 8, permission: 3 }
     },
     {
@@ -120,6 +128,10 @@ export const seedData: DatabaseShape = {
       taxProfile: "PPh 21 TK/1",
       bankName: "BNI",
       bankAccountMasked: "***7741",
+      appLoginEnabled: true,
+      loginUsername: "PRX-0003",
+      loginPassword: "employee123",
+      documents: [],
       leaveBalances: { annual: 14, sick: 10, permission: 4 }
     },
     {
@@ -166,6 +178,10 @@ export const seedData: DatabaseShape = {
       taxProfile: "PPh 21 TK/0",
       bankName: "BRI",
       bankAccountMasked: "***6648",
+      appLoginEnabled: true,
+      loginUsername: "PRX-0004",
+      loginPassword: "employee123",
+      documents: [],
       leaveBalances: { annual: 8, sick: 8, permission: 2 }
     }
   ],
@@ -519,4 +535,5 @@ export const seedData: DatabaseShape = {
     }
   ]
 };
+
 

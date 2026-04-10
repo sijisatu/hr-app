@@ -28,6 +28,27 @@ export type WorkExperienceRecord = {
   description: string;
 };
 
+export type EmployeeDocumentType =
+  | "ktp"
+  | "ijazah"
+  | "sertifikat"
+  | "npwp"
+  | "kk"
+  | "kontrak-kerja"
+  | "bpjs"
+  | "lainnya";
+
+export type EmployeeDocumentRecord = {
+  id: string;
+  employeeId: string;
+  type: EmployeeDocumentType;
+  title: string;
+  fileName: string;
+  fileUrl: string;
+  uploadedAt: string;
+  notes: string;
+};
+
 export type CompensationProfileRecord = {
   id: string;
   position: string;
@@ -99,6 +120,10 @@ export type EmployeeRecord = {
   taxProfile: string;
   bankName: string;
   bankAccountMasked: string;
+  appLoginEnabled: boolean;
+  loginUsername: string | null;
+  loginPassword: string | null;
+  documents: EmployeeDocumentRecord[];
   leaveBalances: LeaveBalance;
 };
 
@@ -294,6 +319,9 @@ export async function createEmployee(payload: {
   taxProfile: string;
   bankName: string;
   bankAccountMasked: string;
+  appLoginEnabled?: boolean;
+  loginUsername?: string | null;
+  loginPassword?: string | null;
 }) {
   return apiPostJson<EmployeeRecord>("/api/employees", payload);
 }
@@ -304,6 +332,29 @@ export async function updateEmployee(id: string, payload: Partial<Omit<EmployeeR
 
 export async function deleteEmployee(id: string) {
   return apiDelete<{ deleted: boolean; id: string }>(`/api/employees/${id}`);
+}
+
+export async function getEmployeeDocuments(employeeId: string) {
+  return apiFetch<EmployeeDocumentRecord[]>(`/api/employees/${employeeId}/documents`);
+}
+
+export async function uploadEmployeeDocument(payload: {
+  employeeId: string;
+  type: EmployeeDocumentType;
+  title: string;
+  notes?: string;
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.set("type", payload.type);
+  formData.set("title", payload.title);
+  formData.set("notes", payload.notes ?? "");
+  formData.set("file", payload.file);
+  return apiPostForm<EmployeeDocumentRecord>(`/api/employees/${payload.employeeId}/documents`, formData);
+}
+
+export async function deleteEmployeeDocument(employeeId: string, documentId: string) {
+  return apiDelete<{ deleted: boolean; id: string }>(`/api/employees/${employeeId}/documents/${documentId}`);
 }
 
 export async function getCompensationProfiles() {

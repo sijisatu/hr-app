@@ -3,21 +3,27 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LoaderCircle, Plus, WalletCards } from "lucide-react";
+import { Download, Eye, FileText, LoaderCircle, Plus, Trash2, Upload, WalletCards, X } from "lucide-react";
 import { EmployeesTable } from "@/components/tables/employees-table";
 import {
   createEmployee,
+  deleteEmployeeDocument,
   deleteEmployee,
   getCompensationProfiles,
   getEmployees,
   getPayrollComponents,
   getTaxProfiles,
+  uploadEmployeeDocument,
   updateEmployee,
   type CompensationProfileRecord,
   type EducationRecord,
+  type EmployeeDocumentRecord,
+  type EmployeeDocumentType,
   type EmployeeRecord,
   type WorkExperienceRecord
 } from "@/lib/api";
+
+const documentAssetBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
 
 type Props = {
   initialEmployees: EmployeeRecord[];
@@ -25,9 +31,16 @@ type Props = {
 };
 
 type Mode = "create" | "edit" | "view" | null;
-type TabKey = "personal" | "education" | "job" | "experience" | "financial";
+type TabKey = "personal" | "education" | "job" | "experience" | "financial" | "documents";
 type EducationForm = EducationRecord;
 type ExperienceForm = WorkExperienceRecord;
+type PendingDocument = {
+  id: string;
+  type: EmployeeDocumentType;
+  title: string;
+  notes: string;
+  file: File;
+};
 
 type FormState = {
   id?: string;
@@ -63,6 +76,9 @@ type FormState = {
   taxProfile: string;
   bankName: string;
   bankAccountMasked: string;
+  appLoginEnabled: boolean;
+  loginUsername: string;
+  loginPassword: string;
 };
 
 const tabs: { key: TabKey; label: string }[] = [
@@ -70,7 +86,19 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: "education", label: "Education" },
   { key: "job", label: "Job Details" },
   { key: "experience", label: "Work Experience" },
-  { key: "financial", label: "Financial Details" }
+  { key: "financial", label: "Financial Details" },
+  { key: "documents", label: "Documents" }
+];
+
+const documentTypeOptions: [EmployeeDocumentType, string][] = [
+  ["ktp", "KTP"],
+  ["ijazah", "Ijazah"],
+  ["sertifikat", "Sertifikat"],
+  ["npwp", "NPWP"],
+  ["kk", "Kartu Keluarga"],
+  ["kontrak-kerja", "Kontrak Kerja"],
+  ["bpjs", "BPJS"],
+  ["lainnya", "Lainnya"]
 ];
 
 function blankEducation(): EducationForm {
@@ -114,7 +142,10 @@ function blankForm(): FormState {
     taxProfileId: "",
     taxProfile: "",
     bankName: "BCA",
-    bankAccountMasked: ""
+    bankAccountMasked: "",
+    appLoginEnabled: true,
+    loginUsername: "",
+    loginPassword: "employee123"
   };
 }
 
@@ -152,7 +183,10 @@ function mapEmployee(employee: EmployeeRecord): FormState {
     taxProfileId: employee.taxProfileId ?? "",
     taxProfile: employee.taxProfile,
     bankName: employee.bankName,
-    bankAccountMasked: employee.bankAccountMasked
+    bankAccountMasked: employee.bankAccountMasked,
+    appLoginEnabled: employee.appLoginEnabled,
+    loginUsername: employee.loginUsername ?? "",
+    loginPassword: employee.loginPassword ?? ""
   };
 }
 
@@ -166,6 +200,9 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
   const [tab, setTab] = useState<TabKey>("personal");
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(blankForm());
+  const [existingDocuments, setExistingDocuments] = useState<EmployeeDocumentRecord[]>([]);
+  const [queuedDocuments, setQueuedDocuments] = useState<PendingDocument[]>([]);
+  const [previewDocument, setPreviewDocument] = useState<EmployeeDocumentRecord | null>(null);
 
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: getEmployees, initialData: initialEmployees });
   const positionQuery = useQuery({ queryKey: ["compensation-profiles"], queryFn: getCompensationProfiles, initialData: initialCompensationProfiles });
@@ -191,6 +228,8 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     setMode(next);
     setTab("personal");
     setForm(employee ? mapEmployee(employee) : blankForm());
+    setExistingDocuments(employee?.documents ?? []);
+    setQueuedDocuments([]);
   };
 
   const applyPosition = (id: string) => {
@@ -250,12 +289,31 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     taxProfileId: form.taxProfileId || null,
     taxProfile: selectedTaxProfile?.name ?? form.taxProfile,
     bankName: form.bankName,
-    bankAccountMasked: form.bankAccountMasked
+    bankAccountMasked: form.bankAccountMasked,
+    appLoginEnabled: form.appLoginEnabled,
+    loginUsername: form.appLoginEnabled ? (form.loginUsername.trim() || form.nik.trim()) : null,
+    loginPassword: form.appLoginEnabled ? form.loginPassword.trim() : null
+  };
+
+  const uploadQueuedDocuments = async (employeeId: string, docs: PendingDocument[]) => {
+    const uploaded = await Promise.all(docs.map((doc) => uploadEmployeeDocument({
+      employeeId,
+      type: doc.type,
+      title: doc.title,
+      notes: doc.notes,
+      file: doc.file
+    })));
+    return uploaded;
   };
 
   const createMutation = useMutation({
     mutationFn: () => createEmployee(savePayload),
-    onSuccess: async () => {
+    onSuccess: async (employee) => {
+      if (queuedDocuments.length > 0) {
+        const uploaded = await uploadQueuedDocuments(employee.id, queuedDocuments);
+        setExistingDocuments(uploaded);
+        setQueuedDocuments([]);
+      }
       setMessage("Data karyawan berhasil ditambahkan.");
       setMode(null);
       await refresh();
@@ -282,8 +340,27 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     onError: (error: Error) => setMessage(error.message)
   });
 
+  const uploadDocumentMutation = useMutation({
+    mutationFn: async ({ employeeId, documents }: { employeeId: string; documents: PendingDocument[] }) => uploadQueuedDocuments(employeeId, documents),
+    onSuccess: (uploaded) => {
+      setExistingDocuments((prev) => [...uploaded, ...prev]);
+      setQueuedDocuments([]);
+      setMessage("Dokumen karyawan berhasil di-upload.");
+    },
+    onError: (error: Error) => setMessage(error.message)
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: ({ employeeId, documentId }: { employeeId: string; documentId: string }) => deleteEmployeeDocument(employeeId, documentId),
+    onSuccess: (_, payload) => {
+      setExistingDocuments((prev) => prev.filter((item) => item.id !== payload.documentId));
+      setMessage("Dokumen karyawan berhasil dihapus.");
+    },
+    onError: (error: Error) => setMessage(error.message)
+  });
+
   const readOnly = mode === "view";
-  const busy = createMutation.isPending || updateMutation.isPending;
+  const busy = createMutation.isPending || updateMutation.isPending || uploadDocumentMutation.isPending || deleteDocumentMutation.isPending;
 
   const updateEducation = (index: number, key: keyof EducationForm, value: string) => {
     setForm((prev) => ({
@@ -298,6 +375,32 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
       workExperiences: prev.workExperiences.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item)
     }));
   };
+
+  const queueFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const nextDocuments = Array.from(files).map((file, index) => ({
+      id: `${Date.now()}-${index}-${file.name}`,
+      type: "lainnya" as EmployeeDocumentType,
+      title: file.name.replace(/\.[^.]+$/, ""),
+      notes: "",
+      file
+    }));
+
+    setQueuedDocuments((prev) => [...prev, ...nextDocuments]);
+  };
+
+  const updateQueuedDocumentType = (id: string, value: EmployeeDocumentType) => {
+    setQueuedDocuments((prev) => prev.map((item) => item.id === id ? { ...item, type: value } : item));
+  };
+
+  const updateQueuedDocumentField = (id: string, key: "title" | "notes", value: string) => {
+    setQueuedDocuments((prev) => prev.map((item) => item.id === id ? { ...item, [key]: value } : item));
+  };
+
+  const resolveDocumentUrl = (fileUrl: string) => fileUrl.startsWith("http") ? fileUrl : `${documentAssetBase}${fileUrl}`;
 
   return (
     <div className="space-y-6">
@@ -330,7 +433,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
             <div className="max-h-[60vh] overflow-y-auto px-6 py-6">
               {tab === "personal" ? <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Nama" value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} disabled={readOnly} />
-                <Field label="NIK" value={form.nik} onChange={(value) => setForm((prev) => ({ ...prev, nik: value }))} disabled={readOnly} />
+                <Field label="NIK" value={form.nik} onChange={(value) => setForm((prev) => ({ ...prev, nik: value, loginUsername: prev.loginUsername || value }))} disabled={readOnly} />
                 <Field label="Email" value={form.email} onChange={(value) => setForm((prev) => ({ ...prev, email: value }))} disabled={readOnly} />
                 <Field label="Phone" value={form.phone} onChange={(value) => setForm((prev) => ({ ...prev, phone: value }))} disabled={readOnly} />
                 <Field label="Tempat Lahir" value={form.birthPlace} onChange={(value) => setForm((prev) => ({ ...prev, birthPlace: value }))} disabled={readOnly} />
@@ -340,6 +443,33 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                 <Field label="Date of Marriage" type="date" value={form.marriageDate} onChange={(value) => setForm((prev) => ({ ...prev, marriageDate: value }))} disabled={readOnly || form.maritalStatus !== "married"} />
                 <Field label="No KTP" value={form.idCardNumber} onChange={(value) => setForm((prev) => ({ ...prev, idCardNumber: value }))} disabled={readOnly} />
                 <Area label="Alamat" value={form.address} onChange={(value) => setForm((prev) => ({ ...prev, address: value }))} disabled={readOnly} className="md:col-span-2" />
+                <div className="page-card p-5 md:col-span-2">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Account Access</p>
+                      <p className="mt-2 text-[14px] text-[var(--text-muted)]">HR bisa langsung buat akun login employee dari form add employee ini.</p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-[14px] font-medium text-[var(--text)]">
+                      <input
+                        type="checkbox"
+                        checked={form.appLoginEnabled}
+                        onChange={(event) => setForm((prev) => ({
+                          ...prev,
+                          appLoginEnabled: event.target.checked,
+                          loginUsername: event.target.checked ? (prev.loginUsername || prev.nik) : "",
+                          loginPassword: event.target.checked ? (prev.loginPassword || "employee123") : ""
+                        }))}
+                        disabled={readOnly}
+                      />
+                      Buat akun aplikasi
+                    </label>
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <Field label="Username" value={form.loginUsername} onChange={(value) => setForm((prev) => ({ ...prev, loginUsername: value }))} disabled={readOnly || !form.appLoginEnabled} />
+                    <Field label="Password" type="text" value={form.loginPassword} onChange={(value) => setForm((prev) => ({ ...prev, loginPassword: value }))} disabled={readOnly || !form.appLoginEnabled} />
+                  </div>
+                  <p className="mt-3 text-[13px] text-[var(--text-muted)]">Default username bisa pakai NIK, dan password diisi sendiri oleh HR saat membuat akun.</p>
+                </div>
               </div> : null}
 
               {tab === "education" ? <div className="space-y-4">
@@ -436,6 +566,70 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                   <MiniCard label="Tax Profile" value={selectedTaxProfile?.name ?? "-"} note={selectedTaxProfile ? `${selectedTaxProfile.rate}% tax rate` : "Belum dipilih"} />
                 </div>
               </div> : null}
+
+              {tab === "documents" ? <div className="space-y-5">
+                <div className="page-card p-5">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Upload Dokumen Karyawan</p>
+                      <p className="mt-2 text-[14px] text-[var(--text-muted)]">
+                        Upload KTP, ijazah, sertifikat, NPWP, BPJS, atau dokumen pendukung lainnya.
+                        {form.id ? " Untuk employee existing, upload bisa dilakukan langsung dari tab ini." : " Untuk employee baru, dokumen akan di-upload otomatis setelah data employee disimpan."}
+                      </p>
+                    </div>
+                    {!readOnly ? <label className="secondary-button cursor-pointer"><Upload className="h-4 w-4" /> Pilih File<input type="file" className="hidden" multiple onChange={(event) => queueFiles(event.target.files)} /></label> : null}
+                  </div>
+                </div>
+
+                {queuedDocuments.length > 0 ? (
+                  <section className="page-card p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Queued Documents</p>
+                      {form.id && !readOnly ? <button className="primary-button" onClick={() => uploadDocumentMutation.mutate({ employeeId: form.id!, documents: queuedDocuments })} disabled={busy}><Upload className="h-4 w-4" /> Upload Now</button> : null}
+                    </div>
+                    <div className="mt-4 space-y-4">
+                      {queuedDocuments.map((item) => (
+                        <div key={item.id} className="panel-muted p-4">
+                          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_200px_minmax(0,1fr)_auto] lg:items-start">
+                            <div>
+                              <p className="text-[15px] font-semibold text-[var(--text)]">{item.file.name}</p>
+                              <p className="mt-1 text-[13px] text-[var(--text-muted)]">{Math.max(1, Math.round(item.file.size / 1024))} KB</p>
+                            </div>
+                            <Pick label="Jenis Dokumen" value={item.type} onChange={(value) => updateQueuedDocumentType(item.id, value as EmployeeDocumentType)} options={documentTypeOptions} disabled={readOnly} />
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <Field label="Judul Dokumen" value={item.title} onChange={(value) => updateQueuedDocumentField(item.id, "title", value)} disabled={readOnly} />
+                              <Field label="Catatan" value={item.notes} onChange={(value) => updateQueuedDocumentField(item.id, "notes", value)} disabled={readOnly} />
+                            </div>
+                            {!readOnly ? <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setQueuedDocuments((prev) => prev.filter((entry) => entry.id !== item.id))}><Trash2 className="h-4 w-4" /></button> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                <section className="page-card p-5">
+                  <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Uploaded Documents</p>
+                  <div className="mt-4 space-y-3">
+                    {existingDocuments.length === 0 ? <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Belum ada dokumen yang terupload untuk karyawan ini.</div> : existingDocuments.map((item) => (
+                      <div key={item.id} className="panel-muted flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-[15px] font-semibold text-[var(--text)]">{item.title}</p>
+                          <p className="mt-1 text-[13px] text-[var(--text-muted)]">{documentTypeOptions.find(([value]) => value === item.type)?.[1] ?? item.type} • {item.fileName}</p>
+                          <p className="mt-1 text-[12px] text-[var(--text-muted)]">Upload: {new Date(item.uploadedAt).toLocaleString("id-ID")}</p>
+                          {item.notes ? <p className="mt-2 text-[13px] text-[var(--text-muted)]">{item.notes}</p> : null}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button className="secondary-button" onClick={() => setPreviewDocument(item)}><Eye className="h-4 w-4" /> Preview</button>
+                          <a href={resolveDocumentUrl(item.fileUrl)} download={item.fileName} className="secondary-button"><Download className="h-4 w-4" /> Download</a>
+                          <a href={resolveDocumentUrl(item.fileUrl)} target="_blank" rel="noreferrer" className="secondary-button">Open</a>
+                          {!readOnly ? <button className="secondary-button" onClick={() => deleteDocumentMutation.mutate({ employeeId: form.id!, documentId: item.id })}>Delete</button> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div> : null}
             </div>
 
             <div className="border-t border-[var(--border)] px-6 py-5">
@@ -451,6 +645,67 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
           </div>
         </div>
       ) : null}
+
+      {previewDocument ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(15,23,42,0.58)] p-4">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+              <div className="min-w-0">
+                <p className="section-title truncate text-[24px] font-semibold text-[var(--primary)]">{previewDocument.title}</p>
+                <p className="mt-2 text-[14px] text-[var(--text-muted)]">
+                  {documentTypeOptions.find(([value]) => value === previewDocument.type)?.[1] ?? previewDocument.type} • {previewDocument.fileName}
+                </p>
+              </div>
+              <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setPreviewDocument(null)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface-muted)] p-5">
+              <DocumentPreview document={previewDocument} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DocumentPreview({ document }: { document: EmployeeDocumentRecord }) {
+  const resolvedUrl = document.fileUrl.startsWith("http") ? document.fileUrl : `${documentAssetBase}${document.fileUrl}`;
+  const normalized = document.fileName.toLowerCase();
+  const isImage = [".jpg", ".jpeg", ".png", ".webp", ".gif"].some((extension) => normalized.endsWith(extension));
+  const isPdf = normalized.endsWith(".pdf");
+
+  if (isImage) {
+    return (
+      <div className="flex justify-center">
+        <img src={resolvedUrl} alt={document.title} className="max-h-[72vh] w-auto max-w-full rounded-[20px] border border-[var(--border)] bg-white object-contain shadow-soft" />
+      </div>
+    );
+  }
+
+  if (isPdf) {
+    return (
+      <iframe
+        src={resolvedUrl}
+        title={document.title}
+        className="h-[72vh] w-full rounded-[20px] border border-[var(--border)] bg-white"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-[72vh] flex-col items-center justify-center gap-4 rounded-[20px] border border-dashed border-[var(--border)] bg-white p-8 text-center">
+      <FileText className="h-12 w-12 text-[var(--primary)]" />
+      <div>
+        <p className="text-[18px] font-semibold text-[var(--text)]">Preview belum tersedia untuk tipe file ini.</p>
+        <p className="mt-2 text-[14px] text-[var(--text-muted)]">Silakan download atau buka file di tab baru untuk melihat dokumen lengkapnya.</p>
+      </div>
+      <div className="flex gap-3">
+        <a href={resolvedUrl} download={document.fileName} className="secondary-button"><Download className="h-4 w-4" /> Download</a>
+        <a href={resolvedUrl} target="_blank" rel="noreferrer" className="secondary-button">Open in New Tab</a>
+      </div>
     </div>
   );
 }

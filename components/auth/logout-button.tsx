@@ -1,12 +1,14 @@
-"use client";
+﻿"use client";
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import clsx from "clsx";
+import { useSession } from "@/components/providers/session-provider";
 
 export function LogoutButton({ className, children }: { className?: string; children?: React.ReactNode }) {
   const router = useRouter();
+  const { setCurrentUser } = useSession();
   const [pending, startTransition] = useTransition();
 
   return (
@@ -18,8 +20,8 @@ export function LogoutButton({ className, children }: { className?: string; chil
       onClick={() =>
         startTransition(async () => {
           await fetch("/api/auth/logout", { method: "POST" });
-          router.push("/login");
-          router.refresh();
+          setCurrentUser(null);
+          router.replace("/login");
         })
       }
       disabled={pending}
@@ -34,3 +36,4 @@ export function LogoutButton({ className, children }: { className?: string; chil
     </button>
   );
 }
+

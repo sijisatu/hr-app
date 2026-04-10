@@ -4,11 +4,15 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle, ShieldCheck } from "lucide-react";
 import { demoUsers, type SessionUser } from "@/lib/auth-config";
+import { useSession } from "@/components/providers/session-provider";
 
 export function LoginPanel() {
   const router = useRouter();
+  const { setCurrentUser } = useSession();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
   const loginAs = (user: SessionUser) => {
     setError(null);
@@ -24,9 +28,30 @@ export function LoginPanel() {
         return;
       }
 
-      const payload = (await response.json()) as { data: { redirectTo: string } };
-      router.push(payload.data.redirectTo);
-      router.refresh();
+      const payload = (await response.json()) as { data: { redirectTo: string; user: SessionUser } };
+      setCurrentUser(payload.data.user);
+      router.replace(payload.data.redirectTo);
+    });
+  };
+
+  const loginWithCredentials = () => {
+    setError(null);
+    startTransition(async () => {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        setError(payload?.error ?? "Gagal masuk dengan username dan password.");
+        return;
+      }
+
+      const payload = (await response.json()) as { data: { redirectTo: string; user: SessionUser } };
+      setCurrentUser(payload.data.user);
+      router.replace(payload.data.redirectTo);
     });
   };
 
@@ -44,11 +69,44 @@ export function LoginPanel() {
 
         <section className="page-card p-6 lg:p-8">
           <div>
-            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">Demo Accounts</p>
-            <h2 className="section-title mt-2 text-[30px] font-semibold text-[var(--primary)]">Choose your session</h2>
-            <p className="mt-2 text-[14px] text-[var(--text-muted)]">Select a role to test access and page restrictions.</p>
+            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">Access</p>
+            <h2 className="section-title mt-2 text-[30px] font-semibold text-[var(--primary)]">Sign in to the workspace</h2>
+            <p className="mt-2 text-[14px] text-[var(--text-muted)]">HR bisa membuat akun employee dengan username dan password. Demo role tetap tersedia untuk testing cepat.</p>
           </div>
 
+          <form
+            className="mt-6 page-card border-[var(--border)] bg-[var(--surface-muted)] p-5 shadow-none"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (pending || !username.trim() || !password.trim()) {
+                return;
+              }
+              loginWithCredentials();
+            }}
+          >
+            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">Employee Login</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
+                <span>Username</span>
+                <input value={username} onChange={(event) => setUsername(event.target.value)} className="filter-control w-full" placeholder="Contoh: NIK employee" />
+              </label>
+              <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
+                <span>Password</span>
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="filter-control w-full" placeholder="Password dari HR" />
+              </label>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button type="submit" disabled={pending || !username.trim() || !password.trim()} className="primary-button">
+                {pending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Sign In
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-6">
+            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">Demo Accounts</p>
+            <p className="mt-2 text-[14px] text-[var(--text-muted)]">Select a role to test access and page restrictions.</p>
+          </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {demoUsers.map((user) => (
               <button
@@ -77,4 +135,3 @@ export function LoginPanel() {
     </div>
   );
 }
-

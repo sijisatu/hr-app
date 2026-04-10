@@ -41,6 +41,27 @@ export type WorkExperienceRecord = {
   description: string;
 };
 
+export type EmployeeDocumentType =
+  | "ktp"
+  | "ijazah"
+  | "sertifikat"
+  | "npwp"
+  | "kk"
+  | "kontrak-kerja"
+  | "bpjs"
+  | "lainnya";
+
+export type EmployeeDocumentRecord = {
+  id: string;
+  employeeId: string;
+  type: EmployeeDocumentType;
+  title: string;
+  fileName: string;
+  fileUrl: string;
+  uploadedAt: string;
+  notes: string;
+};
+
 export type EmployeeRecord = {
   id: string;
   employeeNumber: string;
@@ -79,6 +100,10 @@ export type EmployeeRecord = {
   taxProfile: string;
   bankName: string;
   bankAccountMasked: string;
+  appLoginEnabled: boolean;
+  loginUsername: string | null;
+  loginPassword: string | null;
+  documents: EmployeeDocumentRecord[];
   leaveBalances: LeaveBalance;
 };
 

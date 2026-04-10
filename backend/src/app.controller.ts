@@ -15,6 +15,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { AppService } from "./common/app.service";
 import {
   CheckInDto,
@@ -31,6 +32,7 @@ import {
   LeaveApproveDto,
   LeaveRequestDto,
   PublishPayrollRunDto,
+  UploadEmployeeDocumentDto,
   UpdateEmployeeDto,
   UpdateCompensationProfileDto,
   UpdateTaxProfileDto,
@@ -69,6 +71,42 @@ export class AppController {
   @Delete("employees/:id")
   async deleteEmployee(@Param("id") id: string) {
     return this.wrap(await this.appService.deleteEmployee(id));
+  }
+
+  @Get("employees/:id/documents")
+  async employeeDocuments(@Param("id") id: string) {
+    return this.wrap(await this.appService.getEmployeeDocuments(id));
+  }
+
+  @Post("employees/:id/documents")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: diskStorage({
+        destination: (request, _, callback) => {
+          const employeeId = String(request.params.id ?? "unknown-employee");
+          const targetDir = path.resolve(process.cwd(), "storage", "documents", "employee-files", employeeId);
+          mkdirSync(targetDir, { recursive: true });
+          callback(null, targetDir);
+        },
+        filename: (_, file, callback) => {
+          const extension = path.extname(file.originalname) || ".bin";
+          callback(null, `${Date.now()}-${randomUUID().slice(0, 6)}${extension}`);
+        }
+      })
+    })
+  )
+  async uploadEmployeeDocument(
+    @Param("id") id: string,
+    @Body() body: UploadEmployeeDocumentDto,
+    @UploadedFile() file?: Express.Multer.File
+  ) {
+    const fileUrl = file ? `/storage/documents/employee-files/${id}/${file.filename}` : null;
+    return this.wrap(await this.appService.uploadEmployeeDocument(id, body, file, fileUrl));
+  }
+
+  @Delete("employees/:id/documents/:documentId")
+  async deleteEmployeeDocument(@Param("id") id: string, @Param("documentId") documentId: string) {
+    return this.wrap(await this.appService.deleteEmployeeDocument(id, documentId));
   }
 
   @Get("compensation-profiles")

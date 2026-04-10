@@ -111,6 +111,19 @@ export class CreateEmployeeDto {
 
   @IsString()
   bankAccountMasked!: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  appLoginEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  loginUsername?: string | null;
+
+  @IsOptional()
+  @IsString()
+  loginPassword?: string | null;
 }
 
 export class UpdateEmployeeDto {
@@ -250,6 +263,31 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsString()
   bankAccountMasked?: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  appLoginEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  loginUsername?: string | null;
+
+  @IsOptional()
+  @IsString()
+  loginPassword?: string | null;
+}
+
+export class UploadEmployeeDocumentDto {
+  @IsIn(["ktp", "ijazah", "sertifikat", "npwp", "kk", "kontrak-kerja", "bpjs", "lainnya"])
+  type!: "ktp" | "ijazah" | "sertifikat" | "npwp" | "kk" | "kontrak-kerja" | "bpjs" | "lainnya";
+
+  @IsString()
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 
 export class CheckInDto {

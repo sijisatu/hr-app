@@ -1,11 +1,24 @@
 import { NextResponse } from "next/server";
-import { authCookieName, defaultRouteForRole, findDemoUser } from "@/lib/auth-config";
+import { authCookieName, authProfileCookieName, defaultRouteForRole, encodeSessionProfile, findDemoUser, type SessionUser } from "@/lib/auth-config";
 
-function buildAuthResponse(sessionKey: string | undefined, redirectTo?: string) {
-  const user = findDemoUser(sessionKey);
+const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
 
+type EmployeeAuthRecord = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "hr" | "manager" | "employee";
+  department: string;
+  position: string;
+  appLoginEnabled: boolean;
+  loginUsername: string | null;
+  loginPassword: string | null;
+  status: "active" | "inactive";
+};
+
+function buildAuthResponse(user?: SessionUser, redirectTo?: string) {
   if (!user) {
-    return NextResponse.json({ success: false, error: "Invalid demo account" }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Invalid account" }, { status: 400 });
   }
 
   const response = redirectTo
@@ -13,6 +26,12 @@ function buildAuthResponse(sessionKey: string | undefined, redirectTo?: string) 
     : NextResponse.json({ success: true, data: { redirectTo: defaultRouteForRole(user.role), user }, error: null });
 
   response.cookies.set(authCookieName, user.sessionKey, {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: false,
+    maxAge: 60 * 60 * 24 * 30
+  });
+  response.cookies.set(authProfileCookieName, encodeSessionProfile(user), {
     path: "/",
     sameSite: "lax",
     httpOnly: false,
@@ -26,10 +45,48 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionKey = searchParams.get("sessionKey") ?? undefined;
   const redirectTo = searchParams.get("redirect") ?? "/dashboard";
-  return buildAuthResponse(sessionKey, redirectTo);
+  const user = findDemoUser(sessionKey);
+  return buildAuthResponse(user ?? undefined, redirectTo);
 }
 
 export async function POST(request: Request) {
-  const payload = (await request.json()) as { sessionKey?: string };
-  return buildAuthResponse(payload.sessionKey);
+  const payload = (await request.json()) as { sessionKey?: string; username?: string; password?: string };
+
+  if (payload.sessionKey) {
+    const demoUser = findDemoUser(payload.sessionKey);
+    return buildAuthResponse(demoUser ?? undefined);
+  }
+
+  const username = payload.username?.trim();
+  const password = payload.password?.trim();
+  if (!username || !password) {
+    return NextResponse.json({ success: false, error: "Username dan password wajib diisi." }, { status: 400 });
+  }
+
+  const response = await fetch(`${API_BASE}/api/employees`, { cache: "no-store" });
+  if (!response.ok) {
+    return NextResponse.json({ success: false, error: "Gagal mengambil data employee." }, { status: 500 });
+  }
+
+  const employeePayload = (await response.json()) as { data: EmployeeAuthRecord[] };
+  const employee = employeePayload.data.find((item) =>
+    item.status === "active" &&
+    item.appLoginEnabled &&
+    item.loginUsername === username &&
+    item.loginPassword === password
+  );
+
+  if (!employee) {
+    return NextResponse.json({ success: false, error: "Username atau password tidak valid." }, { status: 400 });
+  }
+
+  return buildAuthResponse({
+    sessionKey: `employee:${employee.id}`,
+    id: employee.id,
+    name: employee.name,
+    email: employee.email,
+    role: employee.role,
+    department: employee.department,
+    position: employee.position
+  });
 }
