@@ -52,7 +52,8 @@ Modul hr-app karyawan:
    - Attendance summary
    - Submit overtime (karyawan submit overtime, atasan acc overtime)
    - Semua Records (Summary) disamain kaya attendance records semua
-   - Tombol clock in kalo udah disubmit jadi clock out (NEW)
+   - Tombol clock in kalo udah disubmit jadi clock out (DONE)
+   - Foto selfie harusnya otomatis ke capture waktu dia submit check-in, terus pilihan employee nya ga usah ada, otomatis sesuai akun yang login aja. (NEW)
 
 2. Modul payroll
    - Generate slip gaji
