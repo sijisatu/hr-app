@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LoaderCircle, Plus, WalletCards } from "lucide-react";
-import { MetricCard } from "@/components/dashboard/metric-card";
 import { EmployeesTable } from "@/components/tables/employees-table";
 import {
   createEmployee,
@@ -283,17 +282,6 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     onError: (error: Error) => setMessage(error.message)
   });
 
-  const summary = useMemo(() => {
-    const active = employees.filter((item) => item.status === "active").length;
-    const departments = new Set(employees.map((item) => item.department)).size;
-    const payroll = employees.reduce((sum, item) => sum + item.baseSalary + item.allowance, 0);
-    return [
-      { label: "Headcount", value: String(employees.length), note: `${active} active employees`, tone: "neutral" as const },
-      { label: "Departments", value: String(departments), note: `${positions.length} position salary master`, tone: "success" as const },
-      { label: "Payroll Baseline", value: money(payroll), note: "Base salary + selected allowances", tone: "warning" as const }
-    ];
-  }, [employees, positions.length]);
-
   const readOnly = mode === "view";
   const busy = createMutation.isPending || updateMutation.isPending;
 
@@ -313,14 +301,9 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="grid flex-1 gap-4 md:grid-cols-3">
-          {summary.map((item) => <MetricCard key={item.label} {...item} />)}
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Link href="/employees/financial-details" className="secondary-button"><WalletCards className="h-4 w-4" /> Financial Setup</Link>
-          <button className="primary-button" onClick={() => openModal("create")}><Plus className="h-4 w-4" /> Add Employee</button>
-        </div>
+      <div className="flex flex-wrap justify-end gap-3">
+        <Link href="/employees/financial-details" className="secondary-button"><WalletCards className="h-4 w-4" /> Financial Setup</Link>
+        <button className="primary-button" onClick={() => openModal("create")}><Plus className="h-4 w-4" /> Add Employee</button>
       </div>
 
       <EmployeesTable employees={employees} onView={(employee) => openModal("view", employee)} onEdit={(employee) => openModal("edit", employee)} onDelete={(employee) => deleteMutation.mutate(employee.id)} />

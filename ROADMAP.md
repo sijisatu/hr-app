@@ -72,6 +72,8 @@ Modul hr-app HR:
 2. Modul Employee List
    - Masukin data karyawan termasuk gaji, tunjangan, deduction (bpjs, pajak)
 
+   employee directory dibikin list kaya attendance report aja, kalo mau liat detail 1 karyawan baru bisa diklik si karyawan itu. jadi kalo ada banyak data ga terlalu banyak scroll nya. terus yang di capture (headcount, departments, payroll baseline) gua lo hapus aja deh itu. abis itu rapihin ulang layout employee management nya
+
 3. Modul Payroll
    - Data gaji karyawan, termasuk kalkulasi kehadiran. Nanti di akhir bulan biar keliatan gaji karyawan tersebut berapa
 4. Modul report
@@ -79,3 +81,7 @@ Modul hr-app HR:
    - Grafik attendance, grafik jumlah karyawan
 5. Dashboard
    - Grafik attendance, grafik jumlah karyawan, grafik payroll (jumlah gaji yang dibayarkan tiap bulan)
+
+6. Modul buat ngatur cuti karyawan
+
+Beresin login page
