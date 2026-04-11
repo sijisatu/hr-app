@@ -13,6 +13,7 @@ import {
   formatLeaveType,
   formatOvertimeStatus,
   getAttendanceHistory,
+  getEmployees,
   getAttendanceOvertime,
   getLeaveHistory
 } from "@/lib/api";
@@ -80,6 +81,24 @@ const leaveTone = {
   Rejected: "danger"
 } as const;
 
+const leaveRequestOptions = [
+  "Annual Leave",
+  "Religious Leave",
+  "Maternity Leave",
+  "Paternity Leave",
+  "Marriage Leave",
+  "Bereavement Leave"
+] as const;
+
+const leaveBalanceKeyMap: Record<(typeof leaveRequestOptions)[number], "annual" | "religious" | "maternity" | "paternity" | "marriage" | "bereavement"> = {
+  "Annual Leave": "annual",
+  "Religious Leave": "religious",
+  "Maternity Leave": "maternity",
+  "Paternity Leave": "paternity",
+  "Marriage Leave": "marriage",
+  "Bereavement Leave": "bereavement"
+};
+
 function leaveTypeForAction(action: Exclude<ActionKey, "overtime">) {
   switch (action) {
     case "on-duty":
@@ -90,7 +109,7 @@ function leaveTypeForAction(action: Exclude<ActionKey, "overtime">) {
       return "Half Day Leave" as const;
     case "leave":
     default:
-      return "Leave Request" as const;
+      return "Annual Leave" as const;
   }
 }
 
@@ -104,7 +123,7 @@ function leaveTypesForAction(action: Exclude<ActionKey, "overtime">) {
       return ["Half Day Leave", "Permission"] as const;
     case "leave":
     default:
-      return ["Leave Request", "Annual Leave"] as const;
+      return ["Leave Request", "Annual Leave", "Religious Leave", "Maternity Leave", "Paternity Leave", "Marriage Leave", "Bereavement Leave"] as const;
   }
 }
 
@@ -116,14 +135,18 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [leaveReason, setLeaveReason] = useState("");
+  const [leaveCategory, setLeaveCategory] = useState<(typeof leaveRequestOptions)[number]>("Annual Leave");
   const [halfDaySlot, setHalfDaySlot] = useState<"Morning" | "Afternoon">("Morning");
   const [overtimeDate, setOvertimeDate] = useState(today);
   const [overtimeMinutes, setOvertimeMinutes] = useState("120");
   const [overtimeReason, setOvertimeReason] = useState("");
+  const [leaveSearch, setLeaveSearch] = useState("");
+  const [leaveDateFrom, setLeaveDateFrom] = useState("");
+  const [leaveDateTo, setLeaveDateTo] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const shouldShowActionCards = showActionCards ?? !fixedAction;
-  const canApprove = currentUser?.role === "manager" || currentUser?.role === "admin";
+  const canApprove = currentUser?.role === "manager";
 
   useEffect(() => {
     if (fixedAction) {
@@ -132,11 +155,16 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   }, [fixedAction]);
 
   const attendanceQuery = useQuery({ queryKey: ["attendance-history"], queryFn: getAttendanceHistory });
+  const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: getEmployees });
   const leaveQuery = useQuery({ queryKey: ["leave-history"], queryFn: getLeaveHistory });
   const overtimeQuery = useQuery({ queryKey: ["attendance-overtime"], queryFn: getAttendanceOvertime });
 
   const allLeaveRequests = leaveQuery.data ?? [];
   const allOvertimeItems = overtimeQuery.data ?? [];
+  const currentEmployee = useMemo(
+    () => (employeesQuery.data ?? []).find((item) => item.id === currentUser?.id) ?? null,
+    [currentUser?.id, employeesQuery.data]
+  );
 
   const attendanceLogs = useMemo(
     () => (attendanceQuery.data ?? []).filter((item) => item.userId === currentUser?.id),
@@ -160,13 +188,18 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     [leaveRequests]
   );
   const annualLeaveRequests = useMemo(
-    () => leaveRequests.filter((item) => item.type === "Leave Request" || item.type === "Annual Leave"),
+    () => leaveRequests.filter((item) => ["Leave Request", "Annual Leave", "Religious Leave", "Maternity Leave", "Paternity Leave", "Marriage Leave", "Bereavement Leave"].includes(item.type)),
     [leaveRequests]
   );
   const halfDayRequests = useMemo(
     () => leaveRequests.filter((item) => item.type === "Half Day Leave" || item.type === "Permission"),
     [leaveRequests]
   );
+  const annualLeaveAvailable = useMemo(() => {
+    const current = currentEmployee?.leaveBalances.annual ?? 0;
+    const carry = currentEmployee?.leaveBalances.annualCarryOver ?? 0;
+    return Number((current + carry).toFixed(1));
+  }, [currentEmployee]);
 
   const leaveMutation = useMutation({
     mutationFn: async () => {
@@ -176,7 +209,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       if (!leaveReason.trim()) {
         throw new Error(activeAction === "on-duty" ? "Description wajib diisi." : "Reason wajib diisi.");
       }
-      const type = leaveTypeForAction(activeAction as Exclude<ActionKey, "overtime">);
+      const type = activeAction === "leave" ? leaveCategory : leaveTypeForAction(activeAction as Exclude<ActionKey, "overtime">);
       const normalizedReason = activeAction === "half-day" ? `[${halfDaySlot}] ${leaveReason.trim()}` : leaveReason.trim();
 
       return createLeaveRequest({
@@ -282,12 +315,13 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     if (activeAction === "half-day") {
       const approved = halfDayRequests.filter((item) => item.status === "approved").length;
       const pending = halfDayRequests.filter((item) => item.status !== "approved" && item.status !== "rejected").length;
-      const morning = halfDayRequests.filter((item) => item.reason.includes("[Morning]")).length;
+      const totalDays = Number(halfDayRequests.reduce((sum, item) => sum + item.daysRequested, 0).toFixed(1));
       return [
         { label: "Half Day Requests", value: String(halfDayRequests.length), note: "Total request half day." },
         { label: "Approved", value: String(approved), note: "Sudah disetujui." },
         { label: "Pending", value: String(pending), note: "Menunggu keputusan manager." },
-        { label: "Morning Slot", value: String(morning), note: "Jumlah request slot pagi.", tone: "primary" }
+        { label: "Annual Balance", value: `${annualLeaveAvailable}`, note: "Sisa cuti tahunan. Half day = 0.5 day.", tone: "primary" },
+        { label: "Half Day Used", value: `${totalDays}`, note: "Akumulasi hari dari request half day." }
       ];
     }
 
@@ -300,7 +334,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       { label: "Pending", value: String(pending), note: "Menunggu keputusan manager." },
       { label: "Overtime Hours", value: String(totalHours), note: "Akumulasi jam overtime.", tone: "primary" }
     ];
-  }, [activeAction, annualLeaveRequests, attendanceLogs, halfDayRequests, onDutyRequests, overtimeItems, sickRequests]);
+  }, [activeAction, annualLeaveAvailable, annualLeaveRequests, attendanceLogs, halfDayRequests, onDutyRequests, overtimeItems, sickRequests]);
 
   const leaveRecordsForAction = useMemo(() => {
     switch (activeAction) {
@@ -329,6 +363,34 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     () => allOvertimeItems.filter((item) => item.status === "pending"),
     [allOvertimeItems]
   );
+
+  const leaveCategoryOptions = useMemo(() => {
+    return leaveRequestOptions.map((item) => {
+      const balanceKey = leaveBalanceKeyMap[item];
+      const current = currentEmployee?.leaveBalances[balanceKey] ?? 0;
+      const carryOver = currentEmployee?.leaveBalances[`${balanceKey}CarryOver`] ?? 0;
+      const available = Number((current + carryOver).toFixed(1));
+      return {
+        value: item,
+        label: `${item} (${available} days)`
+      };
+    });
+  }, [currentEmployee]);
+
+  const filteredLeaveRecords = useMemo(() => {
+    if (activeAction !== "leave") {
+      return leaveRecordsForAction;
+    }
+    const search = leaveSearch.trim().toLowerCase();
+    return leaveRecordsForAction.filter((record) => {
+      const formattedType = formatLeaveType(record.type).toLowerCase();
+      const reason = record.reason.toLowerCase();
+      const matchesSearch = search.length === 0 || formattedType.includes(search) || reason.includes(search);
+      const matchesFrom = leaveDateFrom.length === 0 || record.endDate >= leaveDateFrom;
+      const matchesTo = leaveDateTo.length === 0 || record.startDate <= leaveDateTo;
+      return matchesSearch && matchesFrom && matchesTo;
+    });
+  }, [activeAction, leaveDateFrom, leaveDateTo, leaveRecordsForAction, leaveSearch]);
 
   return (
     <div className="space-y-6">
@@ -421,6 +483,21 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                 <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
               </label>
             )}
+            {activeAction === "leave" ? (
+              <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
+                <span>Leave Type</span>
+                <select value={leaveCategory} onChange={(event) => setLeaveCategory(event.target.value as (typeof leaveRequestOptions)[number])} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]">
+                  {leaveCategoryOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {activeAction === "half-day" ? (
+              <div className="rounded-[12px] border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3">
+                <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Annual Leave Balance</p>
+                <p className="mt-2 text-[16px] font-semibold text-[var(--primary)]">{annualLeaveAvailable} days</p>
+                <p className="mt-1 text-[12px] text-[var(--text-muted)]">Setiap Half Day Leave mengurangi 0.5 day dari annual leave.</p>
+              </div>
+            ) : null}
             <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
               <span>{activeAction === "on-duty" ? "Description" : "Reason"}</span>
               <input value={leaveReason} onChange={(event) => setLeaveReason(event.target.value)} placeholder={activeAction === "on-duty" ? "Tulis deskripsi on duty" : "Tulis alasan request"} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
@@ -497,23 +574,90 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
         <section className="page-card p-6">
           <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{actionCards.find((item) => item.key === activeAction)?.label} Records</p>
           <p className="mt-2 text-[14px] text-[var(--text-muted)]">Record khusus untuk menu request yang sedang dibuka.</p>
-          <div className="mt-5 grid gap-4 xl:grid-cols-2">
-            {leaveRecordsForAction.map((request) => {
-              const label = formatLeaveStatus(request.status);
-              return (
-                <div key={request.id} className="panel-muted p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-[15px] font-semibold text-[var(--text)]">{formatLeaveType(request.type)}</p>
-                      <p className="mt-1 text-[13px] text-[var(--text-muted)]">{request.startDate === request.endDate ? request.startDate : `${request.startDate} - ${request.endDate}`}</p>
+          {activeAction === "leave" ? (
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="space-y-2 text-[13px] font-medium text-[var(--primary)]">
+                  <span>Search</span>
+                  <input
+                    value={leaveSearch}
+                    onChange={(event) => setLeaveSearch(event.target.value)}
+                    placeholder="Search type atau reason..."
+                    className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]"
+                  />
+                </label>
+                <label className="space-y-2 text-[13px] font-medium text-[var(--primary)]">
+                  <span>Date From</span>
+                  <input
+                    type="date"
+                    value={leaveDateFrom}
+                    onChange={(event) => setLeaveDateFrom(event.target.value)}
+                    className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]"
+                  />
+                </label>
+                <label className="space-y-2 text-[13px] font-medium text-[var(--primary)]">
+                  <span>Date To</span>
+                  <input
+                    type="date"
+                    value={leaveDateTo}
+                    onChange={(event) => setLeaveDateTo(event.target.value)}
+                    className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]"
+                  />
+                </label>
+              </div>
+              <div className="overflow-x-auto">
+              <table className="min-w-full border-separate border-spacing-y-2">
+                <thead>
+                  <tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                    <th className="px-4 pb-2">Leave Type</th>
+                    <th className="px-4 pb-2">Date Range</th>
+                    <th className="px-4 pb-2">Days</th>
+                    <th className="px-4 pb-2">Reason</th>
+                    <th className="px-4 pb-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLeaveRecords.map((request) => {
+                    const label = formatLeaveStatus(request.status);
+                    return (
+                      <tr key={request.id} className="bg-[var(--surface-muted)]">
+                        <td className="rounded-l-[12px] px-4 py-4 align-top">
+                          <p className="text-[14px] font-semibold text-[var(--text)]">{formatLeaveType(request.type)}</p>
+                          <p className="mt-1 text-[12px] text-[var(--text-muted)]">{new Date(request.requestedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                        </td>
+                        <td className="px-4 py-4 align-top text-[14px] text-[var(--text)]">{request.startDate === request.endDate ? request.startDate : `${request.startDate} - ${request.endDate}`}</td>
+                        <td className="px-4 py-4 align-top text-[14px] text-[var(--text)]">{request.daysRequested}</td>
+                        <td className="px-4 py-4 align-top text-[14px] text-[var(--text-muted)]">{request.reason}</td>
+                        <td className="rounded-r-[12px] px-4 py-4 align-top"><StatusPill tone={leaveTone[label as keyof typeof leaveTone]}>{label}</StatusPill></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {filteredLeaveRecords.length === 0 ? (
+                <div className="panel-muted mt-4 px-4 py-5 text-[14px] text-[var(--text-muted)]">Tidak ada data yang cocok dengan filter/search.</div>
+              ) : null}
+            </div>
+            </div>
+          ) : (
+            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              {leaveRecordsForAction.map((request) => {
+                const label = formatLeaveStatus(request.status);
+                return (
+                  <div key={request.id} className="panel-muted p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-[15px] font-semibold text-[var(--text)]">{formatLeaveType(request.type)}</p>
+                        <p className="mt-1 text-[13px] text-[var(--text-muted)]">{request.startDate === request.endDate ? request.startDate : `${request.startDate} - ${request.endDate}`}</p>
+                      </div>
+                      <StatusPill tone={leaveTone[label as keyof typeof leaveTone]}>{label}</StatusPill>
                     </div>
-                    <StatusPill tone={leaveTone[label as keyof typeof leaveTone]}>{label}</StatusPill>
+                    <p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{request.reason}</p>
                   </div>
-                  <p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{request.reason}</p>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       ) : null}
 

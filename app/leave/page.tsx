@@ -3,12 +3,12 @@ import { LeaveWorkflowBoard } from "@/components/leave/leave-workflow-board";
 import { requireSession } from "@/lib/auth";
 
 export default async function LeavePage() {
-  await requireSession(["admin", "hr", "manager"]);
+  await requireSession(["admin", "hr"]);
 
   return (
     <AppShell
-      title="Leave Workflow"
-      subtitle="Multi-level approval board for employee request review and leave balance control."
+      title="Leave System"
+      subtitle="Kelola alokasi leave balance karyawan, carry over, dan expiration. Approval request tetap diproses manager."
     >
       <LeaveWorkflowBoard />
     </AppShell>

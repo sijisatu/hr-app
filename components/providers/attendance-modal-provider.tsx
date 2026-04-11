@@ -63,7 +63,6 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [employeeId, setEmployeeId] = useState("");
   const [locationName, setLocationName] = useState("Jakarta HQ");
   const [latitude, setLatitude] = useState("-6.200000");
   const [longitude, setLongitude] = useState("106.816666");
@@ -126,20 +125,9 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
 
   const employees = employeesQuery.data ?? [];
   const todayRecords = todayQuery.data ?? [];
-  const scopedEmployees = currentUser?.role === "employee" ? employees.filter((employee) => employee.id === currentUser.id) : employees;
-
-  useEffect(() => {
-    if (!employeeId && scopedEmployees.length > 0) {
-      const defaultEmployee = currentUser?.role === "employee"
-        ? scopedEmployees[0]
-        : scopedEmployees.find((employee) => employee.status === "active") ?? scopedEmployees[0];
-      setEmployeeId(defaultEmployee.id);
-    }
-  }, [currentUser?.role, employeeId, scopedEmployees]);
-
   const selectedEmployee = useMemo(
-    () => scopedEmployees.find((employee) => employee.id === employeeId) ?? null,
-    [employeeId, scopedEmployees]
+    () => employees.find((employee) => employee.id === currentUser?.id) ?? null,
+    [currentUser?.id, employees]
   );
 
   useEffect(() => {
@@ -163,10 +151,12 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
   const checkInMutation = useMutation({
     mutationFn: async () => {
       if (!selectedEmployee) {
-        throw new Error("Pilih karyawan dulu.");
+        throw new Error("Akun login belum terhubung ke data karyawan aktif.");
       }
-      if (!photo) {
-        throw new Error("Ambil selfie dulu dari live camera.");
+      const captured = await capturePhoto();
+      const selfieFile = captured ?? photo;
+      if (!selfieFile) {
+        throw new Error("Camera belum siap untuk auto selfie capture.");
       }
       const numericLat = Number.parseFloat(latitude);
       const numericLng = Number.parseFloat(longitude);
@@ -180,7 +170,7 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
         location: locationName,
         latitude: numericLat,
         longitude: numericLng,
-        photo
+        photo: selfieFile
       });
     },
     onSuccess: async () => {
@@ -207,7 +197,7 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
 
   const capturePhoto = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) {
-      return;
+      return null;
     }
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -216,15 +206,17 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
     const context = canvas.getContext("2d");
     if (!context) {
       setCameraError("Canvas belum siap untuk capture.");
-      return;
+      return null;
     }
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
     if (!blob) {
       setCameraError("Gagal ambil foto dari live camera.");
-      return;
+      return null;
     }
-    setPhoto(new File([blob], `selfie-${Date.now()}.jpg`, { type: "image/jpeg" }));
+    const file = new File([blob], `selfie-${Date.now()}.jpg`, { type: "image/jpeg" });
+    setPhoto(file);
+    return file;
   }, []);
 
   const handleUseCurrentLocation = async () => {
@@ -276,24 +268,13 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
                 <p className="mt-2 text-sm text-white/75">{selectedEmployee ? `${selectedEmployee.department} | ${selectedEmployee.position}` : "Fetching employee roster"}</p>
                 <div className="mt-4 rounded-[22px] bg-white/10 p-4 text-sm text-white/85">
                   <p className="font-semibold text-white">Session status</p>
-                  <p className="mt-2">{openRecord ? `Open since ${openRecord.checkIn} at ${openRecord.location}` : "No open attendance session for the selected employee today."}</p>
+                  <p className="mt-2">{openRecord ? `Open since ${openRecord.checkIn} at ${openRecord.location}` : "No open attendance session for your account today."}</p>
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-2 text-sm font-medium text-[var(--primary)]">
-                  Employee
-                  <select
-                    value={employeeId}
-                    onChange={(event) => setEmployeeId(event.target.value)}
-                    disabled={currentUser?.role === "employee"}
-                    className="w-full rounded-2xl border border-border bg-white px-4 py-3 text-sm text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
-                  >
-                    {scopedEmployees.map((employee) => (
-                      <option key={employee.id} value={employee.id}>{employee.name} - {employee.position}</option>
-                    ))}
-                  </select>
-                </label>              </div>
+              <div className="rounded-2xl border border-border bg-[var(--panel-alt)] px-4 py-3 text-sm text-muted">
+                Employee dipilih otomatis berdasarkan akun yang sedang login.
+              </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <label className="space-y-2 text-sm font-medium text-[var(--primary)] sm:col-span-3">
@@ -345,10 +326,10 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
 
               <div className="rounded-[24px] border border-border bg-[var(--panel-alt)] p-4">
                 <p className="text-sm font-semibold text-[var(--primary)]">Selfie status</p>
-                <p className="mt-2 text-sm text-muted">{photo ? `${photo.name} siap dikirim ke attendance storage.` : "Belum ada capture. Ambil selfie live dulu sebelum check-in."}</p>
+                <p className="mt-2 text-sm text-muted">{photo ? `${photo.name} siap dikirim ke attendance storage.` : "Selfie akan auto-capture saat Submit Check-in."}</p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <button type="button" onClick={() => void capturePhoto()} disabled={!cameraReady || busy} className="rounded-2xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-                    Capture selfie
+                    Capture manual
                   </button>
                   <button type="button" onClick={() => setPhoto(null)} disabled={!photo || busy} className="rounded-2xl border border-[var(--primary)]/15 bg-white px-4 py-3 text-sm font-semibold text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60">
                     Retake
@@ -361,7 +342,7 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <button type="button" onClick={() => checkInMutation.mutate()} disabled={busy || !selectedEmployee || Boolean(openRecord) || employeesQuery.isLoading || todayQuery.isLoading} className="rounded-2xl bg-[var(--primary)] px-4 py-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-                  {checkInMutation.isPending ? <span className="flex items-center justify-center gap-2"><LoaderCircle className="h-4 w-4 animate-spin" /> Saving check-in...</span> : "Submit Check-in"}
+                  {checkInMutation.isPending ? <span className="flex items-center justify-center gap-2"><LoaderCircle className="h-4 w-4 animate-spin" /> Saving check-in + auto selfie...</span> : "Submit Check-in"}
                 </button>
                 <button type="button" onClick={() => checkOutMutation.mutate()} disabled={busy || !openRecord || employeesQuery.isLoading || todayQuery.isLoading} className="rounded-2xl border border-[var(--primary)]/15 bg-[var(--panel-alt)] px-4 py-4 text-sm font-semibold text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60">
                   {checkOutMutation.isPending ? <span className="flex items-center justify-center gap-2"><LoaderCircle className="h-4 w-4 animate-spin" /> Closing session...</span> : "Submit Check-out"}

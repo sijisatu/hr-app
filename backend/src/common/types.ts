@@ -6,6 +6,11 @@ export type LeaveType =
   | "On Duty Request"
   | "Half Day Leave"
   | "Annual Leave"
+  | "Religious Leave"
+  | "Maternity Leave"
+  | "Paternity Leave"
+  | "Marriage Leave"
+  | "Bereavement Leave"
   | "Sick Leave"
   | "Permission"
   | "Remote Work";
@@ -21,8 +26,29 @@ export type MaritalStatus = "single" | "married" | "divorced" | "widowed";
 
 export type LeaveBalance = {
   annual: number;
+  annualCarryOver: number;
+  annualCarryOverExpiresAt: string | null;
+  religious: number;
+  religiousCarryOver: number;
+  religiousCarryOverExpiresAt: string | null;
+  maternity: number;
+  maternityCarryOver: number;
+  maternityCarryOverExpiresAt: string | null;
+  paternity: number;
+  paternityCarryOver: number;
+  paternityCarryOverExpiresAt: string | null;
+  marriage: number;
+  marriageCarryOver: number;
+  marriageCarryOverExpiresAt: string | null;
+  bereavement: number;
+  bereavementCarryOver: number;
+  bereavementCarryOverExpiresAt: string | null;
   sick: number;
+  sickUsed: number;
   permission: number;
+  permissionCarryOver: number;
+  permissionCarryOverExpiresAt: string | null;
+  balanceYear: number;
 };
 
 export type EducationRecord = {

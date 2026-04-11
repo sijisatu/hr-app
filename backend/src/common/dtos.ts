@@ -124,6 +124,9 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   loginPassword?: string | null;
+
+  @IsOptional()
+  leaveBalances?: Record<string, unknown>;
 }
 
 export class UpdateEmployeeDto {
@@ -276,6 +279,9 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsString()
   loginPassword?: string | null;
+
+  @IsOptional()
+  leaveBalances?: Record<string, unknown>;
 }
 
 export class UploadEmployeeDocumentDto {
@@ -350,8 +356,8 @@ export class LeaveRequestDto {
   @IsString()
   employeeName!: string;
 
-  @IsIn(["Leave Request", "Sick Submission", "On Duty Request", "Half Day Leave", "Annual Leave", "Sick Leave", "Permission", "Remote Work"])
-  type!: "Leave Request" | "Sick Submission" | "On Duty Request" | "Half Day Leave" | "Annual Leave" | "Sick Leave" | "Permission" | "Remote Work";
+  @IsIn(["Leave Request", "Sick Submission", "On Duty Request", "Half Day Leave", "Annual Leave", "Religious Leave", "Maternity Leave", "Paternity Leave", "Marriage Leave", "Bereavement Leave", "Sick Leave", "Permission", "Remote Work"])
+  type!: "Leave Request" | "Sick Submission" | "On Duty Request" | "Half Day Leave" | "Annual Leave" | "Religious Leave" | "Maternity Leave" | "Paternity Leave" | "Marriage Leave" | "Bereavement Leave" | "Sick Leave" | "Permission" | "Remote Work";
 
   @IsString()
   startDate!: string;

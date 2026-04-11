@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ChartNoAxesColumn } from "lucide-react";
+import { ArrowRight, ChartNoAxesColumn, WalletCards } from "lucide-react";
 import { actionCards, getEmployeeActionHref } from "@/components/attendance/employee-attendance-workspace";
 
 export function EmployeeAttendanceHub({ showAttendanceReport = false }: { showAttendanceReport?: boolean }) {
   const cards = [
     ...actionCards.map((item) => ({ ...item, href: getEmployeeActionHref(item.key) })),
+    {
+      key: "leave-balance",
+      label: "Leave Balance",
+      description: "Lihat detail sisa cuti per jenis, termasuk carry over dan request pending.",
+      icon: WalletCards,
+      href: "/attendance/leave-balance"
+    },
     ...(showAttendanceReport
       ? [
         {
@@ -31,7 +38,7 @@ export function EmployeeAttendanceHub({ showAttendanceReport = false }: { showAt
       </section>
 
       <section className="page-card p-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           {cards.map((item) => {
             const Icon = item.icon;
             return (

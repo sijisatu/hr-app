@@ -47,13 +47,13 @@ Modul hr-app karyawan:
    - On duty request
    - Sick submission
    - Leave request
-     cuti ada annual, keagamaan, lahiran. tambahin balance setiap cuti di leave request (NEW)
+     cuti ada annual, keagamaan, lahiran, kedukaan. tambahin balance setiap cuti di leave request (DONE)
    - Half day leave
    - Attendance summary
    - Submit overtime (karyawan submit overtime, atasan acc overtime)
    - Semua Records (Summary) disamain kaya attendance records semua
    - Tombol clock in kalo udah disubmit jadi clock out (DONE)
-   - Foto selfie harusnya otomatis ke capture waktu dia submit check-in, terus pilihan employee nya ga usah ada, otomatis sesuai akun yang login aja. (NEW)
+   - Foto selfie harusnya otomatis ke capture waktu dia submit check-in, terus pilihan employee nya ga usah ada, otomatis sesuai akun yang login aja. (DONE)
 
 2. Modul payroll
    - Generate slip gaji
@@ -79,7 +79,7 @@ Modul hr-app HR:
 
 1. Modul Kehadiran
    - Report kehadiran karyawan
-   - Biar bisa liat selfie karyawan clock in (NEW)
+   - Biar bisa liat selfie karyawan clock in (DONE)
 
 2. Modul Employee List
    - Masukin data karyawan termasuk gaji, tunjangan, deduction (bpjs, pajak), akun portal hr (Done)
@@ -99,6 +99,8 @@ Modul hr-app HR:
 5. Dashboard (NY Done)
    - Grafik attendance, grafik jumlah karyawan, grafik payroll (jumlah gaji yang dibayarkan tiap bulan)
 
-6. Modul buat ngatur cuti karyawan (NY Done)
+6. Modul buat ngatur cuti karyawan (Done)
 
 Beresin login page
+
+bikin responsive buat di browser mobile

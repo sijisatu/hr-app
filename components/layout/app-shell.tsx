@@ -30,7 +30,8 @@ const iconMap = {
   Payroll: WalletCards,
   Profile: UserRound,
   Reports: ChartColumn,
-  "Leave Flow": CalendarClock
+  "Leave Flow": CalendarClock,
+  "Leave System": CalendarClock
 };
 
 export function AppShell({ title, subtitle, actions, children, compact = false }: { title: string; subtitle: string; actions?: React.ReactNode; children: React.ReactNode; compact?: boolean }) {

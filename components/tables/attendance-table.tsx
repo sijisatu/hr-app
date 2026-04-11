@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Camera, Clock3, MapPinned, MoreVertical, Search } from "lucide-react";
+import { Camera, Clock3, Eye, MapPinned, Search, X } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import type { AttendanceOverview, AttendanceRecord } from "@/lib/api";
 
@@ -20,6 +20,7 @@ const labelMap = {
 } as const;
 
 const pageSizeOptions = [10, 30, 50, 100] as const;
+const selfieAssetBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
 
 function getMonthKey(timestamp: string) {
   return timestamp.slice(0, 7);
@@ -44,6 +45,7 @@ export function AttendanceTable({
   const [month, setMonth] = useState("all");
   const [status, setStatus] = useState("all");
   const [pageSize, setPageSize] = useState<number>(10);
+  const [previewSelfie, setPreviewSelfie] = useState<{ url: string; name: string } | null>(null);
 
   const metrics = [
     { label: "Checked In Today", value: `${overview.checkedInToday}`, detail: `${overview.openCheckIns} still open` },
@@ -75,6 +77,12 @@ export function AttendanceTable({
   }, [department, logs, month, search, status]);
 
   const visibleLogs = filteredLogs.slice(0, pageSize);
+  const resolveSelfieUrl = (photoUrl: string | null) => {
+    if (!photoUrl) {
+      return null;
+    }
+    return photoUrl.startsWith("http") ? photoUrl : `${selfieAssetBase}${photoUrl}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -159,7 +167,7 @@ export function AttendanceTable({
                 <th className="px-4 pb-2">GPS</th>
                 <th className="px-4 pb-2">Status</th>
                 <th className="px-4 pb-2">Overtime</th>
-                <th className="px-4 pb-2 text-right">Action</th>
+                <th className="px-4 pb-2">Selfie</th>
               </tr>
             </thead>
             <tbody>
@@ -200,10 +208,28 @@ export function AttendanceTable({
                   <td className="px-4 py-4 align-top text-[14px] font-medium text-[var(--text)]">
                     {log.overtimeMinutes > 0 ? `${log.overtimeMinutes} min` : "-"}
                   </td>
-                  <td className="rounded-r-[12px] px-4 py-4 text-right align-top">
-                    <button className="secondary-button !min-h-9 !w-9 !rounded-full !p-0">
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
+                  <td className="rounded-r-[12px] px-4 py-4 align-top">
+                    {resolveSelfieUrl(log.photoUrl) ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewSelfie({ url: resolveSelfieUrl(log.photoUrl) ?? "", name: log.employeeName })}
+                          className="block h-10 w-10 overflow-hidden rounded-[10px] border border-[var(--border)] bg-white"
+                        >
+                          <img src={resolveSelfieUrl(log.photoUrl) ?? ""} alt={`${log.employeeName} selfie`} className="h-full w-full object-cover" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewSelfie({ url: resolveSelfieUrl(log.photoUrl) ?? "", name: log.employeeName })}
+                          className="secondary-button !min-h-9 !px-3 !py-2"
+                        >
+                          <Eye className="h-4 w-4" />
+                          View
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[13px] text-[var(--text-muted)]">No selfie</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -217,6 +243,27 @@ export function AttendanceTable({
           ) : null}
         </div>
       </div>
+
+      {previewSelfie ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4">
+          <div className="w-full max-w-3xl overflow-hidden rounded-[24px] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-5">
+              <div>
+                <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Selfie Preview</p>
+                <p className="mt-1 text-[14px] text-[var(--text-muted)]">{previewSelfie.name}</p>
+              </div>
+              <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setPreviewSelfie(null)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="bg-[var(--surface-muted)] p-4">
+              <div className="max-h-[70vh] overflow-auto rounded-[16px] bg-slate-100 p-2">
+                <img src={previewSelfie.url} alt={`${previewSelfie.name} selfie`} className="h-auto w-full rounded-[12px] object-contain" />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

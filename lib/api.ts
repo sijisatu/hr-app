@@ -6,8 +6,29 @@ export type ApiResponse<T> = {
 
 export type LeaveBalance = {
   annual: number;
+  annualCarryOver: number;
+  annualCarryOverExpiresAt: string | null;
+  religious: number;
+  religiousCarryOver: number;
+  religiousCarryOverExpiresAt: string | null;
+  maternity: number;
+  maternityCarryOver: number;
+  maternityCarryOverExpiresAt: string | null;
+  paternity: number;
+  paternityCarryOver: number;
+  paternityCarryOverExpiresAt: string | null;
+  marriage: number;
+  marriageCarryOver: number;
+  marriageCarryOverExpiresAt: string | null;
+  bereavement: number;
+  bereavementCarryOver: number;
+  bereavementCarryOverExpiresAt: string | null;
   sick: number;
+  sickUsed: number;
   permission: number;
+  permissionCarryOver: number;
+  permissionCarryOverExpiresAt: string | null;
+  balanceYear: number;
 };
 
 export type Gender = "male" | "female";
@@ -164,6 +185,11 @@ export type LeaveType =
   | "On Duty Request"
   | "Half Day Leave"
   | "Annual Leave"
+  | "Religious Leave"
+  | "Maternity Leave"
+  | "Paternity Leave"
+  | "Marriage Leave"
+  | "Bereavement Leave"
   | "Sick Leave"
   | "Permission"
   | "Remote Work";
@@ -326,7 +352,7 @@ export async function createEmployee(payload: {
   return apiPostJson<EmployeeRecord>("/api/employees", payload);
 }
 
-export async function updateEmployee(id: string, payload: Partial<Omit<EmployeeRecord, "id" | "employeeNumber" | "leaveBalances">>) {
+export async function updateEmployee(id: string, payload: Partial<Omit<EmployeeRecord, "id" | "employeeNumber">>) {
   return apiPatchJson<EmployeeRecord>(`/api/employees/${id}`, payload);
 }
 
@@ -615,8 +641,20 @@ export function formatLeaveStatus(status: LeaveRecord["status"]) {
 
 export function formatLeaveType(type: LeaveType) {
   switch (type) {
+    case "Leave Request":
+      return "Annual Leave";
     case "Annual Leave":
-      return "Leave Request";
+      return "Annual Leave";
+    case "Religious Leave":
+      return "Religious Leave";
+    case "Maternity Leave":
+      return "Maternity Leave";
+    case "Paternity Leave":
+      return "Paternity Leave";
+    case "Marriage Leave":
+      return "Marriage Leave";
+    case "Bereavement Leave":
+      return "Bereavement Leave";
     case "Sick Leave":
       return "Sick Submission";
     case "Permission":

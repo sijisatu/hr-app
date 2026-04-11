@@ -58,6 +58,17 @@ const siteDirectory: Record<string, SiteConfig> = {
 
 const NON_SHIFT_START = "09:00";
 const NON_SHIFT_END = "17:00";
+const currentBalanceYear = new Date().getFullYear();
+const carryOverTypes = ["annual", "religious", "maternity", "paternity", "marriage", "bereavement", "permission"] as const;
+const defaultLeaveAllocations = {
+  annual: 12,
+  religious: 2,
+  maternity: 90,
+  paternity: 2,
+  marriage: 3,
+  bereavement: 2,
+  permission: 4
+} as const;
 
 @Injectable()
 export class AppService {
@@ -93,7 +104,7 @@ export class AppService {
 
   private normalizeEmployee(employee: Partial<EmployeeRecord> & Record<string, unknown>, index: number): EmployeeRecord {
     const padded = String(index + 1).padStart(3, "0");
-    const leaveBalances = (employee.leaveBalances as EmployeeRecord["leaveBalances"] | undefined) ?? { annual: 12, sick: 10, permission: 4 };
+    const leaveBalances = this.normalizeLeaveBalances(employee.leaveBalances as Partial<EmployeeRecord["leaveBalances"]> | undefined);
     const educationHistory = Array.isArray(employee.educationHistory) ? employee.educationHistory as EducationRecord[] : [];
     const workExperiences = Array.isArray(employee.workExperiences) ? employee.workExperiences as WorkExperienceRecord[] : [];
     const documents = Array.isArray(employee.documents) ? employee.documents as EmployeeDocumentRecord[] : [];
@@ -160,11 +171,7 @@ export class AppService {
         uploadedAt: String(entry.uploadedAt ?? new Date().toISOString()),
         notes: String(entry.notes ?? "")
       })),
-      leaveBalances: {
-        annual: Number(leaveBalances.annual ?? 12),
-        sick: Number(leaveBalances.sick ?? 10),
-        permission: Number(leaveBalances.permission ?? 4)
-      }
+      leaveBalances
     };
   }
 
@@ -230,15 +237,18 @@ export class AppService {
 
   private normalizeLeave(record: Partial<LeaveRecord> & Record<string, unknown>, employees: EmployeeRecord[], index: number): LeaveRecord {
     const employee = employees.find((entry) => entry.id === String(record.userId ?? ""));
-    const type = (record.type as LeaveType | undefined) ?? "Leave Request";
-    const daysRequested = Number(record.daysRequested ?? this.calculateLeaveDays(String(record.startDate ?? new Date().toISOString().slice(0, 10)), String(record.endDate ?? new Date().toISOString().slice(0, 10))));
+    const rawType = (record.type as LeaveType | undefined) ?? "Leave Request";
+    const type: LeaveType = rawType === "Leave Request" ? "Annual Leave" : rawType;
+    const startDate = String(record.startDate ?? new Date().toISOString().slice(0, 10));
+    const endDate = String(record.endDate ?? new Date().toISOString().slice(0, 10));
+    const daysRequested = Number(record.daysRequested ?? this.getRequestedDays(type, startDate, endDate));
     return {
       id: String(record.id ?? `leave-${String(index + 1).padStart(3, "0")}`),
       userId: String(record.userId ?? employee?.id ?? `emp-${String(index + 1).padStart(3, "0")}`),
       employeeName: String(record.employeeName ?? employee?.name ?? "Unknown Employee"),
       type,
-      startDate: String(record.startDate ?? new Date().toISOString().slice(0, 10)),
-      endDate: String(record.endDate ?? new Date().toISOString().slice(0, 10)),
+      startDate,
+      endDate,
       reason: String(record.reason ?? "Operational request"),
       status: (record.status as LeaveRecord["status"]) ?? "pending-manager",
       approverFlow: Array.isArray(record.approverFlow) ? record.approverFlow.map((entry) => String(entry)) : ["Manager Pending", "HR Pending"],
@@ -377,6 +387,13 @@ export class AppService {
     return Math.max(1, diff + 1);
   }
 
+  private getRequestedDays(type: LeaveType, startDate: string, endDate: string) {
+    if (type === "Half Day Leave") {
+      return 0.5;
+    }
+    return this.calculateLeaveDays(startDate, endDate);
+  }
+
 
   private buildOnDutyAttendanceRecords(employee: EmployeeRecord, leave: LeaveRecord, existing: AttendanceRecord[]) {
     const location = leave.type === "Remote Work" ? "Remote - Yogyakarta" : employee.workLocation;
@@ -419,35 +436,130 @@ export class AppService {
 
     return records;
   }
+
+  private normalizeLeaveBalances(raw?: Partial<EmployeeRecord["leaveBalances"]>) {
+    const balanceYear = Number(raw?.balanceYear ?? currentBalanceYear);
+    const normalized: EmployeeRecord["leaveBalances"] = {
+      annual: Number(raw?.annual ?? defaultLeaveAllocations.annual),
+      annualCarryOver: Number(raw?.annualCarryOver ?? 0),
+      annualCarryOverExpiresAt: raw?.annualCarryOverExpiresAt ?? null,
+      religious: Number(raw?.religious ?? defaultLeaveAllocations.religious),
+      religiousCarryOver: Number(raw?.religiousCarryOver ?? 0),
+      religiousCarryOverExpiresAt: raw?.religiousCarryOverExpiresAt ?? null,
+      maternity: Number(raw?.maternity ?? defaultLeaveAllocations.maternity),
+      maternityCarryOver: Number(raw?.maternityCarryOver ?? 0),
+      maternityCarryOverExpiresAt: raw?.maternityCarryOverExpiresAt ?? null,
+      paternity: Number(raw?.paternity ?? defaultLeaveAllocations.paternity),
+      paternityCarryOver: Number(raw?.paternityCarryOver ?? 0),
+      paternityCarryOverExpiresAt: raw?.paternityCarryOverExpiresAt ?? null,
+      marriage: Number(raw?.marriage ?? defaultLeaveAllocations.marriage),
+      marriageCarryOver: Number(raw?.marriageCarryOver ?? 0),
+      marriageCarryOverExpiresAt: raw?.marriageCarryOverExpiresAt ?? null,
+      bereavement: Number(raw?.bereavement ?? defaultLeaveAllocations.bereavement),
+      bereavementCarryOver: Number(raw?.bereavementCarryOver ?? 0),
+      bereavementCarryOverExpiresAt: raw?.bereavementCarryOverExpiresAt ?? null,
+      sick: Number(raw?.sick ?? 0),
+      sickUsed: Number(raw?.sickUsed ?? 0),
+      permission: Number(raw?.permission ?? defaultLeaveAllocations.permission),
+      permissionCarryOver: Number(raw?.permissionCarryOver ?? 0),
+      permissionCarryOverExpiresAt: raw?.permissionCarryOverExpiresAt ?? null,
+      balanceYear
+    };
+
+    if (normalized.balanceYear < currentBalanceYear) {
+      for (const leaveType of carryOverTypes) {
+        normalized[`${leaveType}CarryOver` as const] = normalized.balanceYear === currentBalanceYear - 1 ? Number(normalized[leaveType] ?? 0) : 0;
+        normalized[`${leaveType}CarryOverExpiresAt` as const] = normalized.balanceYear === currentBalanceYear - 1 ? `${currentBalanceYear}-12-31` : null;
+        normalized[leaveType] = 0;
+      }
+      normalized.balanceYear = currentBalanceYear;
+    }
+
+    return normalized;
+  }
+
+  private leaveBalanceKeyForType(type: LeaveType): typeof carryOverTypes[number] | null {
+    switch (type) {
+      case "Leave Request":
+      case "Annual Leave":
+        return "annual";
+      case "Religious Leave":
+        return "religious";
+      case "Maternity Leave":
+        return "maternity";
+      case "Paternity Leave":
+        return "paternity";
+      case "Marriage Leave":
+        return "marriage";
+      case "Bereavement Leave":
+        return "bereavement";
+      case "Half Day Leave":
+        return "annual";
+      case "Permission":
+        return "permission";
+      default:
+        return null;
+    }
+  }
+
+  private availableLeaveBalance(
+    balances: EmployeeRecord["leaveBalances"],
+    key: typeof carryOverTypes[number]
+  ) {
+    return Number((balances[key] + balances[`${key}CarryOver` as const]).toFixed(1));
+  }
+
+  private consumeLeaveBalance(
+    balances: EmployeeRecord["leaveBalances"],
+    key: typeof carryOverTypes[number],
+    amount: number
+  ) {
+    const carryKey = `${key}CarryOver` as const;
+    const availableCarry = Number(balances[carryKey] ?? 0);
+    const remaining = Math.max(0, amount - availableCarry);
+    balances[carryKey] = Math.max(0, Number((availableCarry - amount).toFixed(1)));
+    balances[key] = Math.max(0, Number((balances[key] - remaining).toFixed(1)));
+  }
+
   private describeBalance(employee: EmployeeRecord | undefined, type: LeaveType, daysRequested: number) {
     if (!employee) {
       return `${daysRequested} day request`;
     }
+    const leaveKey = this.leaveBalanceKeyForType(type);
+    const available = leaveKey ? this.availableLeaveBalance(employee.leaveBalances, leaveKey) : 0;
     switch (type) {
       case "Leave Request":
       case "Annual Leave":
-        return `Annual leave ${employee.leaveBalances.annual} days, ${daysRequested} requested`;
+        return `Annual leave ${available} days available, ${daysRequested} requested`;
+      case "Religious Leave":
+        return `Religious leave ${available} days available, ${daysRequested} requested`;
+      case "Maternity Leave":
+        return `Maternity leave ${available} days available, ${daysRequested} requested`;
+      case "Paternity Leave":
+        return `Paternity leave ${available} days available, ${daysRequested} requested`;
+      case "Marriage Leave":
+        return `Marriage leave ${available} days available, ${daysRequested} requested`;
+      case "Bereavement Leave":
+        return `Bereavement leave ${available} days available, ${daysRequested} requested`;
       case "Sick Submission":
       case "Sick Leave":
         return `Sick submission recorded for ${daysRequested} day(s)`;
       case "Half Day Leave":
-        return `Permission quota ${employee.leaveBalances.permission} half-day request`;
+        return `Annual leave ${this.availableLeaveBalance(employee.leaveBalances, "annual")} days available, 0.5 requested`;
       case "Permission":
-        return `Permission quota ${employee.leaveBalances.permission} days, ${daysRequested} requested`;
+        return `Permission quota ${this.availableLeaveBalance(employee.leaveBalances, "permission")} days available, ${daysRequested} requested`;
       default:
         return `Policy-based workflow, ${daysRequested} day request`;
     }
   }
 
   private applyLeaveBalance(employee: EmployeeRecord, type: LeaveType, daysRequested: number) {
-    if (type === "Leave Request" || type === "Annual Leave") {
-      employee.leaveBalances.annual = Math.max(0, employee.leaveBalances.annual - daysRequested);
+    const leaveKey = this.leaveBalanceKeyForType(type);
+    if (leaveKey) {
+      this.consumeLeaveBalance(employee.leaveBalances, leaveKey, daysRequested);
     }
-    if (type === "Permission") {
-      employee.leaveBalances.permission = Math.max(0, employee.leaveBalances.permission - daysRequested);
-    }
-    if (type === "Half Day Leave") {
-      employee.leaveBalances.permission = Math.max(0, employee.leaveBalances.permission - 0.5);
+    if (type === "Sick Submission" || type === "Sick Leave") {
+      employee.leaveBalances.sickUsed = Number((employee.leaveBalances.sickUsed + daysRequested).toFixed(1));
     }
   }
 
@@ -455,19 +567,30 @@ export class AppService {
     if (!employee) {
       return "Balance updated";
     }
+    const leaveKey = this.leaveBalanceKeyForType(type);
     switch (type) {
       case "Leave Request":
       case "Annual Leave":
-        return `${employee.leaveBalances.annual} annual leave days remaining`;
+        return `${this.availableLeaveBalance(employee.leaveBalances, "annual")} annual leave days remaining`;
+      case "Religious Leave":
+        return `${this.availableLeaveBalance(employee.leaveBalances, "religious")} religious leave days remaining`;
+      case "Maternity Leave":
+        return `${this.availableLeaveBalance(employee.leaveBalances, "maternity")} maternity leave days remaining`;
+      case "Paternity Leave":
+        return `${this.availableLeaveBalance(employee.leaveBalances, "paternity")} paternity leave days remaining`;
+      case "Marriage Leave":
+        return `${this.availableLeaveBalance(employee.leaveBalances, "marriage")} marriage leave days remaining`;
+      case "Bereavement Leave":
+        return `${this.availableLeaveBalance(employee.leaveBalances, "bereavement")} bereavement leave days remaining`;
       case "Sick Submission":
       case "Sick Leave":
-        return "Sick leave recorded without balance limit";
+        return `${employee.leaveBalances.sickUsed} sick leave use(s) recorded`;
       case "Half Day Leave":
-        return `${employee.leaveBalances.permission} permission days remaining after half-day request`;
+        return `${this.availableLeaveBalance(employee.leaveBalances, "annual")} annual leave days remaining after half-day request`;
       case "Permission":
-        return `${employee.leaveBalances.permission} permission days remaining`;
+        return `${this.availableLeaveBalance(employee.leaveBalances, "permission")} permission days remaining`;
       default:
-        return "Policy-based confirmed";
+        return leaveKey ? `${this.availableLeaveBalance(employee.leaveBalances, leaveKey)} days remaining` : "Policy-based confirmed";
     }
   }
 
@@ -662,7 +785,7 @@ export class AppService {
       loginUsername: payload.appLoginEnabled === false ? null : (payload.loginUsername?.trim() || payload.nik),
       loginPassword: payload.appLoginEnabled === false ? null : (payload.loginPassword?.trim() || "employee123"),
       documents: [],
-      leaveBalances: { annual: 12, sick: 10, permission: 4 }
+      leaveBalances: this.normalizeLeaveBalances(payload.leaveBalances as Partial<EmployeeRecord["leaveBalances"]> | undefined)
     };
     db.employees.unshift(employee);
     await this.writeDb(db);
@@ -710,6 +833,9 @@ export class AppService {
     }
     if (payload.loginPassword !== undefined) {
       employee.loginPassword = payload.loginPassword?.trim() || null;
+    }
+    if (payload.leaveBalances !== undefined) {
+      employee.leaveBalances = this.normalizeLeaveBalances(payload.leaveBalances as Partial<EmployeeRecord["leaveBalances"]>);
     }
     await this.writeDb(db);
     return employee;
@@ -994,7 +1120,7 @@ export class AppService {
   }  async requestLeave(payload: LeaveRequestDto) {
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === payload.userId);
-    const daysRequested = this.calculateLeaveDays(payload.startDate, payload.endDate);
+    const daysRequested = this.getRequestedDays(payload.type, payload.startDate, payload.endDate);
     const leave: LeaveRecord = {
       id: `leave-${randomUUID().slice(0, 8)}`,
       requestedAt: new Date().toISOString(),

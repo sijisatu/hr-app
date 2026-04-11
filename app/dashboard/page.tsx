@@ -5,6 +5,7 @@ import { AttendanceChart } from "@/components/dashboard/attendance-chart";
 import { ActivityPanel } from "@/components/dashboard/activity-panel";
 import { IntegrityCard } from "@/components/dashboard/integrity-card";
 import { EmployeeDashboardOverview } from "@/components/dashboard/employee-dashboard-overview";
+import { HrDashboardInsights } from "@/components/dashboard/hr-dashboard-insights";
 import { requireSession } from "@/lib/auth";
 import {
   deriveActivityStream,
@@ -23,6 +24,7 @@ export default async function DashboardPage() {
   ]);
 
   const isEmployeeView = session.role === "employee" || session.role === "manager";
+  const isHrView = session.role === "hr";
   const scopedLogs = isEmployeeView ? attendanceLogs.filter((log) => log.userId === session.id) : attendanceLogs;
   const scopedLeaves = isEmployeeView ? leaveRequests.filter((leave) => leave.userId === session.id) : leaveRequests;
 
@@ -58,6 +60,15 @@ export default async function DashboardPage() {
 
         {isEmployeeView ? (
           <EmployeeDashboardOverview logs={scopedLogs} leaves={scopedLeaves} />
+        ) : isHrView ? (
+          <div className="space-y-6">
+            <HrDashboardInsights logs={scopedLogs} totalEmployees={summary.employees} />
+            <ActivityPanel
+              entries={activity}
+              title="Latest History Activity"
+              subtitle="Riwayat aktivitas attendance terbaru lintas karyawan."
+            />
+          </div>
         ) : (
           <div className="content-grid">
             <div className="space-y-6">

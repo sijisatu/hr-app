@@ -2,13 +2,21 @@ import { Clock3 } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import type { ActivityItem } from "@/lib/api";
 
-export function ActivityPanel({ entries }: { entries: ActivityItem[] }) {
+export function ActivityPanel({
+  entries,
+  title = "Latest History Activity",
+  subtitle = "Recent attendance events"
+}: {
+  entries: ActivityItem[];
+  title?: string;
+  subtitle?: string;
+}) {
   return (
     <div className="page-card overflow-hidden p-0">
       <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-5">
         <div>
-          <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Activity Stream</p>
-          <p className="mt-1 text-[14px] text-[var(--text-muted)]">Recent attendance events</p>
+          <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{title}</p>
+          <p className="mt-1 text-[14px] text-[var(--text-muted)]">{subtitle}</p>
         </div>
         <StatusPill tone="live">Live</StatusPill>
       </div>

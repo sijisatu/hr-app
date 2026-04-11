@@ -243,7 +243,7 @@ export function EmployeeProfileWorkspace({
 
               <div className="grid gap-4 md:grid-cols-4">
                 <MiniCard label="Allowance" value={money(employee.allowance)} note={`${selectedAllowances} komponen terpilih`} />
-                <MiniCard label="Annual Leave" value={`${employee.leaveBalances.annual} days`} note="Sisa annual leave" />
+                <MiniCard label="Annual Leave" value={`${employee.leaveBalances.annual + employee.leaveBalances.annualCarryOver} days`} note="Current + carry over annual leave" />
                 <MiniCard label="Sick Leave Used" value={`${sickLeaveUsed} times`} note="Ditampilkan sebagai jumlah pemakaian" />
                 <MiniCard label="Permission" value={`${employee.leaveBalances.permission} days`} note="Sisa izin" />
               </div>

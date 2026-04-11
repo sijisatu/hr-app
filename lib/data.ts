@@ -12,7 +12,7 @@ export const navItems: NavItem[] = [
   { href: "/attendance", label: "Employee Attendance", roles: ["admin", "hr", "manager", "employee"] },
   { href: "/payroll", label: "Payroll", roles: ["admin", "hr", "manager", "employee"] },  { href: "/profile", label: "Profile", roles: ["manager", "employee"] },
   { href: "/reports", label: "Reports", roles: ["admin", "hr"] },
-  { href: "/leave", label: "Leave Flow", roles: ["admin", "hr"] }
+  { href: "/leave", label: "Leave System", roles: ["admin", "hr"] }
 ];
 
 
