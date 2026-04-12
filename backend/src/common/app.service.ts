@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import * as XLSX from "xlsx";
 import { seedData } from "../data/seed";
 import {
   AttendanceRecord,
@@ -1293,9 +1294,40 @@ export class AppService {
   }
 
   async generateExport(payload: CreateExportDto) {
-    const content = payload.content ?? "Generated from PulsePresence local export service.";
-    const fileName = `${payload.reportName.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.txt`;
+    const extension = (payload.fileExtension ?? (Array.isArray(payload.columns) || Array.isArray(payload.rows) ? "xlsx" : "txt"))
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "") || "txt";
+
+    const fileName = `${payload.reportName.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.${extension}`;
     const fullPath = path.join(this.storageRoot, "exports", fileName);
+
+    if (extension === "xlsx") {
+      const columns = Array.isArray(payload.columns) ? payload.columns.map((item) => String(item)) : [];
+      const rows = Array.isArray(payload.rows)
+        ? payload.rows
+            .filter((entry): entry is unknown[] => Array.isArray(entry))
+            .map((row) => row.map((cell) => (cell == null ? "" : String(cell))))
+        : [];
+      const aoa = columns.length > 0 ? [columns, ...rows] : rows;
+      const sheet = XLSX.utils.aoa_to_sheet(aoa);
+
+      if (columns.length > 0) {
+        sheet["!cols"] = columns.map((column, index) => {
+          const maxLength = Math.max(
+            column.length,
+            ...rows.map((row) => String(row[index] ?? "").length)
+          );
+          return { wch: Math.min(Math.max(maxLength + 2, 12), 40) };
+        });
+      }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, (payload.sheetName?.trim() || "Report").slice(0, 31));
+      XLSX.writeFile(workbook, fullPath, { bookType: "xlsx" });
+      return { fileName, fileUrl: `/storage/exports/${fileName}` };
+    }
+
+    const content = payload.content ?? "Generated from PulsePresence local export service.";
     await writeFile(fullPath, content, "utf8");
     return { fileName, fileUrl: `/storage/exports/${fileName}` };
   }

@@ -593,6 +593,20 @@ export class CreateExportDto {
 
   @IsOptional()
   @IsString()
+  sheetName?: string;
+
+  @IsOptional()
+  @IsString()
+  fileExtension?: string;
+
+  @IsOptional()
+  columns?: unknown[];
+
+  @IsOptional()
+  rows?: unknown[];
+
+  @IsOptional()
+  @IsString()
   content?: string;
 }
 

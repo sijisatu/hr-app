@@ -93,7 +93,7 @@ Modul hr-app HR:
    - sebelum submit ke bank bikin approval 2 step, dari hrd ke dan manager hrd
    - kita mau bikin sistem yang pake payroll dan ga pake payroll. sistem yang ga pake payroll semua financial things disembunyiin, yang pake payroll tampilin semua financial things
 
-4. Modul report (NY Done)
+4. Modul report (Done)
    - Generate report attendance, employee list, payroll
    - Grafik attendance, grafik jumlah karyawan
 5. Dashboard (Done)

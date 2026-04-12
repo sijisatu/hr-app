@@ -1,172 +1,333 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Download, LoaderCircle } from "lucide-react";
-import type { AttendanceSeriesItem } from "@/lib/api";
-import { BarOverview } from "@/components/reports/bar-overview";
+import { Download, FileSpreadsheet, LoaderCircle, X } from "lucide-react";
+import { InteractiveReportCharts } from "@/components/reports/interactive-report-charts";
 import { money } from "@/lib/payroll";
 import { exportReport, toAssetUrl, type ReportCenterOverview, type ReportSnapshotMetric } from "@/lib/reporting";
 
 type ReportCenterProps = {
   overview: ReportCenterOverview;
-  series: AttendanceSeriesItem[];
 };
 
-export function ReportCenter({ overview, series }: ReportCenterProps) {
+type ReportKey = "attendance" | "employees" | "payroll";
+
+const reportNameMap: Record<ReportKey, string> = {
+  attendance: "Attendance Report",
+  employees: "Employee List Report",
+  payroll: "Payroll Report"
+};
+
+export function ReportCenter({ overview }: ReportCenterProps) {
   const [message, setMessage] = useState<string | null>(null);
+  const [previewKey, setPreviewKey] = useState<ReportKey | null>(null);
 
   const exportMutation = useMutation({
-    mutationFn: (payload: { reportName: string; content: string }) => exportReport(payload),
-    onSuccess: (result) => setMessage(`Report siap di-download: ${toAssetUrl(result.fileUrl)}`),
+    mutationFn: (payload: {
+      reportName: string;
+      fileExtension: "xlsx";
+      sheetName: string;
+      columns: string[];
+      rows: (string | number | null)[][];
+    }) => exportReport(payload),
     onError: (error: Error) => setMessage(error.message)
   });
 
-  const exportPayloads = useMemo(
-    () => ({
-      attendance: {
-        reportName: "Attendance Report",
-        content: [
-          "Attendance Report",
-          ...overview.attendance.metrics.map((item) => `${item.label}: ${item.value} (${item.note})`),
-          ...overview.attendance.topDepartments.map((item) => `Department ${item.name}: ${item.value}%`)
-        ].join("\n")
-      },
-      employees: {
-        reportName: "Employee Report",
-        content: [
-          "Employee Report",
-          ...overview.employees.metrics.map((item) => `${item.label}: ${item.value} (${item.note})`),
-          ...overview.employees.departments.map((item) => `${item.name}: ${item.headcount} employees`)
-        ].join("\n")
-      },
-      payroll: {
-        reportName: "Payroll Report",
-        content: [
-          "Payroll Report",
-          ...overview.payroll.metrics.map((item) => `${item.label}: ${item.value} (${item.note})`),
-          ...overview.payroll.recentRuns.map((item) => `${item.periodLabel}: ${money(item.totalNet)} net for ${item.employeeCount} employees`)
-        ].join("\n")
+  const reportConfig = (key: ReportKey) => {
+    if (key === "employees") {
+      return {
+        reportName: reportNameMap[key],
+        fileExtension: "xlsx" as const,
+        sheetName: "Employee List",
+        columns: ["EMPLOYEE NUMBER", "NAME", "DEPARTMENT", "POSITION", "STATUS", "JOIN DATE"],
+        rows: overview.employees.list.map((item) => [
+          item.employeeNumber,
+          item.name,
+          item.department,
+          item.position,
+          item.status,
+          item.joinDate
+        ])
+      };
+    }
+
+    if (key === "attendance") {
+      return {
+        reportName: reportNameMap[key],
+        fileExtension: "xlsx" as const,
+        sheetName: "Attendance",
+        columns: ["EMPLOYEE", "DESCRIPTION", "CHECK WINDOW", "GPS", "STATUS", "OVERTIME"],
+        rows: overview.attendance.list.map((item) => [
+          item.employee,
+          item.description,
+          item.checkWindow,
+          item.gps,
+          item.status,
+          item.overtime
+        ])
+      };
+    }
+
+    return {
+      reportName: reportNameMap[key],
+      fileExtension: "xlsx" as const,
+      sheetName: "Payroll",
+      columns: ["EMPLOYEE", "PERIOD", "GROSS", "TAX", "NET"],
+      rows: overview.payroll.list.map((item) => [item.employee, item.period, item.gross, item.tax, item.net])
+    };
+  };
+
+  const handleDownloadReport = (key: ReportKey) => {
+    exportMutation.mutate(
+      reportConfig(key),
+      {
+        onSuccess: (result) => {
+          const fileUrl = toAssetUrl(result.fileUrl);
+          setMessage(fileUrl ? `Report siap di-download: ${fileUrl}` : "Report berhasil dibuat.");
+          if (fileUrl) {
+            window.open(fileUrl, "_blank", "noopener,noreferrer");
+          }
+          setPreviewKey(null);
+        }
       }
-    }),
-    [overview]
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-6">
-          <BarOverview series={series} />
-
-          <ModuleSection
-            title="Attendance Report"
-            subtitle="Punctuality, GPS compliance, department performance, and operational anomalies."
-            metrics={overview.attendance.metrics}
-            action={<ExportButton pending={exportMutation.isPending} onClick={() => exportMutation.mutate(exportPayloads.attendance)} />}
-          >
-            <div className="grid gap-6 lg:grid-cols-2">
-              <MetricListCard title="Top Departments">
-                {overview.attendance.topDepartments.map((item) => (
-                  <div key={item.name}>
-                    <div className="flex items-center justify-between text-[14px]">
-                      <span className="font-medium text-[var(--text)]">{item.name}</span>
-                      <span className="text-[var(--text-muted)]">{item.value}%</span>
-                    </div>
-                    <div className="mt-2 h-2 rounded-full bg-[var(--surface-soft)]">
-                      <div className="h-2 rounded-full bg-[var(--primary)]" style={{ width: `${item.value}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </MetricListCard>
-
-              <MetricListCard title="Anomalies">
-                {overview.attendance.anomalies.map((item) => (
-                  <div key={item.title} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
-                    <p className="text-[15px] font-semibold text-[var(--text)]">{item.title}</p>
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.note}</p>
-                  </div>
-                ))}
-              </MetricListCard>
-            </div>
-          </ModuleSection>
-
-          <ModuleSection
-            title="Employee Report"
-            subtitle="Org structure, contract monitoring, and headcount mix."
-            metrics={overview.employees.metrics}
-            action={<ExportButton pending={exportMutation.isPending} onClick={() => exportMutation.mutate(exportPayloads.employees)} />}
-          >
-            <div className="grid gap-6 lg:grid-cols-2">
-              <MetricListCard title="Contract Alerts">
-                {overview.employees.contractAlerts.map((item) => (
-                  <div key={`${item.employeeName}-${item.status}`} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
-                    <p className="text-[15px] font-semibold text-[var(--text)]">{item.employeeName}</p>
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.status} | {item.note}</p>
-                  </div>
-                ))}
-              </MetricListCard>
-
-              <MetricListCard title="Department Headcount">
-                {overview.employees.departments.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
-                    <span className="text-[14px] font-medium text-[var(--text)]">{item.name}</span>
-                    <span className="text-[14px] font-semibold text-[var(--primary)]">{item.headcount}</span>
-                  </div>
-                ))}
-              </MetricListCard>
-            </div>
-          </ModuleSection>
-
-          <ModuleSection
-            title="Payroll Report"
-            subtitle="Pay run monitoring, payout totals, and high-value payslip visibility."
-            metrics={overview.payroll.metrics}
-            action={<ExportButton pending={exportMutation.isPending} onClick={() => exportMutation.mutate(exportPayloads.payroll)} />}
-          >
-            <div className="grid gap-6 lg:grid-cols-2">
-              <MetricListCard title="Recent Pay Runs">
-                {overview.payroll.recentRuns.map((item) => (
-                  <div key={item.periodLabel} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
-                    <p className="text-[15px] font-semibold text-[var(--text)]">{item.periodLabel}</p>
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.status} | {item.employeeCount} employees | {money(item.totalNet)}</p>
-                  </div>
-                ))}
-              </MetricListCard>
-
-              <MetricListCard title="Top Net Pay">
-                {overview.payroll.topEarners.map((item) => (
-                  <div key={item.employeeName} className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-semibold text-[var(--text)]">{item.employeeName}</p>
-                      <p className="mt-1 text-[12px] text-[var(--text-muted)]">{item.department}</p>
-                    </div>
-                    <span className="text-[14px] font-semibold text-[var(--primary)]">{money(item.netPay)}</span>
-                  </div>
-                ))}
-              </MetricListCard>
-            </div>
-          </ModuleSection>
+      <div className="page-card p-5 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Generate HR Reports</p>
+            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Klik report untuk preview data dulu, lalu download file Excel.</p>
+          </div>
+          <FileSpreadsheet className="h-7 w-7 text-[var(--primary)]" />
         </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <button className="primary-button w-full" disabled={exportMutation.isPending} onClick={() => setPreviewKey("attendance")}>
+            <Download className="h-4 w-4" />
+            Attendance Report
+          </button>
+          <button className="primary-button w-full" disabled={exportMutation.isPending} onClick={() => setPreviewKey("employees")}>
+            <Download className="h-4 w-4" />
+            Employee List Report
+          </button>
+          <button className="primary-button w-full" disabled={exportMutation.isPending} onClick={() => setPreviewKey("payroll")}>
+            <Download className="h-4 w-4" />
+            Payroll Report
+          </button>
+        </div>
+      </div>
 
-        <aside className="space-y-6">
-          <div className="page-card p-6">
-            <p className="section-title text-[22px] font-semibold text-[var(--primary)]">Export Center</p>
-            <div className="mt-5 space-y-4">
-              {overview.exports.map((item) => (
-                <div key={item.key} className="panel-muted p-4">
-                  <p className="text-[15px] font-semibold text-[var(--text)]">{item.label}</p>
-                  <p className="mt-1 text-[13px] leading-5 text-[var(--text-muted)]">{item.description}</p>
-                  <button className="secondary-button mt-4 w-full" disabled={exportMutation.isPending} onClick={() => exportMutation.mutate(exportPayloads[item.key])}>
-                    {exportMutation.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    Export Now
-                  </button>
+      <InteractiveReportCharts attendance={overview.charts.attendance} employeeCount={overview.charts.employeeCount} />
+
+      <div className="space-y-6">
+        <ModuleSection
+          title="Attendance Report"
+          subtitle="Punctuality, GPS compliance, department performance, and operational anomalies."
+          metrics={overview.attendance.metrics}
+          action={<ExportButton pending={exportMutation.isPending} onClick={() => setPreviewKey("attendance")} />}
+        >
+          <div className="grid gap-6 lg:grid-cols-2">
+            <MetricListCard title="Top Departments">
+              {overview.attendance.topDepartments.map((item) => (
+                <div key={item.name}>
+                  <div className="flex items-center justify-between text-[14px]">
+                    <span className="font-medium text-[var(--text)]">{item.name}</span>
+                    <span className="text-[var(--text-muted)]">{item.value}%</span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-[var(--surface-soft)]">
+                    <div className="h-2 rounded-full bg-[var(--primary)]" style={{ width: `${item.value}%` }} />
+                  </div>
                 </div>
               ))}
-            </div>
-          </div>
+            </MetricListCard>
 
-          {message ? <div className="page-card p-4 text-[14px] text-[var(--text-muted)]">{message}</div> : null}
-        </aside>
+            <MetricListCard title="Anomalies">
+              {overview.attendance.anomalies.map((item) => (
+                <div key={item.title} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
+                  <p className="text-[15px] font-semibold text-[var(--text)]">{item.title}</p>
+                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.note}</p>
+                </div>
+              ))}
+            </MetricListCard>
+          </div>
+        </ModuleSection>
+
+        <ModuleSection
+          title="Employee Report"
+          subtitle="Org structure, contract monitoring, and headcount mix."
+          metrics={overview.employees.metrics}
+          action={<ExportButton pending={exportMutation.isPending} onClick={() => setPreviewKey("employees")} />}
+        >
+          <div className="grid gap-6 lg:grid-cols-2">
+            <MetricListCard title="Contract Alerts">
+              {overview.employees.contractAlerts.map((item) => (
+                <div key={`${item.employeeName}-${item.status}`} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
+                  <p className="text-[15px] font-semibold text-[var(--text)]">{item.employeeName}</p>
+                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.status} | {item.note}</p>
+                </div>
+              ))}
+            </MetricListCard>
+
+            <MetricListCard title="Department Headcount">
+              {overview.employees.departments.map((item) => (
+                <div key={item.name} className="flex items-center justify-between rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
+                  <span className="text-[14px] font-medium text-[var(--text)]">{item.name}</span>
+                  <span className="text-[14px] font-semibold text-[var(--primary)]">{item.headcount}</span>
+                </div>
+              ))}
+            </MetricListCard>
+          </div>
+        </ModuleSection>
+
+        <ModuleSection
+          title="Payroll Report"
+          subtitle="Pay run monitoring, payout totals, and high-value payslip visibility."
+          metrics={overview.payroll.metrics}
+          action={<ExportButton pending={exportMutation.isPending} onClick={() => setPreviewKey("payroll")} />}
+        >
+          <div className="grid gap-6 lg:grid-cols-2">
+            <MetricListCard title="Recent Pay Runs">
+              {overview.payroll.recentRuns.map((item) => (
+                <div key={item.periodLabel} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
+                  <p className="text-[15px] font-semibold text-[var(--text)]">{item.periodLabel}</p>
+                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.status} | {item.employeeCount} employees | {money(item.totalNet)}</p>
+                </div>
+              ))}
+            </MetricListCard>
+
+            <MetricListCard title="Top Net Pay">
+              {overview.payroll.topEarners.map((item) => (
+                <div key={item.employeeName} className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-[14px] font-semibold text-[var(--text)]">{item.employeeName}</p>
+                    <p className="mt-1 text-[12px] text-[var(--text-muted)]">{item.department}</p>
+                  </div>
+                  <span className="text-[14px] font-semibold text-[var(--primary)]">{money(item.netPay)}</span>
+                </div>
+              ))}
+            </MetricListCard>
+          </div>
+        </ModuleSection>
+      </div>
+
+      {message ? <div className="page-card p-4 text-[14px] text-[var(--text-muted)] whitespace-pre-wrap break-words">{message}</div> : null}
+
+      {previewKey ? (
+        <ReportPreviewModal
+          reportKey={previewKey}
+          overview={overview}
+          pending={exportMutation.isPending}
+          onClose={() => setPreviewKey(null)}
+          onDownload={() => handleDownloadReport(previewKey)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ReportPreviewModal({
+  reportKey,
+  overview,
+  pending,
+  onClose,
+  onDownload
+}: {
+  reportKey: ReportKey;
+  overview: ReportCenterOverview;
+  pending: boolean;
+  onClose: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.52)] p-4">
+      <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-[20px] bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+          <div>
+            <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Preview {reportNameMap[reportKey]}</p>
+            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Cek dulu data yang mau didownload, lalu klik Download Excel.</p>
+          </div>
+          <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="max-h-[65vh] overflow-auto bg-[var(--surface-muted)] p-6">
+          {reportKey === "attendance" ? <AttendancePreview overview={overview} /> : null}
+          {reportKey === "employees" ? <EmployeePreview overview={overview} /> : null}
+          {reportKey === "payroll" ? <PayrollPreview overview={overview} /> : null}
+        </div>
+
+        <div className="flex justify-end border-t border-[var(--border)] px-6 py-4">
+          <button className="primary-button" disabled={pending} onClick={onDownload}>
+            {pending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Download Excel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttendancePreview({ overview }: { overview: ReportCenterOverview }) {
+  return (
+    <PreviewTable
+      title="Attendance"
+      headers={["EMPLOYEE", "DESCRIPTION", "CHECK WINDOW", "GPS", "STATUS", "OVERTIME"]}
+      rows={overview.attendance.list.map((item) => [item.employee, item.description, item.checkWindow, item.gps, item.status, item.overtime])}
+    />
+  );
+}
+
+function EmployeePreview({ overview }: { overview: ReportCenterOverview }) {
+  return (
+    <PreviewTable
+      title="Employee List"
+      headers={["EMPLOYEE NUMBER", "NAME", "DEPARTMENT", "POSITION", "STATUS", "JOIN DATE"]}
+      rows={overview.employees.list.map((item) => [item.employeeNumber, item.name, item.department, item.position, item.status, item.joinDate])}
+    />
+  );
+}
+
+function PayrollPreview({ overview }: { overview: ReportCenterOverview }) {
+  return (
+    <PreviewTable
+      title="Payroll"
+      headers={["EMPLOYEE", "PERIOD", "GROSS", "TAX", "NET"]}
+      rows={overview.payroll.list.map((item) => [item.employee, item.period, item.gross, item.tax, item.net])}
+    />
+  );
+}
+
+function PreviewTable({ title, headers, rows }: { title: string; headers: string[]; rows: string[][] }) {
+  return (
+    <div className="page-card p-4">
+      <p className="mb-3 text-[16px] font-semibold text-[var(--primary)]">{title}</p>
+      <div className="overflow-auto">
+        <table className="min-w-full border-collapse">
+          <thead>
+            <tr className="bg-[var(--surface-muted)]">
+              {headers.map((header) => (
+                <th key={header} className="border border-[var(--border)] px-3 py-2 text-left text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--text-muted)]">
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`${title}-${index}`}>
+                {row.map((cell, cellIndex) => (
+                  <td key={`${title}-${index}-${cellIndex}`} className="border border-[var(--border)] bg-white px-3 py-2 text-[13px] text-[var(--text)]">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -208,8 +369,8 @@ function MetricListCard({ title, children }: { title: string; children: ReactNod
 function ExportButton({ pending, onClick }: { pending: boolean; onClick: () => void }) {
   return (
     <button className="secondary-button" onClick={onClick} disabled={pending}>
-      {pending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-      Export Report
+      <Download className="h-4 w-4" />
+      Preview Download
     </button>
   );
 }
