@@ -92,6 +92,7 @@ Modul hr-app HR:
    - di add employee financial detail perlu ada total gaji, base salary + allowances - deduction. perhitungan pajak nya dikalkulasiin sama gaji gross. minta perhitungan pajaknya otomatis, dan diambil perhitungan pajaknya dari sumber pajak resmi di indonesia
    - sebelum submit ke bank bikin approval 2 step, dari hrd ke dan manager hrd
    - kita mau bikin sistem yang pake payroll dan ga pake payroll. sistem yang ga pake payroll semua financial things disembunyiin, yang pake payroll tampilin semua financial things
+   - bikin fitur payroll nya bisa di-disable enable buat customer yang ga pake modul payroll
 
 4. Modul report (Done)
    - Generate report attendance, employee list, payroll
