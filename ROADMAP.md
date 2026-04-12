@@ -96,7 +96,7 @@ Modul hr-app HR:
 4. Modul report (NY Done)
    - Generate report attendance, employee list, payroll
    - Grafik attendance, grafik jumlah karyawan
-5. Dashboard (NY Done)
+5. Dashboard (Done)
    - Grafik attendance, grafik jumlah karyawan, grafik payroll (jumlah gaji yang dibayarkan tiap bulan)
 
 6. Modul buat ngatur cuti karyawan (Done)
@@ -104,3 +104,5 @@ Modul hr-app HR:
 Beresin login page
 
 bikin responsive buat di browser mobile
+
+suka nongolin file2 aneh di folder projek, trace itu kenapa

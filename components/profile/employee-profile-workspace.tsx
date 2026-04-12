@@ -120,12 +120,12 @@ export function EmployeeProfileWorkspace({
 
   return (
     <div className="space-y-6">
-      <section className="page-card p-6">
+      <section className="page-card p-5 sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Employee Profile</p>
-            <h2 className="mt-3 text-[30px] font-semibold leading-tight text-[var(--primary)]">{employee.name}</h2>
-            <p className="mt-2 text-[15px] text-[var(--text-muted)]">{employee.position} - {employee.department}</p>
+            <h2 className="mt-3 text-[26px] font-semibold leading-tight text-[var(--primary)] sm:text-[30px]">{employee.name}</h2>
+            <p className="mt-2 text-[14px] text-[var(--text-muted)] sm:text-[15px]">{employee.position} - {employee.department}</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
             <MiniCard label="Employee ID" value={employee.employeeNumber} note={`NIK ${employee.nik}`} />
@@ -135,7 +135,7 @@ export function EmployeeProfileWorkspace({
       </section>
 
       <section className="page-card overflow-hidden">
-        <div className="border-b border-[var(--border)] px-6 pt-4">
+        <div className="border-b border-[var(--border)] px-4 pt-4 sm:px-6">
           <div className="flex gap-1 overflow-x-auto">
             {tabs.map((item) => (
               <button
@@ -151,7 +151,7 @@ export function EmployeeProfileWorkspace({
           </div>
         </div>
 
-        <div className="px-6 py-6">
+        <div className="px-4 py-5 sm:px-6 sm:py-6">
           {tab === "personal" ? (
             <div className="grid gap-4 md:grid-cols-2">
               <ReadOnlyField label="Nama" value={employee.name} />
@@ -165,8 +165,8 @@ export function EmployeeProfileWorkspace({
               <ReadOnlyField label="Date of Marriage" value={employee.marriageDate ?? "-"} />
               <ReadOnlyField label="No KTP" value={employee.idCardNumber} />
               <ReadOnlyArea label="Alamat" value={employee.address} className="md:col-span-2" />
-              <div className="page-card p-5 md:col-span-2">
-                <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Account Access</p>
+              <div className="page-card p-4 sm:p-5 md:col-span-2">
+                <p className="section-title text-[18px] font-semibold text-[var(--primary)] sm:text-[20px]">Account Access</p>
                 <p className="mt-2 text-[14px] text-[var(--text-muted)]">Data akun aplikasi yang dipakai untuk login ke sistem.</p>
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <ReadOnlyField label="Akun Aktif" value={employee.appLoginEnabled ? "Yes" : "No"} />
@@ -241,7 +241,7 @@ export function EmployeeProfileWorkspace({
                 <ReadOnlyField label="Bank Account" value={employee.bankAccountMasked} />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <MiniCard label="Allowance" value={money(employee.allowance)} note={`${selectedAllowances} komponen terpilih`} />
                 <MiniCard label="Annual Leave" value={`${employee.leaveBalances.annual + employee.leaveBalances.annualCarryOver} days`} note="Current + carry over annual leave" />
                 <MiniCard label="Sick Leave Used" value={`${sickLeaveUsed} times`} note="Ditampilkan sebagai jumlah pemakaian" />
@@ -252,12 +252,12 @@ export function EmployeeProfileWorkspace({
 
           {tab === "documents" ? (
             <div className="space-y-5">
-              <div className="page-card p-5">
-                <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Dokumen Karyawan</p>
+              <div className="page-card p-4 sm:p-5">
+                <p className="section-title text-[18px] font-semibold text-[var(--primary)] sm:text-[20px]">Dokumen Karyawan</p>
                 <p className="mt-2 text-[14px] text-[var(--text-muted)]">Karyawan bisa melihat dokumen yang sudah diupload HR untuk datanya sendiri.</p>
               </div>
 
-              <section className="page-card p-5">
+              <section className="page-card p-4 sm:p-5">
                 <div className="space-y-3">
                   {employee.documents.length === 0 ? (
                     <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Belum ada dokumen yang terupload untuk akun ini.</div>
@@ -269,7 +269,7 @@ export function EmployeeProfileWorkspace({
                         <p className="mt-1 text-[12px] text-[var(--text-muted)]">Upload: {new Date(item.uploadedAt).toLocaleString("id-ID")}</p>
                         {item.notes ? <p className="mt-2 text-[13px] text-[var(--text-muted)]">{item.notes}</p> : null}
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <button className="secondary-button" onClick={() => setPreviewDocument(item)}><Eye className="h-4 w-4" /> Preview</button>
                         <a href={resolveDocumentUrl(item.fileUrl)} download={item.fileName} className="secondary-button"><Download className="h-4 w-4" /> Download</a>
                         <a href={resolveDocumentUrl(item.fileUrl)} target="_blank" rel="noreferrer" className="secondary-button">Open</a>
@@ -284,12 +284,12 @@ export function EmployeeProfileWorkspace({
       </section>
 
       {previewDocument ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(15,23,42,0.58)] p-4">
-          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(15,23,42,0.58)] p-3 sm:p-4">
+          <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-4 py-4 sm:px-6 sm:py-5">
               <div className="min-w-0">
-                <p className="section-title truncate text-[24px] font-semibold text-[var(--primary)]">{previewDocument.title}</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">
+                <p className="section-title truncate text-[20px] font-semibold text-[var(--primary)] sm:text-[24px]">{previewDocument.title}</p>
+                <p className="mt-2 text-[13px] text-[var(--text-muted)] sm:text-[14px]">
                   {documentTypeLabels[previewDocument.type] ?? previewDocument.type} • {previewDocument.fileName}
                 </p>
               </div>
@@ -298,7 +298,7 @@ export function EmployeeProfileWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface-muted)] p-5">
+            <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface-muted)] p-3 sm:p-5">
               <DocumentPreview document={previewDocument} />
             </div>
           </div>

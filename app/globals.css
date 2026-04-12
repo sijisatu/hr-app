@@ -38,6 +38,7 @@ body {
   background: var(--background);
   color: var(--text);
   font-family: var(--font-inter), sans-serif;
+  overflow-x: hidden;
 }
 
 a {
@@ -222,11 +223,12 @@ a:focus-visible {
 
 @media (max-width: 1023px) {
   .app-sidebar {
-    position: static;
-    width: 100%;
-    min-height: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+  }
+
+  .app-surface {
+    min-height: 100dvh;
   }
 }
 

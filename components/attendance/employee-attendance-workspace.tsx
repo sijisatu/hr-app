@@ -394,17 +394,17 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[18px] bg-[var(--primary)] px-6 py-6 text-white lg:px-8">
+      <section className="rounded-[18px] bg-[var(--primary)] px-5 py-5 text-white sm:px-6 lg:px-8">
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/68">Employee Attendance</p>
-        <h2 className="mt-4 text-[28px] font-semibold leading-tight">Semua request employee dipusatkan di satu modul.</h2>
-        <p className="mt-3 max-w-3xl text-[14px] leading-6 text-white/78">
+        <h2 className="mt-4 text-[24px] font-semibold leading-tight sm:text-[28px]">Semua request employee dipusatkan di satu modul.</h2>
+        <p className="mt-3 max-w-3xl text-[13px] leading-6 text-white/78 sm:text-[14px]">
           Gunakan halaman ini untuk submit request sesuai menu yang dipilih dan cek record yang relevan.
         </p>
       </section>
 
       {shouldShowActionCards ? (
-        <section className="page-card p-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="page-card p-5 sm:p-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             {actionCards.map((item) => {
               const Icon = item.icon;
               return (
@@ -423,7 +423,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
         </section>
       ) : null}
 
-      <section className="page-card p-6">
+      <section className="page-card p-5 sm:p-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             {fixedAction ? (
@@ -432,7 +432,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                 Kembali ke menu request
               </Link>
             ) : null}
-            <p className="section-title mt-2 text-[24px] font-semibold text-[var(--primary)]">{actionCards.find((item) => item.key === activeAction)?.label}</p>
+            <p className="section-title mt-2 text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">{actionCards.find((item) => item.key === activeAction)?.label}</p>
             <p className="mt-2 text-[14px] leading-6 text-[var(--text-muted)]">
               {activeAction === "overtime" ? "Form submit overtime manual untuk kebutuhan review supervisor." : "Form request employee aktif sesuai menu yang dipilih."}
             </p>
@@ -459,7 +459,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
               <span>Reason</span>
               <input value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} placeholder="Jelaskan kebutuhan lembur" className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
             </label>
-            <button type="button" onClick={() => overtimeMutation.mutate()} disabled={overtimeMutation.isPending} className="primary-button lg:self-end">
+            <button type="button" onClick={() => overtimeMutation.mutate()} disabled={overtimeMutation.isPending} className="primary-button w-full sm:w-auto lg:self-end">
               {overtimeMutation.isPending ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Sending...</> : "Submit"}
             </button>
           </div>
@@ -502,14 +502,14 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
               <span>{activeAction === "on-duty" ? "Description" : "Reason"}</span>
               <input value={leaveReason} onChange={(event) => setLeaveReason(event.target.value)} placeholder={activeAction === "on-duty" ? "Tulis deskripsi on duty" : "Tulis alasan request"} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
             </label>
-            <button type="button" onClick={() => leaveMutation.mutate()} disabled={leaveMutation.isPending} className="primary-button lg:self-end">
+            <button type="button" onClick={() => leaveMutation.mutate()} disabled={leaveMutation.isPending} className="primary-button w-full sm:w-auto lg:self-end">
               {leaveMutation.isPending ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Sending...</> : "Submit"}
             </button>
           </div>
         )}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((item) => (
           <div key={item.label} className={item.tone === "primary" ? "page-card bg-[var(--primary)] p-5 text-white" : "page-card p-5"}>
             <p className={item.tone === "primary" ? "text-[12px] font-medium uppercase tracking-[0.08em] text-white/72" : "text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]"}>{item.label}</p>
@@ -571,8 +571,8 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       ) : null}
 
       {activeAction !== "on-duty" && activeAction !== "overtime" ? (
-        <section className="page-card p-6">
-          <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{actionCards.find((item) => item.key === activeAction)?.label} Records</p>
+        <section className="page-card p-5 sm:p-6">
+          <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">{actionCards.find((item) => item.key === activeAction)?.label} Records</p>
           <p className="mt-2 text-[14px] text-[var(--text-muted)]">Record khusus untuk menu request yang sedang dibuka.</p>
           {activeAction === "leave" ? (
             <div className="mt-4 space-y-4">
@@ -662,8 +662,8 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       ) : null}
 
       {activeAction === "overtime" ? (
-        <section className="page-card p-6">
-          <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Overtime Records</p>
+        <section className="page-card p-5 sm:p-6">
+          <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Overtime Records</p>
           <p className="mt-2 text-[14px] text-[var(--text-muted)]">Record khusus submit overtime employee ini.</p>
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full border-separate border-spacing-y-2">
@@ -688,8 +688,8 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       ) : null}
 
       {canApprove && activeAction !== "overtime" ? (
-        <section className="page-card p-6">
-          <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Approval Queue</p>
+        <section className="page-card p-5 sm:p-6">
+          <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Approval Queue</p>
           <p className="mt-2 text-[14px] text-[var(--text-muted)]">Manager/leader approval untuk menu request ini.</p>
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             {leaveApprovalQueue.map((request) => (
@@ -702,7 +702,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                   <StatusPill tone="warning">Pending Manager</StatusPill>
                 </div>
                 <p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{request.reason}</p>
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                   <button className="secondary-button !px-3 !py-2" onClick={() => approveLeaveMutation.mutate({ leaveId: request.id, status: "rejected" })} disabled={approveLeaveMutation.isPending}><X className="h-4 w-4" /> Reject</button>
                   <button className="primary-button !px-3 !py-2" onClick={() => approveLeaveMutation.mutate({ leaveId: request.id, status: "approved" })} disabled={approveLeaveMutation.isPending}><Check className="h-4 w-4" /> Approve</button>
                 </div>
@@ -714,8 +714,8 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       ) : null}
 
       {canApprove && activeAction === "overtime" ? (
-        <section className="page-card p-6">
-          <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Approval Queue</p>
+        <section className="page-card p-5 sm:p-6">
+          <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Approval Queue</p>
           <p className="mt-2 text-[14px] text-[var(--text-muted)]">Manager/leader approval untuk Submit Overtime.</p>
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             {overtimeApprovalQueue.map((item) => (
@@ -728,7 +728,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                   <StatusPill tone="warning">Pending Manager</StatusPill>
                 </div>
                 <p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{item.reason}</p>
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                   <button className="secondary-button !px-3 !py-2" onClick={() => approveOvertimeMutation.mutate({ overtimeId: item.id, status: "rejected" })} disabled={approveOvertimeMutation.isPending}><X className="h-4 w-4" /> Reject</button>
                   <button className="primary-button !px-3 !py-2" onClick={() => approveOvertimeMutation.mutate({ overtimeId: item.id, status: "approved" })} disabled={approveOvertimeMutation.isPending}><Check className="h-4 w-4" /> Approve</button>
                 </div>

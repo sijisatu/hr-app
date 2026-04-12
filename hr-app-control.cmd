@@ -9,10 +9,14 @@ set "FRONTEND_LOG=%LOG_DIR%\frontend.log"
 set "BACKEND_PID_FILE=%LOG_DIR%\backend.pid"
 set "FRONTEND_PID_FILE=%LOG_DIR%\frontend.pid"
 set "PS_FILE=%TEMP%\hr_app_launch_%RANDOM%.ps1"
+set "IS_CLI=0"
 
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>nul
 
-if /i not "%~1"=="" goto cli
+if /i not "%~1"=="" (
+set "IS_CLI=1"
+goto cli
+)
 
 :menu
 cls
@@ -115,8 +119,10 @@ if not exist "%PROJECT_DIR%\backend\node_modules\" (
   )
 )
 
-del /f /q "%BACKEND_LOG%" >nul 2>nul
-del /f /q "%FRONTEND_LOG%" >nul 2>nul
+call :reset_log_file "%BACKEND_LOG%"
+call :reset_log_file "%FRONTEND_LOG%"
+call :reset_log_file "%BACKEND_LOG%.err"
+call :reset_log_file "%FRONTEND_LOG%.err"
 del /f /q "%BACKEND_PID_FILE%" >nul 2>nul
 del /f /q "%FRONTEND_PID_FILE%" >nul 2>nul
 
@@ -127,6 +133,18 @@ del /f /q "%PS_FILE%" >nul 2>nul
 
 echo [STEP] Menunggu backend siap (http://127.0.0.1:4000/api/health)...
 call :wait_http "http://127.0.0.1:4000/api/health" 55
+if errorlevel 1 (
+  echo [WARN] Backend dev mode belum siap. Coba fallback build + start...
+  if exist "%BACKEND_PID_FILE%" (
+    set /p BPID=<"%BACKEND_PID_FILE%"
+    if not "!BPID!"=="" taskkill /PID !BPID! /T /F >nul 2>nul
+  )
+  del /f /q "%BACKEND_PID_FILE%" >nul 2>nul
+  call :write_ps_launch "backend" "%PROJECT_DIR%\backend" "npm.cmd run build ^&^& npm.cmd run start" "%BACKEND_LOG%" "%BACKEND_PID_FILE%"
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_FILE%"
+  del /f /q "%PS_FILE%" >nul 2>nul
+  call :wait_http "http://127.0.0.1:4000/api/health" 90
+)
 if errorlevel 1 (
   echo [ERROR] Backend gagal start.
   call :print_log_tail "%BACKEND_LOG%" "backend"
@@ -172,18 +190,27 @@ echo [OK] Semua service sudah dicoba dimatikan.
 goto post_action
 
 :stop_app_silent
-if exist "%BACKEND_PID_FILE%" (
-  set /p BPID=<"%BACKEND_PID_FILE%"
-  if not "!BPID!"=="" taskkill /PID !BPID! /T /F >nul 2>nul
+for /l %%i in (1,1,4) do (
+  call :stop_pid_file "%BACKEND_PID_FILE%"
+  call :stop_pid_file "%FRONTEND_PID_FILE%"
+  call :stop_port 3000
+  call :stop_port 4000
+  call :stop_project_processes
+  powershell -NoProfile -Command "Start-Sleep -Milliseconds 600" >nul 2>nul
 )
-if exist "%FRONTEND_PID_FILE%" (
-  set /p FPID=<"%FRONTEND_PID_FILE%"
-  if not "!FPID!"=="" taskkill /PID !FPID! /T /F >nul 2>nul
-)
-call :stop_port 3000
-call :stop_port 4000
+call :wait_port_free 3000 20
+call :wait_port_free 4000 20
 del /f /q "%BACKEND_PID_FILE%" >nul 2>nul
 del /f /q "%FRONTEND_PID_FILE%" >nul 2>nul
+exit /b 0
+
+:stop_pid_file
+set "TARGET_PID_FILE=%~1"
+if exist "%TARGET_PID_FILE%" (
+  set "TARGET_PID="
+  set /p TARGET_PID=<"%TARGET_PID_FILE%"
+  if not "!TARGET_PID!"=="" taskkill /PID !TARGET_PID! /T /F >nul 2>nul
+)
 exit /b 0
 
 :stop_port
@@ -191,6 +218,29 @@ set "TARGET_PORT=%~1"
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R /C:":%TARGET_PORT% .*LISTENING"') do (
   taskkill /PID %%a /T /F >nul 2>nul
 )
+exit /b 0
+
+:stop_project_processes
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\scripts\hr-app-stop-processes.ps1" -ProjectDir "%PROJECT_DIR%" >nul 2>nul
+exit /b 0
+
+:wait_port_free
+set "WAIT_PORT=%~1"
+set "WAIT_RETRY=%~2"
+for /l %%i in (1,1,%WAIT_RETRY%) do (
+  netstat -ano | findstr /R /C:":%WAIT_PORT% .*LISTENING" >nul 2>nul
+  if errorlevel 1 exit /b 0
+  powershell -NoProfile -Command "Start-Sleep -Milliseconds 500" >nul 2>nul
+)
+exit /b 1
+
+:reset_log_file
+set "TARGET_LOG=%~1"
+for /l %%i in (1,1,12) do (
+  (type nul > "%TARGET_LOG%") >nul 2>nul && exit /b 0
+  powershell -NoProfile -Command "Start-Sleep -Milliseconds 400" >nul 2>nul
+)
+echo [WARN] Gagal reset log file: %TARGET_LOG%
 exit /b 0
 
 :status_app
@@ -238,7 +288,7 @@ set "RETRY=%~2"
 for /l %%i in (1,1,%RETRY%) do (
   powershell -NoProfile -Command "try { $r=Invoke-WebRequest -Uri '%URL%' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -ge 200 -and $r.StatusCode -lt 500){exit 0}else{exit 1} } catch { exit 1 }" >nul 2>nul
   if not errorlevel 1 exit /b 0
-  timeout /t 1 /nobreak >nul
+  powershell -NoProfile -Command "Start-Sleep -Milliseconds 900" >nul 2>nul
 )
 exit /b 1
 
@@ -258,6 +308,10 @@ if exist "%LOG_FILE%" (
 ) else (
   echo [INFO] Log file belum tersedia: %LOG_FILE%
 )
+if exist "%LOG_FILE%.err" (
+  echo ----- %TITLE%.log.err (tail) -----
+  powershell -NoProfile -Command "Get-Content -Path '%LOG_FILE%.err' -Tail 40"
+)
 echo ===============================
 exit /b 0
 
@@ -268,15 +322,17 @@ set "RUN_CMD=%~3"
 set "LOG_FILE=%~4"
 set "PID_FILE=%~5"
 (
-  echo $wd = "%WORKDIR%"
-  echo $log = "%LOG_FILE%"
-  echo $pid = "%PID_FILE%"
-  echo $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c %RUN_CMD% ^>^> ""$log"" 2^>^&1" -WorkingDirectory $wd -WindowStyle Hidden -PassThru
-  echo $p.Id ^| Out-File -FilePath $pid -Encoding ascii -Force
+  echo $workDir = "%WORKDIR%"
+  echo $logPath = "%LOG_FILE%"
+  echo $errLogPath = "%LOG_FILE%.err"
+  echo $pidFilePath = "%PID_FILE%"
+  echo $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c %RUN_CMD%" -WorkingDirectory $workDir -WindowStyle Hidden -RedirectStandardOutput $logPath -RedirectStandardError $errLogPath -PassThru
+  echo $p.Id ^| Out-File -FilePath $pidFilePath -Encoding ascii -Force
 ) > "%PS_FILE%"
 exit /b 0
 
 :post_action
+if /i "%IS_CLI%"=="1" goto end
 if /i not "%~1"=="" goto end
 echo.
 pause
