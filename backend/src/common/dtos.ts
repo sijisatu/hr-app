@@ -1,4 +1,4 @@
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import { IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 export class CreateEmployeeDto {
@@ -387,6 +387,193 @@ export class OvertimeApproveDto {
 
   @IsIn(["approved", "rejected", "paid"])
   status!: "approved" | "rejected" | "paid";
+
+  @IsString()
+  actor!: string;
+}
+
+export class CreateReimbursementClaimTypeDto {
+  @IsString()
+  employeeId!: string;
+
+  @IsString()
+  employeeName!: string;
+
+  @IsString()
+  department!: string;
+
+  @IsString()
+  designation!: string;
+
+  @IsIn(["medical", "glasses", "maternity", "transport", "communication", "wellness", "other"])
+  category!: "medical" | "glasses" | "maternity" | "transport" | "communication" | "wellness" | "other";
+
+  @IsString()
+  claimType!: string;
+
+  @IsString()
+  subType!: string;
+
+  @IsString()
+  currency!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  annualLimit!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  remainingBalance!: number;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  active!: boolean;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class UpdateReimbursementClaimTypeDto {
+  @IsOptional()
+  @IsString()
+  employeeId?: string;
+
+  @IsOptional()
+  @IsString()
+  employeeName?: string;
+
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @IsOptional()
+  @IsString()
+  designation?: string;
+
+  @IsOptional()
+  @IsIn(["medical", "glasses", "maternity", "transport", "communication", "wellness", "other"])
+  category?: "medical" | "glasses" | "maternity" | "transport" | "communication" | "wellness" | "other";
+
+  @IsOptional()
+  @IsString()
+  claimType?: string;
+
+  @IsOptional()
+  @IsString()
+  subType?: string;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  annualLimit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  remainingBalance?: number;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class CreateReimbursementRequestDto {
+  @IsString()
+  userId!: string;
+
+  @IsString()
+  employeeName!: string;
+
+  @IsString()
+  department!: string;
+
+  @IsString()
+  designation!: string;
+
+  @IsString()
+  claimTypeId!: string;
+
+  @IsString()
+  currency!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount!: number;
+
+  @IsString()
+  receiptDate!: string;
+
+  @IsOptional()
+  @IsString()
+  remarks?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === "true" || value === "1" || value === 1)
+  @IsBoolean()
+  submit?: boolean;
+}
+
+export class UpdateReimbursementRequestDto {
+  @IsOptional()
+  @IsString()
+  claimTypeId?: string;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount?: number;
+
+  @IsOptional()
+  @IsString()
+  receiptDate?: string;
+
+  @IsOptional()
+  @IsString()
+  remarks?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === "true" || value === "1" || value === 1)
+  @IsBoolean()
+  submit?: boolean;
+}
+
+export class ReimbursementApproveDto {
+  @IsString()
+  reimbursementId!: string;
+
+  @IsIn(["approved", "rejected"])
+  status!: "approved" | "rejected";
+
+  @IsString()
+  actor!: string;
+}
+
+export class ReimbursementProcessDto {
+  @IsString()
+  reimbursementId!: string;
+
+  @IsIn(["approved", "rejected", "processed"])
+  status!: "approved" | "rejected" | "processed";
 
   @IsString()
   actor!: string;

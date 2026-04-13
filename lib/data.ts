@@ -10,12 +10,9 @@ export const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", roles: ["admin", "hr", "manager", "employee"] },
   { href: "/employees", label: "Employee List", roles: ["admin", "hr"] },
   { href: "/attendance", label: "Employee Attendance", roles: ["admin", "hr", "manager", "employee"] },
-  { href: "/payroll", label: "Payroll", roles: ["admin", "hr", "manager", "employee"] },  { href: "/profile", label: "Profile", roles: ["manager", "employee"] },
+  { href: "/reimbursement", label: "Reimbursement", roles: ["admin", "hr", "manager", "employee"] },
+  { href: "/payroll", label: "Payroll", roles: ["admin", "hr", "manager", "employee"] },
+  { href: "/profile", label: "Profile", roles: ["manager", "employee"] },
   { href: "/reports", label: "Reports", roles: ["admin", "hr"] },
   { href: "/leave", label: "Leave System", roles: ["admin", "hr"] }
 ];
-
-
-
-
-

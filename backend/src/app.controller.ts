@@ -24,6 +24,8 @@ import {
   CreateCompensationProfileDto,
   CreateExportDto,
   CreateOvertimeDto,
+  CreateReimbursementClaimTypeDto,
+  CreateReimbursementRequestDto,
   CreateTaxProfileDto,
   OvertimeApproveDto,
   CreatePayrollComponentDto,
@@ -32,9 +34,13 @@ import {
   LeaveApproveDto,
   LeaveRequestDto,
   PublishPayrollRunDto,
+  ReimbursementApproveDto,
+  ReimbursementProcessDto,
   UploadEmployeeDocumentDto,
   UpdateEmployeeDto,
   UpdateCompensationProfileDto,
+  UpdateReimbursementClaimTypeDto,
+  UpdateReimbursementRequestDto,
   UpdateTaxProfileDto,
   UpdatePayrollComponentDto
 } from "./common/dtos";
@@ -214,6 +220,79 @@ export class AppController {
   @Post("leave/approve")
   async approveLeave(@Body() body: LeaveApproveDto) {
     return this.wrap(await this.appService.approveLeave(body));
+  }
+
+  @Get("reimbursement/claims")
+  async reimbursementClaimTypes() {
+    return this.wrap(await this.appService.getReimbursementClaimTypes());
+  }
+
+  @Post("reimbursement/claims")
+  async createReimbursementClaimType(@Body() body: CreateReimbursementClaimTypeDto) {
+    return this.wrap(await this.appService.createReimbursementClaimType(body));
+  }
+
+  @Patch("reimbursement/claims/:id")
+  async updateReimbursementClaimType(@Param("id") id: string, @Body() body: UpdateReimbursementClaimTypeDto) {
+    return this.wrap(await this.appService.updateReimbursementClaimType(id, body));
+  }
+
+  @Delete("reimbursement/claims/:id")
+  async deleteReimbursementClaimType(@Param("id") id: string) {
+    return this.wrap(await this.appService.deleteReimbursementClaimType(id));
+  }
+
+  @Get("reimbursement/requests")
+  async reimbursementRequests() {
+    return this.wrap(await this.appService.getReimbursementRequests());
+  }
+
+  @Post("reimbursement/requests")
+  @UseInterceptors(
+    FileInterceptor("receipt", {
+      storage: diskStorage({
+        destination: path.resolve(process.cwd(), "storage", "reimbursements", "receipts"),
+        filename: (_, file, callback) => {
+          const extension = path.extname(file.originalname) || ".bin";
+          callback(null, `${Date.now()}-${randomUUID().slice(0, 6)}${extension}`);
+        }
+      })
+    })
+  )
+  async createReimbursementRequest(@Body() body: CreateReimbursementRequestDto, @UploadedFile() file?: Express.Multer.File) {
+    const receiptFileUrl = file ? `/storage/reimbursements/receipts/${file.filename}` : null;
+    return this.wrap(await this.appService.createReimbursementRequest(body, file, receiptFileUrl));
+  }
+
+  @Patch("reimbursement/requests/:id")
+  @UseInterceptors(
+    FileInterceptor("receipt", {
+      storage: diskStorage({
+        destination: path.resolve(process.cwd(), "storage", "reimbursements", "receipts"),
+        filename: (_, file, callback) => {
+          const extension = path.extname(file.originalname) || ".bin";
+          callback(null, `${Date.now()}-${randomUUID().slice(0, 6)}${extension}`);
+        }
+      })
+    })
+  )
+  async updateReimbursementRequest(
+    @Param("id") id: string,
+    @Body() body: UpdateReimbursementRequestDto,
+    @UploadedFile() file?: Express.Multer.File
+  ) {
+    const receiptFileUrl = file ? `/storage/reimbursements/receipts/${file.filename}` : null;
+    return this.wrap(await this.appService.updateReimbursementRequest(id, body, file, receiptFileUrl));
+  }
+
+  @Post("reimbursement/requests/manager-approve")
+  async managerApproveReimbursement(@Body() body: ReimbursementApproveDto) {
+    return this.wrap(await this.appService.managerApproveReimbursement(body));
+  }
+
+  @Post("reimbursement/requests/hr-process")
+  async hrProcessReimbursement(@Body() body: ReimbursementProcessDto) {
+    return this.wrap(await this.appService.hrProcessReimbursement(body));
   }
 
   @Get("payroll/overview")

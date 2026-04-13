@@ -63,7 +63,7 @@ Modul hr-app karyawan:
 3. Modul Profil
    - Data karyawan
 
-4. Modul Reimbursement (Future Feature)
+4. Modul Reimbursement (Future Feature) (DONE)
    1. medical
       - 10 jt rawat jalan out patient & flexi (claim yang bisa digunakan untuk keperluan pekerjaan)
       - lahiran (normal & cesar)
@@ -104,6 +104,4 @@ Modul hr-app HR:
 
 Beresin login page
 
-bikin responsive buat di browser mobile
-
-suka nongolin file2 aneh di folder projek, trace itu kenapa
+bikin responsive buat di browser mobile (DONE)

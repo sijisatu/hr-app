@@ -210,6 +210,53 @@ export type LeaveRecord = {
   autoApproved: boolean;
 };
 
+export type ReimbursementStatus = "draft" | "pending-manager" | "awaiting-hr" | "approved" | "rejected" | "processed";
+export type ReimbursementCategory = "medical" | "glasses" | "maternity" | "transport" | "communication" | "wellness" | "other";
+
+export type ReimbursementClaimTypeRecord = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  designation: string;
+  category: ReimbursementCategory;
+  claimType: string;
+  subType: string;
+  currency: string;
+  annualLimit: number;
+  remainingBalance: number;
+  active: boolean;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReimbursementRequestRecord = {
+  id: string;
+  userId: string;
+  employeeName: string;
+  department: string;
+  designation: string;
+  claimTypeId: string;
+  claimType: string;
+  subType: string;
+  category: ReimbursementCategory;
+  currency: string;
+  amount: number;
+  receiptDate: string;
+  remarks: string;
+  receiptFileName: string | null;
+  receiptFileUrl: string | null;
+  status: ReimbursementStatus;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  processedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  approverFlow: string[];
+  balanceSnapshot: number;
+};
+
 export type DashboardSummary = {
   employees: number;
   onTime: number;
@@ -261,11 +308,27 @@ export type Anomaly = {
 const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
 
 async function parseResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    throw new Error(`API request failed with status ${response.status}`);
+  let payload: ApiResponse<T> | null = null;
+  let rawPayload: unknown = null;
+  try {
+    rawPayload = await response.json();
+    payload = rawPayload as ApiResponse<T>;
+  } catch {
+    payload = null;
   }
 
-  const payload = (await response.json()) as ApiResponse<T>;
+  if (!response.ok) {
+    const messageFromApi =
+      (rawPayload && typeof rawPayload === "object" && rawPayload !== null && "message" in rawPayload
+        ? String((rawPayload as { message?: unknown }).message ?? "")
+        : "") ||
+      (payload && typeof payload.error === "string" && payload.error.trim().length > 0 ? payload.error : "");
+    throw new Error(messageFromApi || `API request failed with status ${response.status}`);
+  }
+
+  if (!payload) {
+    throw new Error("API returned an unexpected empty response.");
+  }
   return payload.data;
 }
 
@@ -520,6 +583,111 @@ export async function approveLeaveRequest(payload: {
   return apiPostJson<LeaveRecord>("/api/leave/approve", payload);
 }
 
+export async function getReimbursementClaimTypes() {
+  return apiFetch<ReimbursementClaimTypeRecord[]>("/api/reimbursement/claims");
+}
+
+export async function createReimbursementClaimType(payload: Omit<ReimbursementClaimTypeRecord, "id" | "createdAt" | "updatedAt">) {
+  return apiPostJson<ReimbursementClaimTypeRecord>("/api/reimbursement/claims", payload);
+}
+
+export async function updateReimbursementClaimType(id: string, payload: Partial<Omit<ReimbursementClaimTypeRecord, "id" | "createdAt" | "updatedAt">>) {
+  return apiPatchJson<ReimbursementClaimTypeRecord>(`/api/reimbursement/claims/${id}`, payload);
+}
+
+export async function deleteReimbursementClaimType(id: string) {
+  return apiDelete<{ deleted: boolean; id: string }>(`/api/reimbursement/claims/${id}`);
+}
+
+export async function getReimbursementRequests() {
+  return apiFetch<ReimbursementRequestRecord[]>("/api/reimbursement/requests");
+}
+
+export async function createReimbursementRequest(payload: {
+  userId: string;
+  employeeName: string;
+  department: string;
+  designation: string;
+  claimTypeId: string;
+  currency: string;
+  amount: number;
+  receiptDate: string;
+  remarks?: string;
+  submit: boolean;
+  receipt?: File | null;
+}) {
+  const formData = new FormData();
+  formData.set("userId", payload.userId);
+  formData.set("employeeName", payload.employeeName);
+  formData.set("department", payload.department);
+  formData.set("designation", payload.designation);
+  formData.set("claimTypeId", payload.claimTypeId);
+  formData.set("currency", payload.currency);
+  formData.set("amount", String(payload.amount));
+  formData.set("receiptDate", payload.receiptDate);
+  formData.set("remarks", payload.remarks ?? "");
+  formData.set("submit", String(payload.submit));
+  if (payload.receipt) {
+    formData.set("receipt", payload.receipt);
+  }
+  return apiPostForm<ReimbursementRequestRecord>("/api/reimbursement/requests", formData);
+}
+
+export async function updateReimbursementRequest(payload: {
+  reimbursementId: string;
+  claimTypeId?: string;
+  currency?: string;
+  amount?: number;
+  receiptDate?: string;
+  remarks?: string;
+  submit?: boolean;
+  receipt?: File | null;
+}) {
+  const formData = new FormData();
+  if (payload.claimTypeId !== undefined) {
+    formData.set("claimTypeId", payload.claimTypeId);
+  }
+  if (payload.currency !== undefined) {
+    formData.set("currency", payload.currency);
+  }
+  if (payload.amount !== undefined) {
+    formData.set("amount", String(payload.amount));
+  }
+  if (payload.receiptDate !== undefined) {
+    formData.set("receiptDate", payload.receiptDate);
+  }
+  if (payload.remarks !== undefined) {
+    formData.set("remarks", payload.remarks);
+  }
+  if (payload.submit !== undefined) {
+    formData.set("submit", String(payload.submit));
+  }
+  if (payload.receipt) {
+    formData.set("receipt", payload.receipt);
+  }
+  const response = await fetch(`${API_BASE}/api/reimbursement/requests/${payload.reimbursementId}`, {
+    method: "PATCH",
+    body: formData
+  });
+  return parseResponse<ReimbursementRequestRecord>(response);
+}
+
+export async function managerApproveReimbursement(payload: {
+  reimbursementId: string;
+  status: "approved" | "rejected";
+  actor: string;
+}) {
+  return apiPostJson<ReimbursementRequestRecord>("/api/reimbursement/requests/manager-approve", payload);
+}
+
+export async function hrProcessReimbursement(payload: {
+  reimbursementId: string;
+  status: "approved" | "rejected" | "processed";
+  actor: string;
+}) {
+  return apiPostJson<ReimbursementRequestRecord>("/api/reimbursement/requests/hr-process", payload);
+}
+
 
 export async function approveOvertimeRequest(payload: {
   overtimeId: string;
@@ -678,6 +846,45 @@ export function formatOvertimeStatus(status: OvertimeRecord["status"]) {
       return "Rejected";
     default:
       return status;
+  }
+}
+
+export function formatReimbursementStatus(status: ReimbursementStatus) {
+  switch (status) {
+    case "draft":
+      return "Draft";
+    case "pending-manager":
+      return "Pending Manager";
+    case "awaiting-hr":
+      return "Awaiting HR";
+    case "approved":
+      return "Approved";
+    case "rejected":
+      return "Rejected";
+    case "processed":
+      return "Processed";
+    default:
+      return status;
+  }
+}
+
+export function formatReimbursementCategory(category: ReimbursementCategory) {
+  switch (category) {
+    case "medical":
+      return "Medical";
+    case "glasses":
+      return "Glasses";
+    case "maternity":
+      return "Maternity";
+    case "transport":
+      return "Transport";
+    case "communication":
+      return "Communication";
+    case "wellness":
+      return "Wellness";
+    case "other":
+    default:
+      return "Other";
   }
 }
 

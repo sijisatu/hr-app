@@ -21,6 +21,8 @@ export type PayrollComponentType = "earning" | "deduction";
 export type PayrollCalculationType = "fixed" | "percentage";
 export type PayRunStatus = "draft" | "published";
 export type PayslipStatus = "draft" | "published";
+export type ReimbursementStatus = "draft" | "pending-manager" | "awaiting-hr" | "approved" | "rejected" | "processed";
+export type ReimbursementCategory = "medical" | "glasses" | "maternity" | "transport" | "communication" | "wellness" | "other";
 export type Gender = "male" | "female";
 export type MaritalStatus = "single" | "married" | "divorced" | "widowed";
 
@@ -263,11 +265,57 @@ export type PayRunRecord = {
   publishedAt: string | null;
 };
 
+export type ReimbursementClaimTypeRecord = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  designation: string;
+  category: ReimbursementCategory;
+  claimType: string;
+  subType: string;
+  currency: string;
+  annualLimit: number;
+  remainingBalance: number;
+  active: boolean;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReimbursementRequestRecord = {
+  id: string;
+  userId: string;
+  employeeName: string;
+  department: string;
+  designation: string;
+  claimTypeId: string;
+  claimType: string;
+  subType: string;
+  category: ReimbursementCategory;
+  currency: string;
+  amount: number;
+  receiptDate: string;
+  remarks: string;
+  receiptFileName: string | null;
+  receiptFileUrl: string | null;
+  status: ReimbursementStatus;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  processedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  approverFlow: string[];
+  balanceSnapshot: number;
+};
+
 export type DatabaseShape = {
   employees: EmployeeRecord[];
   attendanceLogs: AttendanceRecord[];
   overtimeRequests: OvertimeRecord[];
   leaveRequests: LeaveRecord[];
+  reimbursementClaimTypes: ReimbursementClaimTypeRecord[];
+  reimbursementRequests: ReimbursementRequestRecord[];
   compensationProfiles: CompensationProfileRecord[];
   taxProfiles: TaxProfileRecord[];
   payrollComponents: PayrollComponentRecord[];

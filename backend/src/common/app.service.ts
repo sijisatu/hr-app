@@ -19,6 +19,8 @@ import {
   PayslipLineItem,
   PayslipRecord,
   PayrollComponentRecord,
+  ReimbursementClaimTypeRecord,
+  ReimbursementRequestRecord,
   TaxProfileRecord,
   WorkExperienceRecord
 } from "./types";
@@ -30,6 +32,8 @@ import {
   CreateExportDto,
   CreateOvertimeDto,
   CreatePayrollComponentDto,
+  CreateReimbursementClaimTypeDto,
+  CreateReimbursementRequestDto,
   CreateTaxProfileDto,
   OvertimeApproveDto,
   ExportPayslipDto,
@@ -37,8 +41,12 @@ import {
   LeaveApproveDto,
   LeaveRequestDto,
   PublishPayrollRunDto,
+  ReimbursementApproveDto,
+  ReimbursementProcessDto,
   UploadEmployeeDocumentDto,
   UpdateCompensationProfileDto,
+  UpdateReimbursementClaimTypeDto,
+  UpdateReimbursementRequestDto,
   UpdateTaxProfileDto,
   UpdateEmployeeDto,
   UpdatePayrollComponentDto
@@ -83,7 +91,9 @@ export class AppService {
       mkdir(path.join(this.storageRoot, "attendance-selfies"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "documents"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "documents", "employee-files"), { recursive: true }),
-      mkdir(path.join(this.storageRoot, "exports"), { recursive: true })
+      mkdir(path.join(this.storageRoot, "exports"), { recursive: true }),
+      mkdir(path.join(this.storageRoot, "reimbursements"), { recursive: true }),
+      mkdir(path.join(this.storageRoot, "reimbursements", "receipts"), { recursive: true })
     ]);
 
     if (!existsSync(this.dbPath)) {
@@ -95,6 +105,8 @@ export class AppService {
     current.attendanceLogs = (current.attendanceLogs ?? []).map((attendance, index) => this.normalizeAttendance(attendance, current.employees, index));
     current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : seedData.overtimeRequests).map((record, index) => this.normalizeOvertime(record, index));
     current.leaveRequests = (current.leaveRequests ?? []).map((record, index) => this.normalizeLeave(record, current.employees, index));
+    current.reimbursementClaimTypes = (current.reimbursementClaimTypes?.length ? current.reimbursementClaimTypes : seedData.reimbursementClaimTypes).map((record, index) => this.normalizeReimbursementClaimType(record, current.employees, index));
+    current.reimbursementRequests = (current.reimbursementRequests?.length ? current.reimbursementRequests : seedData.reimbursementRequests).map((record, index) => this.normalizeReimbursementRequest(record, current.employees, current.reimbursementClaimTypes, index));
     current.compensationProfiles = (current.compensationProfiles?.length ? current.compensationProfiles : seedData.compensationProfiles).map((profile, index) => this.normalizeCompensationProfile(profile, index));
     current.taxProfiles = (current.taxProfiles?.length ? current.taxProfiles : seedData.taxProfiles).map((profile, index) => this.normalizeTaxProfile(profile, index));
     current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : seedData.payrollComponents).map((component, index) => this.normalizePayrollComponent(component, index));
@@ -334,6 +346,70 @@ export class AppService {
       amount: Number(line.amount ?? 0),
       taxable: Boolean(line.taxable ?? true),
       source: (line.source as PayslipLineItem["source"]) ?? "component"
+    };
+  }
+
+  private normalizeReimbursementClaimType(
+    record: Partial<ReimbursementClaimTypeRecord> & Record<string, unknown>,
+    employees: EmployeeRecord[],
+    index: number
+  ): ReimbursementClaimTypeRecord {
+    const employee = employees.find((entry) => entry.id === String(record.employeeId ?? ""));
+    const annualLimit = Number(record.annualLimit ?? 0);
+    const remainingBalance = Number(record.remainingBalance ?? annualLimit);
+
+    return {
+      id: String(record.id ?? `claim-${String(index + 1).padStart(3, "0")}`),
+      employeeId: String(record.employeeId ?? employee?.id ?? ""),
+      employeeName: String(record.employeeName ?? employee?.name ?? "Unknown Employee"),
+      department: String(record.department ?? employee?.department ?? "General Operations"),
+      designation: String(record.designation ?? employee?.position ?? "Staff"),
+      category: (record.category as ReimbursementClaimTypeRecord["category"]) ?? "other",
+      claimType: String(record.claimType ?? "General Reimbursement"),
+      subType: String(record.subType ?? "General"),
+      currency: String(record.currency ?? "IDR"),
+      annualLimit,
+      remainingBalance,
+      active: Boolean(record.active ?? true),
+      notes: String(record.notes ?? ""),
+      createdAt: String(record.createdAt ?? new Date().toISOString()),
+      updatedAt: String(record.updatedAt ?? record.createdAt ?? new Date().toISOString())
+    };
+  }
+
+  private normalizeReimbursementRequest(
+    record: Partial<ReimbursementRequestRecord> & Record<string, unknown>,
+    employees: EmployeeRecord[],
+    claimTypes: ReimbursementClaimTypeRecord[],
+    index: number
+  ): ReimbursementRequestRecord {
+    const employee = employees.find((entry) => entry.id === String(record.userId ?? ""));
+    const claimType = claimTypes.find((entry) => entry.id === String(record.claimTypeId ?? ""));
+
+    return {
+      id: String(record.id ?? `reimb-${String(index + 1).padStart(3, "0")}`),
+      userId: String(record.userId ?? employee?.id ?? ""),
+      employeeName: String(record.employeeName ?? employee?.name ?? "Unknown Employee"),
+      department: String(record.department ?? employee?.department ?? "General Operations"),
+      designation: String(record.designation ?? employee?.position ?? "Staff"),
+      claimTypeId: String(record.claimTypeId ?? claimType?.id ?? ""),
+      claimType: String(record.claimType ?? claimType?.claimType ?? "General Reimbursement"),
+      subType: String(record.subType ?? claimType?.subType ?? "General"),
+      category: (record.category as ReimbursementRequestRecord["category"]) ?? claimType?.category ?? "other",
+      currency: String(record.currency ?? claimType?.currency ?? "IDR"),
+      amount: Number(record.amount ?? 0),
+      receiptDate: String(record.receiptDate ?? new Date().toISOString().slice(0, 10)),
+      remarks: String(record.remarks ?? ""),
+      receiptFileName: record.receiptFileName == null ? null : String(record.receiptFileName),
+      receiptFileUrl: record.receiptFileUrl == null ? null : String(record.receiptFileUrl),
+      status: (record.status as ReimbursementRequestRecord["status"]) ?? "draft",
+      submittedAt: record.submittedAt == null ? null : String(record.submittedAt),
+      approvedAt: record.approvedAt == null ? null : String(record.approvedAt),
+      processedAt: record.processedAt == null ? null : String(record.processedAt),
+      createdAt: String(record.createdAt ?? new Date().toISOString()),
+      updatedAt: String(record.updatedAt ?? record.createdAt ?? new Date().toISOString()),
+      approverFlow: Array.isArray(record.approverFlow) ? record.approverFlow.map((entry) => String(entry)) : [],
+      balanceSnapshot: Number(record.balanceSnapshot ?? claimType?.remainingBalance ?? 0)
     };
   }
 
@@ -716,6 +792,49 @@ export class AppService {
     return lines.join("\n");
   }
 
+  private findReimbursementClaimType(db: DatabaseShape, claimTypeId: string) {
+    return db.reimbursementClaimTypes.find((entry) => entry.id === claimTypeId && entry.active);
+  }
+
+  private removeStoredFile(fileUrl: string | null) {
+    if (!fileUrl) {
+      return;
+    }
+    const fullPath = path.join(this.storageRoot, fileUrl.replace(/^\/storage\//, "").replace(/\//g, path.sep));
+    if (existsSync(fullPath)) {
+      unlinkSync(fullPath);
+    }
+  }
+
+  private applyReimbursementClaimDetails(
+    request: ReimbursementRequestRecord,
+    claimType: ReimbursementClaimTypeRecord,
+    amount: number,
+    receiptDate: string,
+    currency: string,
+    remarks: string
+  ) {
+    request.claimTypeId = claimType.id;
+    request.claimType = claimType.claimType;
+    request.subType = claimType.subType;
+    request.category = claimType.category;
+    request.currency = currency;
+    request.amount = amount;
+    request.receiptDate = receiptDate;
+    request.remarks = remarks;
+    request.balanceSnapshot = claimType.remainingBalance;
+  }
+
+  private parseBooleanFlag(value: unknown) {
+    if (value === true || value === 1 || value === "1") {
+      return true;
+    }
+    if (typeof value === "string") {
+      return value.trim().toLowerCase() === "true";
+    }
+    return false;
+  }
+
   async health() {
     const db = await this.readDb();
     return {
@@ -728,6 +847,8 @@ export class AppService {
         attendanceLogs: db.attendanceLogs.length,
         overtimeRequests: db.overtimeRequests.length,
         leaveRequests: db.leaveRequests.length,
+        reimbursementClaimTypes: db.reimbursementClaimTypes.length,
+        reimbursementRequests: db.reimbursementRequests.length,
         payrollComponents: db.payrollComponents.length,
         payRuns: db.payRuns.length,
         payslips: db.payslips.length
@@ -1162,6 +1283,254 @@ export class AppService {
 
     await this.writeDb(db);
     return leave;
+  }
+
+  async getReimbursementClaimTypes() {
+    const db = await this.readDb();
+    return db.reimbursementClaimTypes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async createReimbursementClaimType(payload: CreateReimbursementClaimTypeDto) {
+    const db = await this.readDb();
+    const employee = db.employees.find((entry) => entry.id === payload.employeeId);
+    const now = new Date().toISOString();
+    const claimType: ReimbursementClaimTypeRecord = {
+      id: `claim-${randomUUID().slice(0, 8)}`,
+      employeeId: payload.employeeId,
+      employeeName: employee?.name ?? payload.employeeName,
+      department: employee?.department ?? payload.department,
+      designation: employee?.position ?? payload.designation,
+      category: payload.category,
+      claimType: payload.claimType,
+      subType: payload.subType,
+      currency: payload.currency,
+      annualLimit: payload.annualLimit,
+      remainingBalance: Math.min(payload.remainingBalance, payload.annualLimit),
+      active: payload.active,
+      notes: payload.notes ?? "",
+      createdAt: now,
+      updatedAt: now
+    };
+    db.reimbursementClaimTypes.unshift(claimType);
+    await this.writeDb(db);
+    return claimType;
+  }
+
+  async updateReimbursementClaimType(id: string, payload: UpdateReimbursementClaimTypeDto) {
+    const db = await this.readDb();
+    const claimType = db.reimbursementClaimTypes.find((entry) => entry.id === id);
+    if (!claimType) {
+      throw new NotFoundException("Reimbursement claim type not found");
+    }
+
+    const employee = payload.employeeId ? db.employees.find((entry) => entry.id === payload.employeeId) : null;
+    Object.assign(claimType, payload);
+    if (employee) {
+      claimType.employeeId = employee.id;
+      claimType.employeeName = employee.name;
+      claimType.department = employee.department;
+      claimType.designation = employee.position;
+    }
+    if (payload.annualLimit !== undefined && claimType.remainingBalance > payload.annualLimit) {
+      claimType.remainingBalance = payload.annualLimit;
+    }
+    claimType.updatedAt = new Date().toISOString();
+    await this.writeDb(db);
+    return claimType;
+  }
+
+  async deleteReimbursementClaimType(id: string) {
+    const db = await this.readDb();
+    const exists = db.reimbursementClaimTypes.some((entry) => entry.id === id);
+    if (!exists) {
+      throw new NotFoundException("Reimbursement claim type not found");
+    }
+    db.reimbursementClaimTypes = db.reimbursementClaimTypes.filter((entry) => entry.id !== id);
+    await this.writeDb(db);
+    return { deleted: true, id };
+  }
+
+  async getReimbursementRequests() {
+    const db = await this.readDb();
+    return db.reimbursementRequests.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async createReimbursementRequest(
+    payload: CreateReimbursementRequestDto,
+    file?: Express.Multer.File,
+    receiptFileUrl?: string | null
+  ) {
+    const db = await this.readDb();
+    const claimType = this.findReimbursementClaimType(db, payload.claimTypeId);
+    if (!claimType) {
+      throw new NotFoundException("Reimbursement claim type not found");
+    }
+    if (claimType.employeeId !== payload.userId) {
+      throw new NotFoundException("Claim type is not available for this employee");
+    }
+
+    const now = new Date().toISOString();
+    const amount = Number(payload.amount);
+    const shouldSubmit = this.parseBooleanFlag((payload as { submit?: unknown }).submit);
+    if (shouldSubmit && !file) {
+      throw new NotFoundException("Receipt file is required before submitting reimbursement");
+    }
+    if (shouldSubmit && amount > claimType.remainingBalance) {
+      throw new NotFoundException("Requested amount exceeds remaining reimbursement balance");
+    }
+
+    const request: ReimbursementRequestRecord = {
+      id: `reimb-${randomUUID().slice(0, 8)}`,
+      userId: payload.userId,
+      employeeName: payload.employeeName,
+      department: payload.department,
+      designation: payload.designation,
+      claimTypeId: claimType.id,
+      claimType: claimType.claimType,
+      subType: claimType.subType,
+      category: claimType.category,
+      currency: payload.currency,
+      amount,
+      receiptDate: payload.receiptDate,
+      remarks: payload.remarks ?? "",
+      receiptFileName: file?.originalname ?? null,
+      receiptFileUrl: receiptFileUrl ?? null,
+      status: shouldSubmit ? "pending-manager" : "draft",
+      submittedAt: shouldSubmit ? now : null,
+      approvedAt: null,
+      processedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      approverFlow: shouldSubmit ? ["Employee submitted reimbursement", "Manager pending"] : ["Saved as draft"],
+      balanceSnapshot: claimType.remainingBalance
+    };
+
+    db.reimbursementRequests.unshift(request);
+    await this.writeDb(db);
+    return request;
+  }
+
+  async updateReimbursementRequest(
+    id: string,
+    payload: UpdateReimbursementRequestDto,
+    file?: Express.Multer.File,
+    receiptFileUrl?: string | null
+  ) {
+    const db = await this.readDb();
+    const request = db.reimbursementRequests.find((entry) => entry.id === id);
+    if (!request) {
+      throw new NotFoundException("Reimbursement request not found");
+    }
+    if (!["draft", "pending-manager"].includes(request.status)) {
+      throw new NotFoundException("Only draft or pending manager requests can be updated");
+    }
+
+    const claimType = this.findReimbursementClaimType(db, payload.claimTypeId ?? request.claimTypeId);
+    if (!claimType) {
+      throw new NotFoundException("Reimbursement claim type not found");
+    }
+
+    const amount = payload.amount !== undefined ? Number(payload.amount) : request.amount;
+    const receiptDate = payload.receiptDate ?? request.receiptDate;
+    const currency = payload.currency ?? request.currency;
+    const remarks = payload.remarks ?? request.remarks;
+    const shouldSubmit = this.parseBooleanFlag((payload as { submit?: unknown }).submit);
+    const nextReceiptFileUrl = receiptFileUrl ?? request.receiptFileUrl;
+
+    if (shouldSubmit && !nextReceiptFileUrl) {
+      throw new NotFoundException("Receipt file is required before submitting reimbursement");
+    }
+    if (shouldSubmit && amount > claimType.remainingBalance) {
+      throw new NotFoundException("Requested amount exceeds remaining reimbursement balance");
+    }
+
+    if (file && request.receiptFileUrl) {
+      this.removeStoredFile(request.receiptFileUrl);
+    }
+
+    this.applyReimbursementClaimDetails(request, claimType, amount, receiptDate, currency, remarks);
+    request.receiptFileName = file?.originalname ?? request.receiptFileName;
+    request.receiptFileUrl = nextReceiptFileUrl;
+    request.updatedAt = new Date().toISOString();
+
+    if (shouldSubmit) {
+      request.status = "pending-manager";
+      request.submittedAt = request.submittedAt ?? request.updatedAt;
+      request.approverFlow = [...request.approverFlow.filter((entry) => entry !== "Saved as draft"), "Submitted to manager"];
+    } else if (request.status === "draft") {
+      request.approverFlow = ["Saved as draft"];
+    }
+
+    await this.writeDb(db);
+    return request;
+  }
+
+  async managerApproveReimbursement(payload: ReimbursementApproveDto) {
+    const db = await this.readDb();
+    const request = db.reimbursementRequests.find((entry) => entry.id === payload.reimbursementId);
+    if (!request) {
+      throw new NotFoundException("Reimbursement request not found");
+    }
+    if (request.status !== "pending-manager") {
+      throw new NotFoundException("Reimbursement is not waiting for manager approval");
+    }
+
+    request.status = payload.status === "approved" ? "awaiting-hr" : "rejected";
+    request.approvedAt = payload.status === "approved" ? new Date().toISOString() : null;
+    request.updatedAt = new Date().toISOString();
+    request.approverFlow = [
+      ...request.approverFlow,
+      payload.status === "approved" ? `${payload.actor} approved, HR pending` : `${payload.actor} rejected`
+    ];
+    await this.writeDb(db);
+    return request;
+  }
+
+  async hrProcessReimbursement(payload: ReimbursementProcessDto) {
+    const db = await this.readDb();
+    const request = db.reimbursementRequests.find((entry) => entry.id === payload.reimbursementId);
+    if (!request) {
+      throw new NotFoundException("Reimbursement request not found");
+    }
+    if (!["awaiting-hr", "approved"].includes(request.status)) {
+      throw new NotFoundException("Reimbursement is not ready for HR processing");
+    }
+
+    const claimType = db.reimbursementClaimTypes.find((entry) => entry.id === request.claimTypeId);
+    if (!claimType) {
+      throw new NotFoundException("Reimbursement claim type not found");
+    }
+
+    if (payload.status === "rejected") {
+      request.status = "rejected";
+      request.updatedAt = new Date().toISOString();
+      request.approverFlow = [...request.approverFlow, `${payload.actor} rejected`];
+      await this.writeDb(db);
+      return request;
+    }
+
+    if (payload.status === "approved") {
+      request.status = "approved";
+      request.approvedAt = request.approvedAt ?? new Date().toISOString();
+      request.updatedAt = new Date().toISOString();
+      request.approverFlow = [...request.approverFlow, `${payload.actor} approved for payout`];
+      await this.writeDb(db);
+      return request;
+    }
+
+    if (request.amount > claimType.remainingBalance) {
+      throw new NotFoundException("Remaining balance is insufficient to process this reimbursement");
+    }
+
+    claimType.remainingBalance = Number((claimType.remainingBalance - request.amount).toFixed(2));
+    claimType.updatedAt = new Date().toISOString();
+    request.status = "processed";
+    request.approvedAt = request.approvedAt ?? new Date().toISOString();
+    request.processedAt = new Date().toISOString();
+    request.updatedAt = request.processedAt;
+    request.approverFlow = [...request.approverFlow, `${payload.actor} processed reimbursement`];
+    await this.writeDb(db);
+    return request;
   }
 
   async getPayrollOverview() {
