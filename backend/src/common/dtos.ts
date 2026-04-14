@@ -296,6 +296,14 @@ export class UploadEmployeeDocumentDto {
   notes?: string;
 }
 
+export class EmployeeLoginDto {
+  @IsString()
+  username!: string;
+
+  @IsString()
+  password!: string;
+}
+
 export class CheckInDto {
   @IsString()
   userId!: string;

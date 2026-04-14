@@ -1,9 +1,12 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import * as XLSX from "xlsx";
+import { DatabaseService } from "./database.service";
+import { EmployeeSessionPayload } from "./auth.types";
+import { hashPassword, isPasswordHash, verifyPassword } from "./password.service";
 import { seedData } from "../data/seed";
 import {
   AttendanceRecord,
@@ -84,6 +87,9 @@ export class AppService {
   private readonly storageRoot = path.resolve(process.cwd(), "storage");
   private readonly dbPath = path.join(this.storageRoot, "data.json");
   private cache: DatabaseShape | null = null;
+  private writeQueue: Promise<void> = Promise.resolve();
+
+  constructor(@Inject(DatabaseService) private readonly databaseService: DatabaseService) {}
 
   async onModuleInit() {
     await mkdir(this.storageRoot, { recursive: true });
@@ -112,6 +118,7 @@ export class AppService {
     current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : seedData.payrollComponents).map((component, index) => this.normalizePayrollComponent(component, index));
     current.payRuns = (current.payRuns?.length ? current.payRuns : seedData.payRuns).map((run, index) => this.normalizePayRun(run, index));
     current.payslips = (current.payslips?.length ? current.payslips : seedData.payslips).map((slip, index) => this.normalizePayslip(slip, current.employees, index));
+    await this.ensureEmployeePasswordsHashed(current);
     await this.writeDb(current);
   }
 
@@ -414,9 +421,117 @@ export class AppService {
   }
 
   private async readDb() {
-    if (this.cache) {
+    const prisma = this.getPrisma();
+    if (!prisma && this.cache) {
       return this.cache;
     }
+    if (prisma) {
+      const [
+        employees,
+        attendanceLogs,
+        overtimeRequests,
+        leaveRequests,
+        reimbursementClaimTypes,
+        reimbursementRequests,
+        compensationProfiles,
+        taxProfiles,
+        payrollComponents,
+        payRuns,
+        payslips
+      ] = await Promise.all([
+        prisma.employee.findMany({ orderBy: { name: "asc" } }),
+        prisma.attendanceLog.findMany({ orderBy: { timestamp: "desc" } }),
+        prisma.overtimeRequest.findMany({ orderBy: { date: "desc" } }),
+        prisma.leaveRequest.findMany({ orderBy: { requestedAt: "desc" } }),
+        prisma.reimbursementClaimType.findMany({ orderBy: { updatedAt: "desc" } }),
+        prisma.reimbursementRequest.findMany({ orderBy: { updatedAt: "desc" } }),
+        prisma.compensationProfile.findMany({ orderBy: { position: "asc" } }),
+        prisma.taxProfile.findMany({ orderBy: { name: "asc" } }),
+        prisma.payrollComponent.findMany({ orderBy: { code: "asc" } }),
+        prisma.payRun.findMany({ orderBy: { periodEnd: "desc" } }),
+        prisma.payslip.findMany({ orderBy: { payDate: "desc" } })
+      ]);
+
+      this.cache = {
+        employees: employees.map((employee: any) => ({
+          ...employee,
+          baseSalary: Number(employee.baseSalary),
+          allowance: Number(employee.allowance),
+          educationHistory: Array.isArray(employee.educationHistory) ? employee.educationHistory : [],
+          workExperiences: Array.isArray(employee.workExperiences) ? employee.workExperiences : [],
+          financialComponentIds: Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds : [],
+          documents: Array.isArray(employee.documents) ? employee.documents : [],
+          leaveBalances: employee.leaveBalances ?? seedData.employees[0]?.leaveBalances
+        })),
+        attendanceLogs: attendanceLogs.map((record: any) => ({
+          ...record,
+          latitude: Number(record.latitude),
+          longitude: Number(record.longitude),
+          gpsDistanceMeters: Number(record.gpsDistanceMeters)
+        })),
+        overtimeRequests: overtimeRequests.map((record: any) => ({
+          ...record,
+          minutes: Number(record.minutes)
+        })),
+        leaveRequests: leaveRequests.map((record: any) => ({
+          ...record,
+          daysRequested: Number(record.daysRequested)
+        })),
+        reimbursementClaimTypes: reimbursementClaimTypes.map((record: any) => ({
+          ...record,
+          annualLimit: Number(record.annualLimit),
+          remainingBalance: Number(record.remainingBalance),
+          createdAt: record.createdAt.toISOString(),
+          updatedAt: record.updatedAt.toISOString()
+        })),
+        reimbursementRequests: reimbursementRequests.map((record: any) => ({
+          ...record,
+          amount: Number(record.amount),
+          balanceSnapshot: Number(record.balanceSnapshot),
+          submittedAt: record.submittedAt ? record.submittedAt.toISOString() : null,
+          approvedAt: record.approvedAt ? record.approvedAt.toISOString() : null,
+          processedAt: record.processedAt ? record.processedAt.toISOString() : null,
+          createdAt: record.createdAt.toISOString(),
+          updatedAt: record.updatedAt.toISOString()
+        })),
+        compensationProfiles: compensationProfiles.map((record: any) => ({
+          ...record,
+          baseSalary: Number(record.baseSalary)
+        })),
+        taxProfiles: taxProfiles.map((record: any) => ({
+          ...record,
+          rate: Number(record.rate)
+        })),
+        payrollComponents: payrollComponents.map((record: any) => ({
+          ...record,
+          amount: Number(record.amount),
+          percentage: record.percentage == null ? null : Number(record.percentage)
+        })),
+        payRuns: payRuns.map((record: any) => ({
+          ...record,
+          totalGross: Number(record.totalGross),
+          totalNet: Number(record.totalNet),
+          totalTax: Number(record.totalTax),
+          createdAt: record.createdAt.toISOString(),
+          publishedAt: record.publishedAt ? record.publishedAt.toISOString() : null
+        })),
+        payslips: payslips.map((record: any) => ({
+          ...record,
+          baseSalary: Number(record.baseSalary),
+          allowance: Number(record.allowance),
+          overtimePay: Number(record.overtimePay),
+          additionalEarnings: Number(record.additionalEarnings),
+          grossPay: Number(record.grossPay),
+          taxDeduction: Number(record.taxDeduction),
+          otherDeductions: Number(record.otherDeductions),
+          netPay: Number(record.netPay),
+          components: Array.isArray(record.components) ? record.components : []
+        }))
+      };
+
+      return this.cache;
+    }
+
     const raw = await readFile(this.dbPath, "utf8");
     this.cache = JSON.parse(raw) as DatabaseShape;
     return this.cache;
@@ -424,7 +539,340 @@ export class AppService {
 
   private async writeDb(next: DatabaseShape) {
     this.cache = next;
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const run = this.writeQueue
+        .catch(() => undefined)
+        .then(() => this.persistSnapshotToDatabase(next));
+      this.writeQueue = run.then(() => undefined, () => undefined);
+      await run;
+      return;
+    }
+
     await writeFile(this.dbPath, JSON.stringify(next, null, 2), "utf8");
+  }
+
+  private getPrisma() {
+    return this.databaseService.getClient() as any;
+  }
+
+  private toDate(value: string | null | undefined) {
+    if (!value) {
+      return null;
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private async getEmployeeRows() {
+    const db = await this.readDb();
+    return db.employees.map((employee) => this.sanitizeEmployee(employee));
+  }
+
+  private sanitizeEmployee(employee: EmployeeRecord) {
+    return {
+      ...employee,
+      loginPassword: null
+    };
+  }
+
+  private toEmployeeSessionPayload(employee: EmployeeRecord): EmployeeSessionPayload {
+    return {
+      sessionKey: `employee:${employee.id}`,
+      id: employee.id,
+      name: employee.name,
+      email: employee.email,
+      role: employee.role,
+      department: employee.department,
+      position: employee.position
+    };
+  }
+
+  private async ensureEmployeePasswordsHashed(db: DatabaseShape) {
+    let changed = false;
+
+    for (const employee of db.employees) {
+      if (!employee.appLoginEnabled || !employee.loginPassword) {
+        continue;
+      }
+
+      if (!isPasswordHash(employee.loginPassword)) {
+        employee.loginPassword = await hashPassword(employee.loginPassword);
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
+  private async upsertById(model: any, items: Array<Record<string, unknown>>) {
+    for (const item of items) {
+      await model.upsert({
+        where: { id: item.id },
+        create: item,
+        update: item
+      });
+    }
+  }
+
+  private async deleteMissingByIds(model: any, ids: string[]) {
+    if (ids.length === 0) {
+      await model.deleteMany();
+      return;
+    }
+
+    await model.deleteMany({
+      where: {
+        id: {
+          notIn: ids
+        }
+      }
+    });
+  }
+
+  private async persistSnapshotToDatabase(next: DatabaseShape) {
+    const prisma = this.getPrisma();
+    if (!prisma) {
+      return;
+    }
+
+    const employeeRows = next.employees.map((employee) => ({
+      id: employee.id,
+      employeeNumber: employee.employeeNumber,
+      nik: employee.nik,
+      name: employee.name,
+      email: employee.email,
+      birthPlace: employee.birthPlace,
+      birthDate: employee.birthDate,
+      gender: employee.gender,
+      maritalStatus: employee.maritalStatus,
+      marriageDate: employee.marriageDate,
+      address: employee.address,
+      idCardNumber: employee.idCardNumber,
+      education: employee.education,
+      workExperience: employee.workExperience,
+      educationHistory: employee.educationHistory,
+      workExperiences: employee.workExperiences,
+      department: employee.department,
+      position: employee.position,
+      role: employee.role,
+      status: employee.status,
+      phone: employee.phone,
+      joinDate: employee.joinDate,
+      workLocation: employee.workLocation,
+      workType: employee.workType,
+      managerName: employee.managerName,
+      employmentType: employee.employmentType,
+      contractStatus: employee.contractStatus,
+      contractStart: employee.contractStart,
+      contractEnd: employee.contractEnd,
+      baseSalary: employee.baseSalary,
+      allowance: employee.allowance,
+      positionSalaryId: employee.positionSalaryId,
+      financialComponentIds: employee.financialComponentIds,
+      taxProfileId: employee.taxProfileId,
+      taxProfile: employee.taxProfile,
+      bankName: employee.bankName,
+      bankAccountMasked: employee.bankAccountMasked,
+      appLoginEnabled: employee.appLoginEnabled,
+      loginUsername: employee.loginUsername,
+      loginPassword: employee.loginPassword,
+      documents: employee.documents,
+      leaveBalances: employee.leaveBalances
+    }));
+
+    const taxProfileRows = next.taxProfiles.map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+      rate: profile.rate,
+      active: profile.active,
+      description: profile.description
+    }));
+
+    const compensationProfileRows = next.compensationProfiles.map((profile) => ({
+      id: profile.id,
+      position: profile.position,
+      baseSalary: profile.baseSalary,
+      active: profile.active,
+      notes: profile.notes
+    }));
+
+    const payrollComponentRows = next.payrollComponents.map((component) => ({
+      id: component.id,
+      code: component.code,
+      name: component.name,
+      type: component.type,
+      calculationType: component.calculationType,
+      amount: component.amount,
+      percentage: component.percentage,
+      taxable: component.taxable,
+      active: component.active,
+      appliesToAll: component.appliesToAll,
+      employeeIds: component.employeeIds,
+      description: component.description
+    }));
+
+    const payRunRows = next.payRuns.map((run) => ({
+      id: run.id,
+      periodLabel: run.periodLabel,
+      periodStart: run.periodStart,
+      periodEnd: run.periodEnd,
+      payDate: run.payDate,
+      status: run.status,
+      totalGross: run.totalGross,
+      totalNet: run.totalNet,
+      totalTax: run.totalTax,
+      employeeCount: run.employeeCount,
+      createdAt: this.toDate(run.createdAt) ?? new Date(),
+      publishedAt: this.toDate(run.publishedAt)
+    }));
+
+    const reimbursementClaimTypeRows = next.reimbursementClaimTypes.map((claimType) => ({
+      id: claimType.id,
+      employeeId: claimType.employeeId,
+      employeeName: claimType.employeeName,
+      department: claimType.department,
+      designation: claimType.designation,
+      category: claimType.category,
+      claimType: claimType.claimType,
+      subType: claimType.subType,
+      currency: claimType.currency,
+      annualLimit: claimType.annualLimit,
+      remainingBalance: claimType.remainingBalance,
+      active: claimType.active,
+      notes: claimType.notes,
+      createdAt: this.toDate(claimType.createdAt) ?? new Date(),
+      updatedAt: this.toDate(claimType.updatedAt) ?? new Date()
+    }));
+
+    const attendanceRows = next.attendanceLogs.map((record) => ({
+      id: record.id,
+      userId: record.userId,
+      employeeName: record.employeeName,
+      department: record.department,
+      timestamp: record.timestamp,
+      checkIn: record.checkIn,
+      checkOut: record.checkOut,
+      location: record.location,
+      latitude: record.latitude,
+      longitude: record.longitude,
+      description: record.description,
+      gpsValidated: record.gpsValidated,
+      gpsDistanceMeters: record.gpsDistanceMeters,
+      photoUrl: record.photoUrl,
+      status: record.status,
+      overtimeMinutes: record.overtimeMinutes
+    }));
+
+    const overtimeRows = next.overtimeRequests.map((record) => ({
+      id: record.id,
+      userId: record.userId,
+      employeeName: record.employeeName,
+      department: record.department,
+      date: record.date,
+      minutes: record.minutes,
+      reason: record.reason,
+      status: record.status
+    }));
+
+    const leaveRows = next.leaveRequests.map((record) => ({
+      id: record.id,
+      userId: record.userId,
+      employeeName: record.employeeName,
+      type: record.type,
+      startDate: record.startDate,
+      endDate: record.endDate,
+      reason: record.reason,
+      status: record.status,
+      approverFlow: record.approverFlow,
+      balanceLabel: record.balanceLabel,
+      requestedAt: record.requestedAt,
+      daysRequested: record.daysRequested,
+      autoApproved: record.autoApproved
+    }));
+
+    const payslipRows = next.payslips.map((slip) => ({
+      id: slip.id,
+      payRunId: slip.payRunId,
+      userId: slip.userId,
+      employeeName: slip.employeeName,
+      employeeNumber: slip.employeeNumber,
+      department: slip.department,
+      position: slip.position,
+      periodLabel: slip.periodLabel,
+      periodStart: slip.periodStart,
+      periodEnd: slip.periodEnd,
+      payDate: slip.payDate,
+      status: slip.status,
+      baseSalary: slip.baseSalary,
+      allowance: slip.allowance,
+      overtimePay: slip.overtimePay,
+      additionalEarnings: slip.additionalEarnings,
+      grossPay: slip.grossPay,
+      taxDeduction: slip.taxDeduction,
+      otherDeductions: slip.otherDeductions,
+      netPay: slip.netPay,
+      bankName: slip.bankName,
+      bankAccountMasked: slip.bankAccountMasked,
+      taxProfile: slip.taxProfile,
+      components: slip.components,
+      generatedFileUrl: slip.generatedFileUrl
+    }));
+
+    const reimbursementRequestRows = next.reimbursementRequests.map((request) => ({
+      id: request.id,
+      userId: request.userId,
+      employeeName: request.employeeName,
+      department: request.department,
+      designation: request.designation,
+      claimTypeId: request.claimTypeId,
+      claimType: request.claimType,
+      subType: request.subType,
+      category: request.category,
+      currency: request.currency,
+      amount: request.amount,
+      receiptDate: request.receiptDate,
+      remarks: request.remarks,
+      receiptFileName: request.receiptFileName,
+      receiptFileUrl: request.receiptFileUrl,
+      status: request.status,
+      submittedAt: this.toDate(request.submittedAt),
+      approvedAt: this.toDate(request.approvedAt),
+      processedAt: this.toDate(request.processedAt),
+      createdAt: this.toDate(request.createdAt) ?? new Date(),
+      updatedAt: this.toDate(request.updatedAt) ?? new Date(),
+      approverFlow: request.approverFlow,
+      balanceSnapshot: request.balanceSnapshot
+    }));
+
+    await prisma.$transaction(async (tx: any) => {
+      await this.upsertById(tx.employee, employeeRows);
+      await this.upsertById(tx.taxProfile, taxProfileRows);
+      await this.upsertById(tx.compensationProfile, compensationProfileRows);
+      await this.upsertById(tx.payrollComponent, payrollComponentRows);
+      await this.upsertById(tx.payRun, payRunRows);
+      await this.upsertById(tx.reimbursementClaimType, reimbursementClaimTypeRows);
+
+      await this.upsertById(tx.attendanceLog, attendanceRows);
+      await this.upsertById(tx.overtimeRequest, overtimeRows);
+      await this.upsertById(tx.leaveRequest, leaveRows);
+      await this.upsertById(tx.payslip, payslipRows);
+      await this.upsertById(tx.reimbursementRequest, reimbursementRequestRows);
+
+      await this.deleteMissingByIds(tx.reimbursementRequest, reimbursementRequestRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.payslip, payslipRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.leaveRequest, leaveRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.overtimeRequest, overtimeRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.attendanceLog, attendanceRows.map((row) => String(row.id)));
+
+      await this.deleteMissingByIds(tx.reimbursementClaimType, reimbursementClaimTypeRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.payRun, payRunRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.payrollComponent, payrollComponentRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.compensationProfile, compensationProfileRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.taxProfile, taxProfileRows.map((row) => String(row.id)));
+      await this.deleteMissingByIds(tx.employee, employeeRows.map((row) => String(row.id)));
+    });
   }
 
   private getRadius(location: string) {
@@ -836,27 +1284,65 @@ export class AppService {
   }
 
   async health() {
-    const db = await this.readDb();
+    const database = await this.databaseService.healthcheck();
+    const prisma = this.getPrisma();
+    const db = prisma
+      ? await Promise.all([
+          prisma.employee.count(),
+          prisma.attendanceLog.count(),
+          prisma.overtimeRequest.count(),
+          prisma.leaveRequest.count(),
+          prisma.reimbursementClaimType.count(),
+          prisma.reimbursementRequest.count(),
+          prisma.payrollComponent.count(),
+          prisma.payRun.count(),
+          prisma.payslip.count()
+        ])
+      : null;
+
+    const localDb = db ? null : await this.readDb();
     return {
       status: "ok",
       timestamp: new Date().toISOString(),
       services: {
         api: "online",
+        database,
         storage: this.storageRoot,
-        employees: db.employees.length,
-        attendanceLogs: db.attendanceLogs.length,
-        overtimeRequests: db.overtimeRequests.length,
-        leaveRequests: db.leaveRequests.length,
-        reimbursementClaimTypes: db.reimbursementClaimTypes.length,
-        reimbursementRequests: db.reimbursementRequests.length,
-        payrollComponents: db.payrollComponents.length,
-        payRuns: db.payRuns.length,
-        payslips: db.payslips.length
+        employees: db ? db[0] : localDb!.employees.length,
+        attendanceLogs: db ? db[1] : localDb!.attendanceLogs.length,
+        overtimeRequests: db ? db[2] : localDb!.overtimeRequests.length,
+        leaveRequests: db ? db[3] : localDb!.leaveRequests.length,
+        reimbursementClaimTypes: db ? db[4] : localDb!.reimbursementClaimTypes.length,
+        reimbursementRequests: db ? db[5] : localDb!.reimbursementRequests.length,
+        payrollComponents: db ? db[6] : localDb!.payrollComponents.length,
+        payRuns: db ? db[7] : localDb!.payRuns.length,
+        payslips: db ? db[8] : localDb!.payslips.length
       }
     };
   }
 
   async getDashboardSummary() {
+    const prisma = this.getPrisma();
+
+    if (prisma) {
+      const [employees, onTime, late, absent, leavePending] = await Promise.all([
+        prisma.employee.count(),
+        prisma.attendanceLog.count({ where: { status: "on-time" } }),
+        prisma.attendanceLog.count({ where: { status: "late" } }),
+        prisma.attendanceLog.count({ where: { status: "absent" } }),
+        prisma.leaveRequest.count({ where: { status: { not: "approved" } } })
+      ]);
+
+      return {
+        employees,
+        onTime,
+        late,
+        absent,
+        leavePending,
+        storageMode: this.databaseService.getModeLabel()
+      };
+    }
+
     const db = await this.readDb();
     const onTime = db.attendanceLogs.filter((log) => log.status === "on-time").length;
     const late = db.attendanceLogs.filter((log) => log.status === "late").length;
@@ -867,13 +1353,50 @@ export class AppService {
       late,
       absent,
       leavePending: db.leaveRequests.filter((leave) => leave.status !== "approved").length,
-      storageMode: "local-directory"
+      storageMode: this.databaseService.getModeLabel()
     };
   }
 
   async getEmployees() {
+    return this.getEmployeeRows();
+  }
+
+  async authenticateEmployee(username: string, password: string) {
     const db = await this.readDb();
-    return db.employees;
+    const normalizedUsername = username.trim();
+    const normalizedPassword = password.trim();
+
+    const employee = db.employees.find((item) =>
+      item.status === "active" &&
+      item.appLoginEnabled &&
+      item.loginUsername === normalizedUsername
+    );
+
+    if (!employee) {
+      throw new NotFoundException("Username atau password tidak valid.");
+    }
+
+    const passwordMatches = await verifyPassword(normalizedPassword, employee.loginPassword);
+    if (!passwordMatches) {
+      throw new NotFoundException("Username atau password tidak valid.");
+    }
+
+    if (employee.loginPassword && !isPasswordHash(employee.loginPassword)) {
+      employee.loginPassword = await hashPassword(normalizedPassword);
+      await this.writeDb(db);
+    }
+
+    return this.toEmployeeSessionPayload(employee);
+  }
+
+  async getEmployeeSession(employeeId: string) {
+    const db = await this.readDb();
+    const employee = db.employees.find((item) => item.id === employeeId && item.appLoginEnabled && item.status === "active");
+    if (!employee) {
+      throw new NotFoundException("Employee session not found");
+    }
+
+    return this.toEmployeeSessionPayload(employee);
   }
 
   async createEmployee(payload: CreateEmployeeDto) {
@@ -887,6 +1410,7 @@ export class AppService {
       .filter((entry) => entry.type === "earning")
       .reduce((sum, entry) => sum + (entry.calculationType === "percentage" ? Math.round((compensationProfile?.baseSalary ?? payload.baseSalary) * ((entry.percentage ?? 0) / 100)) : entry.amount), 0);
     const selectedTaxProfile = payload.taxProfileId ? db.taxProfiles.find((entry) => entry.id === payload.taxProfileId) : null;
+    const employeePassword = payload.appLoginEnabled === false ? null : (payload.loginPassword?.trim() || "employee123");
     const employee: EmployeeRecord = {
       id: `emp-${randomUUID().slice(0, 8)}`,
       employeeNumber: `EMP-2026-${sequence}`,
@@ -905,13 +1429,13 @@ export class AppService {
       marriageDate: payload.marriageDate ?? null,
       appLoginEnabled: payload.appLoginEnabled ?? true,
       loginUsername: payload.appLoginEnabled === false ? null : (payload.loginUsername?.trim() || payload.nik),
-      loginPassword: payload.appLoginEnabled === false ? null : (payload.loginPassword?.trim() || "employee123"),
+      loginPassword: employeePassword ? await hashPassword(employeePassword) : null,
       documents: [],
       leaveBalances: this.normalizeLeaveBalances(payload.leaveBalances as Partial<EmployeeRecord["leaveBalances"]> | undefined)
     };
     db.employees.unshift(employee);
     await this.writeDb(db);
-    return employee;
+    return this.sanitizeEmployee(employee);
   }
 
   async updateEmployee(id: string, payload: UpdateEmployeeDto) {
@@ -954,13 +1478,14 @@ export class AppService {
       employee.loginUsername = payload.loginUsername?.trim() || null;
     }
     if (payload.loginPassword !== undefined) {
-      employee.loginPassword = payload.loginPassword?.trim() || null;
+      const nextPassword = payload.loginPassword?.trim() || null;
+      employee.loginPassword = nextPassword ? await hashPassword(nextPassword) : null;
     }
     if (payload.leaveBalances !== undefined) {
       employee.leaveBalances = this.normalizeLeaveBalances(payload.leaveBalances as Partial<EmployeeRecord["leaveBalances"]>);
     }
     await this.writeDb(db);
-    return employee;
+    return this.sanitizeEmployee(employee);
   }
 
   async deleteEmployee(id: string) {

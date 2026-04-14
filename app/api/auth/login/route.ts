@@ -3,19 +3,6 @@ import { authCookieName, authProfileCookieName, defaultRouteForRole, encodeSessi
 
 const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
 
-type EmployeeAuthRecord = {
-  id: string;
-  name: string;
-  email: string;
-  role: "admin" | "hr" | "manager" | "employee";
-  department: string;
-  position: string;
-  appLoginEnabled: boolean;
-  loginUsername: string | null;
-  loginPassword: string | null;
-  status: "active" | "inactive";
-};
-
 function buildAuthResponse(user?: SessionUser, redirectTo?: string) {
   if (!user) {
     return NextResponse.json({ success: false, error: "Invalid account" }, { status: 400 });
@@ -63,30 +50,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Username dan password wajib diisi." }, { status: 400 });
   }
 
-  const response = await fetch(`${API_BASE}/api/employees`, { cache: "no-store" });
+  const response = await fetch(`${API_BASE}/api/auth/employee-login`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+
   if (!response.ok) {
-    return NextResponse.json({ success: false, error: "Gagal mengambil data employee." }, { status: 500 });
-  }
-
-  const employeePayload = (await response.json()) as { data: EmployeeAuthRecord[] };
-  const employee = employeePayload.data.find((item) =>
-    item.status === "active" &&
-    item.appLoginEnabled &&
-    item.loginUsername === username &&
-    item.loginPassword === password
-  );
-
-  if (!employee) {
     return NextResponse.json({ success: false, error: "Username atau password tidak valid." }, { status: 400 });
   }
 
-  return buildAuthResponse({
-    sessionKey: `employee:${employee.id}`,
-    id: employee.id,
-    name: employee.name,
-    email: employee.email,
-    role: employee.role,
-    department: employee.department,
-    position: employee.position
-  });
+  const employeePayload = (await response.json()) as { data: SessionUser };
+  return buildAuthResponse(employeePayload.data);
 }

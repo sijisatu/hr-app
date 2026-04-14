@@ -29,6 +29,7 @@ import {
   CreateTaxProfileDto,
   OvertimeApproveDto,
   CreatePayrollComponentDto,
+  EmployeeLoginDto,
   ExportPayslipDto,
   GeneratePayrollRunDto,
   LeaveApproveDto,
@@ -62,6 +63,16 @@ export class AppController {
   @Get("employees")
   async employees() {
     return this.wrap(await this.appService.getEmployees());
+  }
+
+  @Post("auth/employee-login")
+  async employeeLogin(@Body() body: EmployeeLoginDto) {
+    return this.wrap(await this.appService.authenticateEmployee(body.username, body.password));
+  }
+
+  @Get("auth/employee-session/:id")
+  async employeeSession(@Param("id") id: string) {
+    return this.wrap(await this.appService.getEmployeeSession(id));
   }
 
   @Post("employees")

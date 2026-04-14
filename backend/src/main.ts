@@ -1,3 +1,4 @@
+import "dotenv/config";
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
@@ -5,6 +6,7 @@ import express from "express";
 import path from "node:path";
 import { AppModule } from "./app.module";
 import { AppService } from "./common/app.service";
+import { DatabaseService } from "./common/database.service";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
@@ -19,6 +21,9 @@ async function bootstrap() {
 
   const storageDir = path.resolve(process.cwd(), "storage");
   app.use("/storage", express.static(storageDir));
+
+  const databaseService = app.get(DatabaseService);
+  await databaseService.ensureReady();
 
   const appService = app.get(AppService);
   await appService.onModuleInit();

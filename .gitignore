@@ -3,11 +3,13 @@ node_modules/
 *.log
 *.tsbuildinfo
 .env.local
+backend/.env
 logs/
 
 backend/node_modules/
 backend/dist/
 backend/storage/
+backend/backups/
 
 .DS_Store
 Thumbs.db

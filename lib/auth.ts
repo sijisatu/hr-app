@@ -6,38 +6,14 @@ import { authCookieName, authProfileCookieName, decodeSessionProfile, defaultRou
 
 const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
 
-type EmployeeSessionRecord = {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  department: string;
-  position: string;
-  appLoginEnabled: boolean;
-  status: "active" | "inactive";
-};
-
 async function getEmployeeSessionById(employeeId: string): Promise<SessionUser | null> {
-  const response = await fetch(`${API_BASE}/api/employees`, { cache: "no-store" });
+  const response = await fetch(`${API_BASE}/api/auth/employee-session/${employeeId}`, { cache: "no-store" });
   if (!response.ok) {
     return null;
   }
 
-  const payload = (await response.json()) as { data: EmployeeSessionRecord[] };
-  const employee = payload.data.find((item) => item.id === employeeId && item.appLoginEnabled && item.status === "active");
-  if (!employee) {
-    return null;
-  }
-
-  return {
-    sessionKey: `employee:${employee.id}`,
-    id: employee.id,
-    name: employee.name,
-    email: employee.email,
-    role: employee.role,
-    department: employee.department,
-    position: employee.position
-  };
+  const payload = (await response.json()) as { data: SessionUser };
+  return payload.data ?? null;
 }
 
 export async function getCurrentSession(): Promise<SessionUser | null> {

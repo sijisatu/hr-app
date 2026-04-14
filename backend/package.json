@@ -6,17 +6,30 @@
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:studio": "prisma studio",
+    "db:import-json": "tsx scripts/import-json-to-db.ts",
+    "db:backup": "powershell -ExecutionPolicy Bypass -File .\\scripts\\db-backup.ps1",
+    "db:restore": "powershell -ExecutionPolicy Bypass -File .\\scripts\\db-restore.ps1"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
     "@nestjs/core": "^10.4.15",
     "@nestjs/platform-express": "^10.4.15",
+    "@prisma/client": "6.16.2",
+    "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",
+    "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "xlsx": "^0.18.5"
@@ -25,6 +38,7 @@
     "@types/express": "^5.0.0",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.9.0",
+    "prisma": "6.16.2",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

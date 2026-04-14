@@ -105,3 +105,49 @@ Modul hr-app HR:
 Beresin login page
 
 bikin responsive buat di browser mobile (DONE)
+
+## Production Storage & Database Migration Plan
+
+### Goal
+
+Migrasi storage aplikasi dari `local JSON file` ke `production-ready relational database` dengan pendekatan bertahap agar backend tetap bisa jalan selama proses transisi. File upload tetap disimpan di local storage dulu, dan baru bisa dipindah ke object storage di fase berikutnya.
+
+### Current State
+
+- Data utama backend masih disimpan di `backend/storage/data.json`
+- Upload file, export, dan dokumen masih disimpan di `backend/storage/...`
+- Backend belum memakai database server untuk transaksi data HRIS
+
+### Implementation Plan
+
+1. Setup fondasi database production-ready
+   - Pilih PostgreSQL sebagai database utama
+   - Tambahkan ORM dan migration tooling
+   - Rapikan konfigurasi environment database
+
+2. Modelkan schema database
+   - Buat schema untuk employees, attendance, leave, overtime, payroll, reimbursement, dan payslip
+   - Tentukan relasi, unique constraint, index, dan audit timestamp
+
+3. Siapkan migrasi data dari JSON ke database
+   - Buat script import dari `backend/storage/data.json`
+   - Pastikan seed/demo data bisa dimasukkan ke database baru
+   - Validasi hasil migrasi sebelum cutover
+
+4. Refactor backend bertahap
+   - Pisahkan layer akses data dari business logic
+   - Ganti pembacaan/penulisan JSON ke query database
+   - Pertahankan local file storage untuk upload dan generated file
+
+5. Hardening untuk production
+   - Tambahkan migration workflow untuk deployment
+   - Tambahkan backup/restore guideline database
+   - Siapkan env template production
+   - Review error handling dan concurrency saat multi-user
+
+### Delivery Stages
+
+- Stage 1: Foundation database + schema + migration script
+- Stage 2: Employees, attendance, leave, overtime pindah ke database
+- Stage 3: Payroll, reimbursement, payslip pindah ke database
+- Stage 4: Cutover penuh dan deprecate `data.json`
