@@ -151,3 +151,37 @@ Migrasi storage aplikasi dari `local JSON file` ke `production-ready relational 
 - Stage 2: Employees, attendance, leave, overtime pindah ke database
 - Stage 3: Payroll, reimbursement, payslip pindah ke database
 - Stage 4: Cutover penuh dan deprecate `data.json`
+
+## Implementation Update
+
+### Database & Storage
+
+- [x] Setup PostgreSQL lokal untuk development
+- [x] Tambah Prisma schema untuk modul utama HRIS
+- [x] Tambah baseline migration SQL untuk deployment database
+- [x] Tambah import script dari `backend/storage/data.json` ke PostgreSQL
+- [x] Cut over persistence backend dari file JSON ke PostgreSQL saat `APP_STORAGE_MODE=database`
+- [x] Pertahankan local file storage untuk upload dokumen, selfie, export, dan generated file
+
+### Backend Hardening
+
+- [x] Tambah database readiness check saat startup backend
+- [x] Ubah mode aplikasi jadi strict database saat storage mode pakai `database`
+- [x] Ganti write path dari model full rewrite DB ke serialised sync dengan `upsert + prune`
+- [x] Tambah script database migration deploy dan migration status
+- [x] Tambah script backup dan restore PostgreSQL
+
+### Auth Hardening
+
+- [x] Hash password employee dengan bcrypt
+- [x] Auto-upgrade password plain text lama menjadi hash saat backend startup
+- [x] Pindahkan verifikasi login employee ke backend API
+- [x] Tambah endpoint employee session khusus untuk lookup session
+- [x] Sembunyikan `loginPassword` dari response `GET /api/employees`
+
+### Current Status
+
+- [x] Backend sudah jalan dengan PostgreSQL sebagai storage utama
+- [x] Healthcheck backend sudah menampilkan status database
+- [x] Migration deploy sudah tervalidasi di database kosong
+- [x] Backup dump database sudah berhasil dibuat

@@ -404,18 +404,26 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap justify-end gap-3">
-        <Link href="/employees/financial-details" className="secondary-button"><WalletCards className="h-4 w-4" /> Financial Setup</Link>
-        <button className="primary-button" onClick={() => openModal("create")}><Plus className="h-4 w-4" /> Add Employee</button>
-      </div>
+      <section className="page-card p-5 sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Employee Directory</p>
+            <p className="mt-2 max-w-3xl text-[14px] leading-6 text-[var(--text-muted)]">Kelola data employee, buka financial setup, dan tambah employee baru dari action bar ini.</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link href="/employees/financial-details" className="secondary-button"><WalletCards className="h-4 w-4" /> Financial Setup</Link>
+            <button className="primary-button shadow-lg shadow-[rgba(20,43,87,0.18)]" onClick={() => openModal("create")}><Plus className="h-4 w-4" /> Add Employee</button>
+          </div>
+        </div>
+      </section>
 
       <EmployeesTable employees={employees} onView={(employee) => openModal("view", employee)} onEdit={(employee) => openModal("edit", employee)} onDelete={(employee) => deleteMutation.mutate(employee.id)} />
       {message ? <div className="page-card p-4 text-[14px] text-[var(--text-muted)]">{message}</div> : null}
 
       {mode ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-[24px] bg-white shadow-2xl">
-            <div className="border-b border-[var(--border)] px-6 py-5">
+          <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
+            <div className="shrink-0 border-b border-[var(--border)] px-6 py-5">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="section-title text-[28px] font-semibold text-[var(--primary)]">{mode === "create" ? "Add Employee" : mode === "edit" ? "Edit Employee" : "Employee Detail"}</p>
@@ -424,13 +432,13 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                 <button className="secondary-button" onClick={() => setMode(null)}>Close</button>
               </div>
             </div>
-            <div className="border-b border-[var(--border)] px-6 pt-4">
+            <div className="shrink-0 border-b border-[var(--border)] px-6 pt-4">
               <div className="flex gap-1 overflow-x-auto">
                 {tabs.map((item) => <button key={item.key} className={tab === item.key ? "rounded-t-[14px] border border-[var(--border)] border-b-white bg-white px-4 py-3 text-[14px] font-semibold text-[var(--primary)]" : "rounded-t-[14px] px-4 py-3 text-[14px] text-[var(--text-muted)]"} onClick={() => setTab(item.key)}>{item.label}</button>)}
               </div>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto px-6 py-6">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
               {tab === "personal" ? <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Nama" value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} disabled={readOnly} />
                 <Field label="NIK" value={form.nik} onChange={(value) => setForm((prev) => ({ ...prev, nik: value, loginUsername: prev.loginUsername || value }))} disabled={readOnly} />
@@ -632,7 +640,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
               </div> : null}
             </div>
 
-            <div className="border-t border-[var(--border)] px-6 py-5">
+            <div className="shrink-0 border-t border-[var(--border)] bg-white px-6 py-5">
               <div className="flex items-center justify-between gap-4">
                 <p className="text-[13px] text-[var(--text-muted)]">{selectedPosition ? `Jabatan aktif: ${selectedPosition.position}` : "Belum memilih jabatan."}</p>
                 <div className="flex gap-3">

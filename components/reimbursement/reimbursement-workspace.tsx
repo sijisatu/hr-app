@@ -429,12 +429,26 @@ function AllocationModal({ form, employees, pending, onClose, onChange, onSave }
 
             <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
               <span>Annual Limit</span>
-              <input type="number" min="0" value={form.annualLimit} onChange={(event) => onChange((prev) => ({ ...prev, annualLimit: event.target.value }))} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={form.annualLimit}
+                onChange={(event) => onChange((prev) => ({ ...prev, annualLimit: formatNumberInput(event.target.value) }))}
+                className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]"
+                placeholder="contoh: 3.500.000"
+              />
             </label>
 
             <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
               <span>Remaining Balance</span>
-              <input type="number" min="0" value={form.remainingBalance} onChange={(event) => onChange((prev) => ({ ...prev, remainingBalance: event.target.value }))} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={form.remainingBalance}
+                onChange={(event) => onChange((prev) => ({ ...prev, remainingBalance: formatNumberInput(event.target.value) }))}
+                className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]"
+                placeholder="contoh: 3.500.000"
+              />
             </label>
 
             <label className="flex items-center gap-3 rounded-[12px] border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-[14px] font-medium text-[var(--primary)]">
