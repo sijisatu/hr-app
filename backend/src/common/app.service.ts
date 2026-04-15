@@ -28,12 +28,16 @@ import {
   WorkExperienceRecord
 } from "./types";
 import {
+  AttendanceHistoryQueryDto,
   CheckInDto,
   CheckOutDto,
   CreateCompensationProfileDto,
   CreateEmployeeDto,
   CreateExportDto,
+  EmployeeListQueryDto,
   CreateOvertimeDto,
+  PayslipListQueryDto,
+  ReimbursementRequestListQueryDto,
   CreatePayrollComponentDto,
   CreateReimbursementClaimTypeDto,
   CreateReimbursementRequestDto,
@@ -82,12 +86,35 @@ const defaultLeaveAllocations = {
   permission: 4
 } as const;
 
+type PaginatedResult<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+};
+
+type ExportJobStatus = "queued" | "processing" | "done" | "failed";
+type ExportJobPayload = { type: "report"; payload: CreateExportDto } | { type: "payslip"; payload: ExportPayslipDto };
+type ExportJobResult = { fileName: string; fileUrl: string; payslipId?: string };
+type ExportJob = {
+  id: string;
+  status: ExportJobStatus;
+  createdAt: string;
+  updatedAt: string;
+  payload: ExportJobPayload;
+  result: ExportJobResult | null;
+  error: string | null;
+};
+
 @Injectable()
 export class AppService {
   private readonly storageRoot = path.resolve(process.cwd(), "storage");
   private readonly dbPath = path.join(this.storageRoot, "data.json");
   private cache: DatabaseShape | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
+  private exportQueue: ExportJob[] = [];
+  private activeExportJob = false;
 
   constructor(@Inject(DatabaseService) private readonly databaseService: DatabaseService) {}
 
@@ -565,6 +592,29 @@ export class AppService {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
+  private toPageMeta(page?: number, pageSize?: number) {
+    const normalizedPage = Math.max(1, Number(page) || 1);
+    const normalizedPageSize = Math.max(1, Math.min(200, Number(pageSize) || 25));
+    return {
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      skip: (normalizedPage - 1) * normalizedPageSize
+    };
+  }
+
+  private paginateArray<T>(items: T[], page?: number, pageSize?: number): PaginatedResult<T> {
+    const meta = this.toPageMeta(page, pageSize);
+    const total = items.length;
+    const paged = items.slice(meta.skip, meta.skip + meta.pageSize);
+    return {
+      items: paged,
+      total,
+      page: meta.page,
+      pageSize: meta.pageSize,
+      hasNext: meta.skip + paged.length < total
+    };
+  }
+
   private async getEmployeeRows() {
     const db = await this.readDb();
     return db.employees.map((employee) => this.sanitizeEmployee(employee));
@@ -604,31 +654,6 @@ export class AppService {
     }
 
     return changed;
-  }
-
-  private async upsertById(model: any, items: Array<Record<string, unknown>>) {
-    for (const item of items) {
-      await model.upsert({
-        where: { id: item.id },
-        create: item,
-        update: item
-      });
-    }
-  }
-
-  private async deleteMissingByIds(model: any, ids: string[]) {
-    if (ids.length === 0) {
-      await model.deleteMany();
-      return;
-    }
-
-    await model.deleteMany({
-      where: {
-        id: {
-          notIn: ids
-        }
-      }
-    });
   }
 
   private async persistSnapshotToDatabase(next: DatabaseShape) {
@@ -846,32 +871,66 @@ export class AppService {
       balanceSnapshot: request.balanceSnapshot
     }));
 
+    const employeeIds = new Set(employeeRows.map((row) => String(row.id)));
+    const payRunIds = new Set(payRunRows.map((row) => String(row.id)));
+    const validAttendanceRows = attendanceRows.filter((row) => employeeIds.has(String(row.userId)));
+    const validOvertimeRows = overtimeRows.filter((row) => employeeIds.has(String(row.userId)));
+    const validLeaveRows = leaveRows.filter((row) => employeeIds.has(String(row.userId)));
+    const validPayslipRows = payslipRows.filter(
+      (row) => employeeIds.has(String(row.userId)) && payRunIds.has(String(row.payRunId))
+    );
+    const validReimbursementClaimTypeRows = reimbursementClaimTypeRows.filter((row) => employeeIds.has(String(row.employeeId)));
+    const claimTypeIds = new Set(validReimbursementClaimTypeRows.map((row) => String(row.id)));
+    const validReimbursementRequestRows = reimbursementRequestRows.filter(
+      (row) => employeeIds.has(String(row.userId)) && claimTypeIds.has(String(row.claimTypeId))
+    );
+
     await prisma.$transaction(async (tx: any) => {
-      await this.upsertById(tx.employee, employeeRows);
-      await this.upsertById(tx.taxProfile, taxProfileRows);
-      await this.upsertById(tx.compensationProfile, compensationProfileRows);
-      await this.upsertById(tx.payrollComponent, payrollComponentRows);
-      await this.upsertById(tx.payRun, payRunRows);
-      await this.upsertById(tx.reimbursementClaimType, reimbursementClaimTypeRows);
+      await tx.reimbursementRequest.deleteMany();
+      await tx.payslip.deleteMany();
+      await tx.leaveRequest.deleteMany();
+      await tx.overtimeRequest.deleteMany();
+      await tx.attendanceLog.deleteMany();
+      await tx.reimbursementClaimType.deleteMany();
+      await tx.payRun.deleteMany();
+      await tx.payrollComponent.deleteMany();
+      await tx.compensationProfile.deleteMany();
+      await tx.taxProfile.deleteMany();
+      await tx.employee.deleteMany();
 
-      await this.upsertById(tx.attendanceLog, attendanceRows);
-      await this.upsertById(tx.overtimeRequest, overtimeRows);
-      await this.upsertById(tx.leaveRequest, leaveRows);
-      await this.upsertById(tx.payslip, payslipRows);
-      await this.upsertById(tx.reimbursementRequest, reimbursementRequestRows);
-
-      await this.deleteMissingByIds(tx.reimbursementRequest, reimbursementRequestRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.payslip, payslipRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.leaveRequest, leaveRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.overtimeRequest, overtimeRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.attendanceLog, attendanceRows.map((row) => String(row.id)));
-
-      await this.deleteMissingByIds(tx.reimbursementClaimType, reimbursementClaimTypeRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.payRun, payRunRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.payrollComponent, payrollComponentRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.compensationProfile, compensationProfileRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.taxProfile, taxProfileRows.map((row) => String(row.id)));
-      await this.deleteMissingByIds(tx.employee, employeeRows.map((row) => String(row.id)));
+      if (employeeRows.length > 0) {
+        await tx.employee.createMany({ data: employeeRows });
+      }
+      if (taxProfileRows.length > 0) {
+        await tx.taxProfile.createMany({ data: taxProfileRows });
+      }
+      if (compensationProfileRows.length > 0) {
+        await tx.compensationProfile.createMany({ data: compensationProfileRows });
+      }
+      if (payrollComponentRows.length > 0) {
+        await tx.payrollComponent.createMany({ data: payrollComponentRows });
+      }
+      if (payRunRows.length > 0) {
+        await tx.payRun.createMany({ data: payRunRows });
+      }
+      if (validReimbursementClaimTypeRows.length > 0) {
+        await tx.reimbursementClaimType.createMany({ data: validReimbursementClaimTypeRows });
+      }
+      if (validAttendanceRows.length > 0) {
+        await tx.attendanceLog.createMany({ data: validAttendanceRows });
+      }
+      if (validOvertimeRows.length > 0) {
+        await tx.overtimeRequest.createMany({ data: validOvertimeRows });
+      }
+      if (validLeaveRows.length > 0) {
+        await tx.leaveRequest.createMany({ data: validLeaveRows });
+      }
+      if (validPayslipRows.length > 0) {
+        await tx.payslip.createMany({ data: validPayslipRows });
+      }
+      if (validReimbursementRequestRows.length > 0) {
+        await tx.reimbursementRequest.createMany({ data: validReimbursementRequestRows });
+      }
     });
   }
 
@@ -1357,8 +1416,65 @@ export class AppService {
     };
   }
 
-  async getEmployees() {
-    return this.getEmployeeRows();
+  async getEmployees(query?: EmployeeListQueryDto) {
+    const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.department || query?.role || query?.status);
+    const prisma = this.getPrisma();
+
+    if (prisma && shouldPaginate) {
+      const meta = this.toPageMeta(query?.page, query?.pageSize);
+      const search = query?.search?.trim();
+      const where: Record<string, unknown> = {
+        ...(query?.department ? { department: query.department } : {}),
+        ...(query?.role ? { role: query.role } : {}),
+        ...(query?.status ? { status: query.status } : {})
+      };
+
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { employeeNumber: { contains: search, mode: "insensitive" } },
+          { department: { contains: search, mode: "insensitive" } },
+          { position: { contains: search, mode: "insensitive" } }
+        ];
+      }
+
+      const [total, rows] = await Promise.all([
+        prisma.employee.count({ where }),
+        prisma.employee.findMany({
+          where,
+          orderBy: { name: "asc" },
+          skip: meta.skip,
+          take: meta.pageSize
+        })
+      ]);
+
+      const employees = rows.map((employee: any) => this.sanitizeEmployee({
+        ...employee,
+        baseSalary: Number(employee.baseSalary),
+        allowance: Number(employee.allowance),
+        educationHistory: Array.isArray(employee.educationHistory) ? employee.educationHistory : [],
+        workExperiences: Array.isArray(employee.workExperiences) ? employee.workExperiences : [],
+        financialComponentIds: Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds : [],
+        documents: Array.isArray(employee.documents) ? employee.documents : [],
+        leaveBalances: employee.leaveBalances ?? seedData.employees[0]?.leaveBalances
+      } as EmployeeRecord));
+
+      return {
+        items: employees,
+        total,
+        page: meta.page,
+        pageSize: meta.pageSize,
+        hasNext: meta.skip + employees.length < total
+      } satisfies PaginatedResult<EmployeeRecord>;
+    }
+
+    const employees = await this.getEmployeeRows();
+    if (!shouldPaginate) {
+      return employees;
+    }
+
+    return this.paginateArray(employees, query?.page, query?.pageSize);
   }
 
   async authenticateEmployee(username: string, password: string) {
@@ -1649,9 +1765,77 @@ export class AppService {
     return { deleted: true, id };
   }
 
-  async getAttendanceHistory() {
+  async getAttendanceHistory(query?: AttendanceHistoryQueryDto) {
+    const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.department || query?.status || query?.userId);
+    const prisma = this.getPrisma();
+
+    if (prisma && shouldPaginate) {
+      const meta = this.toPageMeta(query?.page, query?.pageSize);
+      const search = query?.search?.trim();
+      const where: Record<string, unknown> = {
+        ...(query?.department ? { department: query.department } : {}),
+        ...(query?.status ? { status: query.status } : {}),
+        ...(query?.userId ? { userId: query.userId } : {})
+      };
+
+      if (search) {
+        where.OR = [
+          { employeeName: { contains: search, mode: "insensitive" } },
+          { department: { contains: search, mode: "insensitive" } },
+          { description: { contains: search, mode: "insensitive" } },
+          { location: { contains: search, mode: "insensitive" } }
+        ];
+      }
+
+      const [total, rows] = await Promise.all([
+        prisma.attendanceLog.count({ where }),
+        prisma.attendanceLog.findMany({
+          where,
+          orderBy: { timestamp: "desc" },
+          skip: meta.skip,
+          take: meta.pageSize
+        })
+      ]);
+
+      const items = rows.map((record: any) => ({
+        ...record,
+        latitude: Number(record.latitude),
+        longitude: Number(record.longitude),
+        gpsDistanceMeters: Number(record.gpsDistanceMeters)
+      }));
+
+      return {
+        items,
+        total,
+        page: meta.page,
+        pageSize: meta.pageSize,
+        hasNext: meta.skip + items.length < total
+      } satisfies PaginatedResult<AttendanceRecord>;
+    }
+
     const db = await this.readDb();
-    return db.attendanceLogs;
+    let records = db.attendanceLogs;
+    if (query?.userId) {
+      records = records.filter((entry) => entry.userId === query.userId);
+    }
+    if (query?.department) {
+      records = records.filter((entry) => entry.department === query.department);
+    }
+    if (query?.status) {
+      records = records.filter((entry) => entry.status === query.status);
+    }
+    if (query?.search?.trim()) {
+      const search = query.search.trim().toLowerCase();
+      records = records.filter((entry) =>
+        [entry.employeeName, entry.department, entry.description, entry.location].some((value) =>
+          value.toLowerCase().includes(search)
+        )
+      );
+    }
+    if (!shouldPaginate) {
+      return records;
+    }
+    return this.paginateArray(records, query?.page, query?.pageSize);
   }
 
   async getAttendanceToday() {
@@ -1875,9 +2059,81 @@ export class AppService {
     return { deleted: true, id };
   }
 
-  async getReimbursementRequests() {
+  async getReimbursementRequests(query?: ReimbursementRequestListQueryDto) {
+    const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.department || query?.status || query?.userId);
+    const prisma = this.getPrisma();
+
+    if (prisma && shouldPaginate) {
+      const meta = this.toPageMeta(query?.page, query?.pageSize);
+      const search = query?.search?.trim();
+      const where: Record<string, unknown> = {
+        ...(query?.department ? { department: query.department } : {}),
+        ...(query?.status ? { status: query.status } : {}),
+        ...(query?.userId ? { userId: query.userId } : {})
+      };
+
+      if (search) {
+        where.OR = [
+          { employeeName: { contains: search, mode: "insensitive" } },
+          { claimType: { contains: search, mode: "insensitive" } },
+          { subType: { contains: search, mode: "insensitive" } },
+          { remarks: { contains: search, mode: "insensitive" } }
+        ];
+      }
+
+      const [total, rows] = await Promise.all([
+        prisma.reimbursementRequest.count({ where }),
+        prisma.reimbursementRequest.findMany({
+          where,
+          orderBy: { updatedAt: "desc" },
+          skip: meta.skip,
+          take: meta.pageSize
+        })
+      ]);
+
+      const items = rows.map((record: any) => ({
+        ...record,
+        amount: Number(record.amount),
+        balanceSnapshot: Number(record.balanceSnapshot),
+        submittedAt: record.submittedAt ? record.submittedAt.toISOString() : null,
+        approvedAt: record.approvedAt ? record.approvedAt.toISOString() : null,
+        processedAt: record.processedAt ? record.processedAt.toISOString() : null,
+        createdAt: record.createdAt.toISOString(),
+        updatedAt: record.updatedAt.toISOString()
+      }));
+
+      return {
+        items,
+        total,
+        page: meta.page,
+        pageSize: meta.pageSize,
+        hasNext: meta.skip + items.length < total
+      } satisfies PaginatedResult<ReimbursementRequestRecord>;
+    }
+
     const db = await this.readDb();
-    return db.reimbursementRequests.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    let records = [...db.reimbursementRequests].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    if (query?.userId) {
+      records = records.filter((entry) => entry.userId === query.userId);
+    }
+    if (query?.department) {
+      records = records.filter((entry) => entry.department === query.department);
+    }
+    if (query?.status) {
+      records = records.filter((entry) => entry.status === query.status);
+    }
+    if (query?.search?.trim()) {
+      const search = query.search.trim().toLowerCase();
+      records = records.filter((entry) =>
+        [entry.employeeName, entry.claimType, entry.subType, entry.remarks].some((value) =>
+          value.toLowerCase().includes(search)
+        )
+      );
+    }
+    if (!shouldPaginate) {
+      return records;
+    }
+    return this.paginateArray(records, query?.page, query?.pageSize);
   }
 
   async createReimbursementRequest(
@@ -2167,27 +2423,198 @@ export class AppService {
     return payRun;
   }
 
-  async getPayslips(userId?: string) {
+  async getPayslips(query?: PayslipListQueryDto) {
+    const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.status || query?.userId);
+    const prisma = this.getPrisma();
+
+    if (prisma && shouldPaginate) {
+      const meta = this.toPageMeta(query?.page, query?.pageSize);
+      const search = query?.search?.trim();
+      const where: Record<string, unknown> = {
+        ...(query?.userId ? { userId: query.userId } : {}),
+        ...(query?.status ? { status: query.status } : {})
+      };
+
+      if (search) {
+        where.OR = [
+          { employeeName: { contains: search, mode: "insensitive" } },
+          { employeeNumber: { contains: search, mode: "insensitive" } },
+          { periodLabel: { contains: search, mode: "insensitive" } },
+          { department: { contains: search, mode: "insensitive" } }
+        ];
+      }
+
+      const [total, rows] = await Promise.all([
+        prisma.payslip.count({ where }),
+        prisma.payslip.findMany({
+          where,
+          orderBy: { payDate: "desc" },
+          skip: meta.skip,
+          take: meta.pageSize
+        })
+      ]);
+
+      const items = rows.map((record: any) => ({
+        ...record,
+        baseSalary: Number(record.baseSalary),
+        allowance: Number(record.allowance),
+        overtimePay: Number(record.overtimePay),
+        additionalEarnings: Number(record.additionalEarnings),
+        grossPay: Number(record.grossPay),
+        taxDeduction: Number(record.taxDeduction),
+        otherDeductions: Number(record.otherDeductions),
+        netPay: Number(record.netPay),
+        components: Array.isArray(record.components) ? record.components : []
+      }));
+
+      return {
+        items,
+        total,
+        page: meta.page,
+        pageSize: meta.pageSize,
+        hasNext: meta.skip + items.length < total
+      } satisfies PaginatedResult<PayslipRecord>;
+    }
+
     const db = await this.readDb();
-    const slips = userId ? db.payslips.filter((slip) => slip.userId === userId) : db.payslips;
-    return [...slips].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
+    let slips = query?.userId ? db.payslips.filter((slip) => slip.userId === query.userId) : db.payslips;
+    if (query?.status) {
+      slips = slips.filter((slip) => slip.status === query.status);
+    }
+    if (query?.search?.trim()) {
+      const search = query.search.trim().toLowerCase();
+      slips = slips.filter((slip) =>
+        [slip.employeeName, slip.employeeNumber, slip.periodLabel, slip.department].some((value) =>
+          value.toLowerCase().includes(search)
+        )
+      );
+    }
+    const sorted = [...slips].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
+    if (!shouldPaginate) {
+      return sorted;
+    }
+    return this.paginateArray(sorted, query?.page, query?.pageSize);
   }
 
   async exportPayslip(payload: ExportPayslipDto) {
+    return this.enqueueExportJob({ type: "payslip", payload });
+  }
+
+  async generateExport(payload: CreateExportDto) {
+    return this.enqueueExportJob({ type: "report", payload });
+  }
+
+  async getExportJobStatus(jobId: string) {
+    const job = this.exportQueue.find((entry) => entry.id === jobId);
+    if (!job) {
+      throw new NotFoundException("Export job not found");
+    }
+
+    return {
+      jobId: job.id,
+      status: job.status,
+      fileName: job.result?.fileName ?? null,
+      fileUrl: job.result?.fileUrl ?? null,
+      payslipId: job.result?.payslipId ?? null,
+      error: job.error
+    };
+  }
+
+  private enqueueExportJob(payload: ExportJobPayload) {
+    const now = new Date().toISOString();
+    const job: ExportJob = {
+      id: `exp-${randomUUID().slice(0, 10)}`,
+      status: "queued",
+      createdAt: now,
+      updatedAt: now,
+      payload,
+      result: null,
+      error: null
+    };
+
+    this.exportQueue.unshift(job);
+    if (this.exportQueue.length > 100) {
+      this.exportQueue = this.exportQueue.slice(0, 100);
+    }
+    this.processExportQueue().catch(() => undefined);
+    return { jobId: job.id, status: job.status };
+  }
+
+  private async processExportQueue() {
+    if (this.activeExportJob) {
+      return;
+    }
+
+    this.activeExportJob = true;
+    try {
+      while (true) {
+        const nextJob = this.exportQueue.find((entry) => entry.status === "queued");
+        if (!nextJob) {
+          break;
+        }
+
+        nextJob.status = "processing";
+        nextJob.updatedAt = new Date().toISOString();
+        try {
+          nextJob.result = nextJob.payload.type === "report"
+            ? await this.performReportExport(nextJob.payload.payload)
+            : await this.performPayslipExport(nextJob.payload.payload);
+          nextJob.status = "done";
+          nextJob.error = null;
+        } catch (error) {
+          nextJob.status = "failed";
+          nextJob.error = error instanceof Error ? error.message : "Export job failed";
+        } finally {
+          nextJob.updatedAt = new Date().toISOString();
+        }
+      }
+    } finally {
+      this.activeExportJob = false;
+    }
+  }
+
+  private async performPayslipExport(payload: ExportPayslipDto) {
     const db = await this.readDb();
     const payslip = db.payslips.find((entry) => entry.id === payload.payslipId);
     if (!payslip) {
       throw new NotFoundException("Payslip not found");
     }
-    const fileName = `${payslip.employeeNumber.toLowerCase()}-${payslip.periodLabel.replace(/\s+/g, "-").toLowerCase()}.txt`;
+    const fileName = `${payslip.employeeNumber.toLowerCase()}-${payslip.periodLabel.replace(/\s+/g, "-").toLowerCase()}.xlsx`;
     const fullPath = path.join(this.storageRoot, "documents", fileName);
-    await writeFile(fullPath, this.buildPayslipExportContent(payslip), "utf8");
+
+    const rows = [
+      ["Employee Name", payslip.employeeName],
+      ["Employee Number", payslip.employeeNumber],
+      ["Department", payslip.department],
+      ["Position", payslip.position],
+      ["Period", payslip.periodLabel],
+      ["Pay Date", payslip.payDate],
+      [""],
+      ["Earnings", "Amount"],
+      ["Base Salary", payslip.baseSalary],
+      ["Allowance", payslip.allowance],
+      ["Overtime", payslip.overtimePay],
+      ["Additional Earnings", payslip.additionalEarnings],
+      [""],
+      ["Deductions", "Amount"],
+      ["Tax Deduction", payslip.taxDeduction],
+      ["Other Deductions", payslip.otherDeductions],
+      [""],
+      ["Net Pay", payslip.netPay]
+    ];
+
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet["!cols"] = [{ wch: 22 }, { wch: 20 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Payslip");
+    XLSX.writeFile(workbook, fullPath, { bookType: "xlsx" });
+
     payslip.generatedFileUrl = `/storage/documents/${fileName}`;
     await this.writeDb(db);
     return { fileName, fileUrl: payslip.generatedFileUrl, payslipId: payslip.id };
   }
 
-  async generateExport(payload: CreateExportDto) {
+  private async performReportExport(payload: CreateExportDto) {
     const extension = (payload.fileExtension ?? (Array.isArray(payload.columns) || Array.isArray(payload.rows) ? "xlsx" : "txt"))
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "") || "txt";

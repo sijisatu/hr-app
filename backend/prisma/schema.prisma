@@ -90,6 +90,8 @@ model AttendanceLog {
   @@index([userId])
   @@index([timestamp])
   @@index([department])
+  @@index([userId, timestamp])
+  @@index([status, timestamp])
 }
 
 model OvertimeRequest {
@@ -133,6 +135,8 @@ model LeaveRequest {
   @@index([userId])
   @@index([status])
   @@index([startDate])
+  @@index([requestedAt])
+  @@index([userId, requestedAt])
 }
 
 model PayrollComponent {
@@ -193,6 +197,7 @@ model PayRun {
 
   @@index([periodStart, periodEnd])
   @@index([status])
+  @@index([periodEnd])
 }
 
 model Payslip {
@@ -230,6 +235,8 @@ model Payslip {
   @@index([userId])
   @@index([payRunId])
   @@index([status])
+  @@index([payDate])
+  @@index([userId, payDate])
 }
 
 model ReimbursementClaimType {
@@ -256,6 +263,8 @@ model ReimbursementClaimType {
   @@index([employeeId])
   @@index([category])
   @@index([active])
+  @@index([updatedAt])
+  @@index([employeeId, updatedAt])
 }
 
 model ReimbursementRequest {
@@ -289,4 +298,6 @@ model ReimbursementRequest {
   @@index([userId])
   @@index([claimTypeId])
   @@index([status])
+  @@index([updatedAt])
+  @@index([userId, updatedAt])
 }

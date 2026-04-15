@@ -206,8 +206,35 @@ export async function exportReport(payload: {
   if (!response.ok) {
     throw new Error(`API request failed with status ${response.status}`);
   }
-  const json = (await response.json()) as { data: { fileName: string; fileUrl: string } };
-  return json.data;
+  const json = (await response.json()) as { data: { jobId: string; status: "queued" | "processing" } };
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 90_000) {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const statusResponse = await fetch(`${API_BASE}/api/reports/export/status?jobId=${encodeURIComponent(json.data.jobId)}`);
+    if (!statusResponse.ok) {
+      throw new Error(`API request failed with status ${statusResponse.status}`);
+    }
+    const statusJson = (await statusResponse.json()) as {
+      data: {
+        jobId: string;
+        status: "queued" | "processing" | "done" | "failed";
+        fileName: string | null;
+        fileUrl: string | null;
+        error: string | null;
+      };
+    };
+
+    if (statusJson.data.status === "done" && statusJson.data.fileName && statusJson.data.fileUrl) {
+      return { fileName: statusJson.data.fileName, fileUrl: statusJson.data.fileUrl };
+    }
+
+    if (statusJson.data.status === "failed") {
+      throw new Error(statusJson.data.error || "Gagal generate report.");
+    }
+  }
+
+  throw new Error("Export report timeout. Silakan coba lagi.");
 }
 
 export function toAssetUrl(fileUrl: string | null) {

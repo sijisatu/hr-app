@@ -8,8 +8,13 @@ import { getCurrentSession } from "@/lib/auth";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: `${activeTenant.productName} | White-label HRIS Attendance`,
-  description: activeTenant.description
+  title: "Pralux HR-App",
+  description: activeTenant.description,
+  icons: {
+    icon: "/pralux-logo-original.jpg",
+    shortcut: "/pralux-logo-original.jpg",
+    apple: "/pralux-logo-original.jpg"
+  }
 };
 
 export const viewport = {

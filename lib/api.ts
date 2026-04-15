@@ -4,6 +4,14 @@ export type ApiResponse<T> = {
   error: string | null;
 };
 
+export type PaginatedList<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+};
+
 export type LeaveBalance = {
   annual: number;
   annualCarryOver: number;
@@ -337,6 +345,21 @@ async function apiFetch<T>(pathname: string): Promise<T> {
   return parseResponse<T>(response);
 }
 
+function toQueryString(params?: Record<string, string | number | boolean | undefined | null>) {
+  if (!params) {
+    return "";
+  }
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+    searchParams.set(key, String(value));
+  }
+  const query = searchParams.toString();
+  return query ? `?${query}` : "";
+}
+
 async function apiPostJson<T>(pathname: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${pathname}`, {
     method: "POST",
@@ -371,6 +394,17 @@ export async function getDashboardSummary() {
 
 export async function getEmployees() {
   return apiFetch<EmployeeRecord[]>("/api/employees");
+}
+
+export async function getEmployeesPage(query: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  department?: string;
+  role?: EmployeeRecord["role"];
+  status?: EmployeeRecord["status"];
+}) {
+  return apiFetch<PaginatedList<EmployeeRecord>>(`/api/employees${toQueryString(query)}`);
 }
 
 export async function createEmployee(payload: {
@@ -510,6 +544,17 @@ export async function getAttendanceHistory() {
   return apiFetch<AttendanceRecord[]>("/api/attendance/history");
 }
 
+export async function getAttendanceHistoryPage(query: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  userId?: string;
+  department?: string;
+  status?: AttendanceRecord["status"];
+}) {
+  return apiFetch<PaginatedList<AttendanceRecord>>(`/api/attendance/history${toQueryString(query)}`);
+}
+
 export async function getAttendanceToday() {
   return apiFetch<AttendanceRecord[]>("/api/attendance/today");
 }
@@ -601,6 +646,17 @@ export async function deleteReimbursementClaimType(id: string) {
 
 export async function getReimbursementRequests() {
   return apiFetch<ReimbursementRequestRecord[]>("/api/reimbursement/requests");
+}
+
+export async function getReimbursementRequestsPage(query: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  userId?: string;
+  department?: string;
+  status?: ReimbursementStatus;
+}) {
+  return apiFetch<PaginatedList<ReimbursementRequestRecord>>(`/api/reimbursement/requests${toQueryString(query)}`);
 }
 
 export async function createReimbursementRequest(payload: {

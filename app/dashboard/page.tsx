@@ -65,8 +65,8 @@ export default async function DashboardPage() {
           <EmployeeDashboardOverview logs={scopedLogs} leaves={scopedLeaves} />
         ) : isHrView ? (
           <div className="space-y-6">
-            <HrDashboardInsights logs={scopedLogs} totalEmployees={summary.employees} />
             <HrWorkforcePanels employees={employees} leaves={leaveRequests} />
+            <HrDashboardInsights logs={scopedLogs} totalEmployees={summary.employees} />
             <ActivityPanel
               entries={activity}
               title="Latest History Activity"

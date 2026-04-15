@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   Bell,
@@ -43,6 +44,8 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
   const pathname = usePathname();
   const { currentUser } = useSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleNav = navItems.filter((item) => !item.roles || (currentUser ? item.roles.includes(currentUser.role) : false));
   const isEmployeeSurface = currentUser?.role === "employee" || currentUser?.role === "manager";
   const currentUserInitials = currentUser?.name.split(" ").map((part) => part[0]).join("").slice(0, 2) ?? "AU";
@@ -56,6 +59,31 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
     setMobileNavOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    return () => {
+      if (collapseTimerRef.current) {
+        clearTimeout(collapseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleSidebarMouseEnter = () => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+    setSidebarExpanded(true);
+  };
+
+  const handleSidebarMouseLeave = () => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+    }
+    collapseTimerRef.current = setTimeout(() => {
+      setSidebarExpanded(false);
+    }, 120);
+  };
+
   return (
     <div className="app-shell min-w-0 lg:pl-[var(--sidebar-width-compact)]">
       {mobileNavOpen ? <button type="button" aria-label="Close navigation" className="fixed inset-0 z-40 bg-[rgba(15,23,42,0.48)] lg:hidden" onClick={() => setMobileNavOpen(false)} /> : null}
@@ -63,8 +91,11 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
       <aside
         className={clsx(
           "app-sidebar app-sidebar-rail fixed inset-y-0 left-0 z-50 w-[min(86vw,320px)] -translate-x-full overflow-y-auto px-5 py-5 shadow-2xl transition-transform duration-200 lg:fixed lg:inset-y-auto lg:left-0 lg:top-1/2 lg:z-30 lg:h-auto lg:w-[var(--sidebar-width-expanded)] lg:translate-x-0 lg:-translate-y-1/2 lg:px-0 lg:py-0 lg:shadow-none",
+          sidebarExpanded && "is-expanded",
           mobileNavOpen && "translate-x-0"
         )}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
       >
         <div className="sidebar-rail-inner flex h-full flex-col">
           <div className="flex items-center justify-between gap-4 px-2 py-2 lg:hidden">
@@ -167,7 +198,15 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
                 <Menu className="h-4 w-4" />
               </button>
 
-              <p className="truncate text-[14px] font-semibold text-[var(--primary)]">{title}</p>
+              <Link href="/dashboard" className="group flex min-w-0 items-center gap-3 rounded-[12px] px-1 py-1">
+                <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[11px] border border-[rgba(15,46,102,0.14)] bg-white shadow-[0_12px_24px_rgba(15,46,102,0.14)]">
+                  <Image src="/pralux-logo-original.jpg" alt="Pralux logo" width={38} height={38} priority />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-semibold leading-tight tracking-[-0.01em] text-[var(--primary)]">Pralux HR-App</span>
+                  <span className="block truncate text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">Workforce Intelligence Platform</span>
+                </span>
+              </Link>
             </div>
 
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">

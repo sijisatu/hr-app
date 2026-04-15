@@ -782,6 +782,76 @@ export class ExportPayslipDto {
   payslipId!: string;
 }
 
+export class ListQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  pageSize?: number;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
+
+export class EmployeeListQueryDto extends ListQueryDto {
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @IsOptional()
+  @IsIn(["admin", "hr", "employee", "manager"])
+  role?: "admin" | "hr" | "employee" | "manager";
+
+  @IsOptional()
+  @IsIn(["active", "inactive"])
+  status?: "active" | "inactive";
+}
+
+export class AttendanceHistoryQueryDto extends ListQueryDto {
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @IsOptional()
+  @IsIn(["on-time", "late", "absent", "early-leave"])
+  status?: "on-time" | "late" | "absent" | "early-leave";
+}
+
+export class ReimbursementRequestListQueryDto extends ListQueryDto {
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
+export class PayslipListQueryDto extends ListQueryDto {
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
 export class CreateExportDto {
   @IsString()
   reportName!: string;
@@ -803,6 +873,11 @@ export class CreateExportDto {
   @IsOptional()
   @IsString()
   content?: string;
+}
+
+export class ExportJobStatusQueryDto {
+  @IsString()
+  jobId!: string;
 }
 
 

@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -16,14 +17,20 @@ import { diskStorage } from "multer";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
+import type { Response } from "express";
 import { AppService } from "./common/app.service";
 import {
+  AttendanceHistoryQueryDto,
   CheckInDto,
   CheckOutDto,
   CreateEmployeeDto,
   CreateCompensationProfileDto,
   CreateExportDto,
+  EmployeeListQueryDto,
+  ExportJobStatusQueryDto,
   CreateOvertimeDto,
+  PayslipListQueryDto,
+  ReimbursementRequestListQueryDto,
   CreateReimbursementClaimTypeDto,
   CreateReimbursementRequestDto,
   CreateTaxProfileDto,
@@ -50,19 +57,30 @@ import {
 export class AppController {
   constructor(@Inject(AppService) private readonly appService: AppService) {}
 
+  private setNoStore(res: Response) {
+    res.setHeader("Cache-Control", "no-store");
+  }
+
+  private setShortCache(res: Response, maxAgeSeconds = 30) {
+    res.setHeader("Cache-Control", `private, max-age=${maxAgeSeconds}, stale-while-revalidate=${maxAgeSeconds * 2}`);
+  }
+
   @Get("health")
-  async health() {
+  async health(@Res({ passthrough: true }) res: Response) {
+    this.setShortCache(res, 15);
     return this.wrap(await this.appService.health());
   }
 
   @Get("dashboard/summary")
-  async dashboardSummary() {
+  async dashboardSummary(@Res({ passthrough: true }) res: Response) {
+    this.setShortCache(res, 30);
     return this.wrap(await this.appService.getDashboardSummary());
   }
 
   @Get("employees")
-  async employees() {
-    return this.wrap(await this.appService.getEmployees());
+  async employees(@Query() query: EmployeeListQueryDto, @Res({ passthrough: true }) res: Response) {
+    this.setNoStore(res);
+    return this.wrap(await this.appService.getEmployees(query));
   }
 
   @Post("auth/employee-login")
@@ -167,17 +185,20 @@ export class AppController {
   }
 
   @Get("attendance/history")
-  async attendanceHistory() {
-    return this.wrap(await this.appService.getAttendanceHistory());
+  async attendanceHistory(@Query() query: AttendanceHistoryQueryDto, @Res({ passthrough: true }) res: Response) {
+    this.setNoStore(res);
+    return this.wrap(await this.appService.getAttendanceHistory(query));
   }
 
   @Get("attendance/today")
-  async attendanceToday() {
+  async attendanceToday(@Res({ passthrough: true }) res: Response) {
+    this.setShortCache(res, 15);
     return this.wrap(await this.appService.getAttendanceToday());
   }
 
   @Get("attendance/overview")
-  async attendanceOverview() {
+  async attendanceOverview(@Res({ passthrough: true }) res: Response) {
+    this.setShortCache(res, 20);
     return this.wrap(await this.appService.getAttendanceOverview());
   }
 
@@ -219,7 +240,8 @@ export class AppController {
   }
 
   @Get("leave/history")
-  async leaveHistory() {
+  async leaveHistory(@Res({ passthrough: true }) res: Response) {
+    this.setNoStore(res);
     return this.wrap(await this.appService.getLeaveHistory());
   }
 
@@ -254,8 +276,9 @@ export class AppController {
   }
 
   @Get("reimbursement/requests")
-  async reimbursementRequests() {
-    return this.wrap(await this.appService.getReimbursementRequests());
+  async reimbursementRequests(@Query() query: ReimbursementRequestListQueryDto, @Res({ passthrough: true }) res: Response) {
+    this.setNoStore(res);
+    return this.wrap(await this.appService.getReimbursementRequests(query));
   }
 
   @Post("reimbursement/requests")
@@ -307,7 +330,8 @@ export class AppController {
   }
 
   @Get("payroll/overview")
-  async payrollOverview() {
+  async payrollOverview(@Res({ passthrough: true }) res: Response) {
+    this.setShortCache(res, 45);
     return this.wrap(await this.appService.getPayrollOverview());
   }
 
@@ -332,7 +356,8 @@ export class AppController {
   }
 
   @Get("payroll/runs")
-  async payRuns() {
+  async payRuns(@Res({ passthrough: true }) res: Response) {
+    this.setNoStore(res);
     return this.wrap(await this.appService.getPayRuns());
   }
 
@@ -347,8 +372,9 @@ export class AppController {
   }
 
   @Get("payroll/payslips")
-  async payslips(@Query("userId") userId?: string) {
-    return this.wrap(await this.appService.getPayslips(userId));
+  async payslips(@Query() query: PayslipListQueryDto, @Res({ passthrough: true }) res: Response) {
+    this.setNoStore(res);
+    return this.wrap(await this.appService.getPayslips(query));
   }
 
   @Post("payroll/payslips/export")
@@ -356,9 +382,19 @@ export class AppController {
     return this.wrap(await this.appService.exportPayslip(body));
   }
 
+  @Get("payroll/payslips/export/status")
+  async exportPayslipStatus(@Query() query: ExportJobStatusQueryDto) {
+    return this.wrap(await this.appService.getExportJobStatus(query.jobId));
+  }
+
   @Post("reports/export")
   async exportReport(@Body() body: CreateExportDto) {
     return this.wrap(await this.appService.generateExport(body));
+  }
+
+  @Get("reports/export/status")
+  async exportReportStatus(@Query() query: ExportJobStatusQueryDto) {
+    return this.wrap(await this.appService.getExportJobStatus(query.jobId));
   }
 
   private wrap(data: unknown) {

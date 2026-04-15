@@ -4,6 +4,14 @@ export type ApiResponse<T> = {
   error: string | null;
 };
 
+export type PaginatedList<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+};
+
 export type PayrollComponentType = "earning" | "deduction";
 export type PayrollCalculationType = "fixed" | "percentage";
 export type PayRunStatus = "draft" | "published";
@@ -108,6 +116,21 @@ async function apiPostJson<T>(pathname: string, body: unknown): Promise<T> {
   return parseResponse<T>(response);
 }
 
+function toQueryString(params?: Record<string, string | number | boolean | undefined | null>) {
+  if (!params) {
+    return "";
+  }
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+    searchParams.set(key, String(value));
+  }
+  const query = searchParams.toString();
+  return query ? `?${query}` : "";
+}
+
 async function apiPatchJson<T>(pathname: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${pathname}`, {
     method: "PATCH",
@@ -162,8 +185,34 @@ export function getPayslips(userId?: string) {
   return apiFetch<PayslipRecord[]>(`/api/payroll/payslips${query}`);
 }
 
-export function exportPayslip(payslipId: string) {
-  return apiPostJson<{ fileName: string; fileUrl: string; payslipId: string }>("/api/payroll/payslips/export", { payslipId });
+export function getPayslipsPage(query: { userId?: string; page?: number; pageSize?: number; search?: string; status?: PayslipStatus }) {
+  return apiFetch<PaginatedList<PayslipRecord>>(`/api/payroll/payslips${toQueryString(query)}`);
+}
+
+export async function exportPayslip(payslipId: string) {
+  const job = await apiPostJson<{ jobId: string; status: "queued" | "processing" }>("/api/payroll/payslips/export", { payslipId });
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 90_000) {
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const status = await apiFetch<{
+      jobId: string;
+      status: "queued" | "processing" | "done" | "failed";
+      fileName: string | null;
+      fileUrl: string | null;
+      payslipId: string | null;
+      error: string | null;
+    }>(`/api/payroll/payslips/export/status?jobId=${encodeURIComponent(job.jobId)}`);
+
+    if (status.status === "done" && status.fileName && status.fileUrl && status.payslipId) {
+      return { fileName: status.fileName, fileUrl: status.fileUrl, payslipId: status.payslipId };
+    }
+    if (status.status === "failed") {
+      throw new Error(status.error || "Gagal generate payslip export.");
+    }
+  }
+
+  throw new Error("Export payslip timeout. Silakan coba lagi.");
 }
 
 export function money(value: number) {

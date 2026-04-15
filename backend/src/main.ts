@@ -2,6 +2,7 @@ import "dotenv/config";
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import compression from "compression";
 import express from "express";
 import path from "node:path";
 import { AppModule } from "./app.module";
@@ -18,6 +19,7 @@ async function bootstrap() {
       forbidNonWhitelisted: false
     })
   );
+  app.use(compression({ threshold: 1024 }));
 
   const storageDir = path.resolve(process.cwd(), "storage");
   app.use("/storage", express.static(storageDir));
