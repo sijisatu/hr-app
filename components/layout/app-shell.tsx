@@ -45,6 +45,8 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const visibleNav = navItems.filter((item) => !item.roles || (currentUser ? item.roles.includes(currentUser.role) : false));
   const isEmployeeSurface = currentUser?.role === "employee" || currentUser?.role === "manager";
+  const currentUserInitials = currentUser?.name.split(" ").map((part) => part[0]).join("").slice(0, 2) ?? "AU";
+  const currentUserRoleLabel = currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase()}${currentUser.role.slice(1)}` : "Admin";
   const mobileNavItems = useMemo(
     () => visibleNav.filter((item) => ["/dashboard", "/attendance", "/payroll", "/profile"].includes(item.href)).slice(0, 4),
     [visibleNav]
@@ -55,23 +57,26 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
   }, [pathname]);
 
   return (
-    <div className="app-shell lg:pl-[var(--sidebar-width)]">
+    <div className="app-shell min-w-0 lg:pl-[var(--sidebar-width-compact)]">
       {mobileNavOpen ? <button type="button" aria-label="Close navigation" className="fixed inset-0 z-40 bg-[rgba(15,23,42,0.48)] lg:hidden" onClick={() => setMobileNavOpen(false)} /> : null}
 
       <aside
         className={clsx(
-          "app-sidebar fixed inset-y-0 left-0 z-50 w-[min(86vw,320px)] -translate-x-full overflow-y-auto px-5 py-5 shadow-2xl transition-transform duration-200 lg:fixed lg:left-0 lg:top-0 lg:z-30 lg:h-screen lg:w-[var(--sidebar-width)] lg:translate-x-0 lg:px-6 lg:py-6 lg:shadow-none",
+          "app-sidebar app-sidebar-rail fixed inset-y-0 left-0 z-50 w-[min(86vw,320px)] -translate-x-full overflow-y-auto px-5 py-5 shadow-2xl transition-transform duration-200 lg:fixed lg:inset-y-auto lg:left-0 lg:top-1/2 lg:z-30 lg:h-auto lg:w-[var(--sidebar-width-expanded)] lg:translate-x-0 lg:-translate-y-1/2 lg:px-0 lg:py-0 lg:shadow-none",
           mobileNavOpen && "translate-x-0"
         )}
       >
-        <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between gap-4 px-2 py-2 lg:justify-start">
+        <div className="sidebar-rail-inner flex h-full flex-col">
+          <div className="flex items-center justify-between gap-4 px-2 py-2 lg:hidden">
             <div className="flex items-center gap-4">
-              <div className="grid h-12 w-12 place-items-center rounded-[12px] bg-[var(--primary)] text-sm font-semibold text-white">
+              <div
+                className="grid h-12 w-12 shrink-0 place-items-center rounded-[16px] text-sm font-semibold shadow-[0_14px_28px_rgba(20,43,87,0.18)]"
+                style={{ backgroundColor: "#ffffff", color: "var(--primary)" }}
+              >
                 {activeTenant.shortLabel}
               </div>
               <div className="min-w-0">
-                <p className="truncate text-[18px] font-semibold text-[var(--primary)]">{activeTenant.productName}</p>
+                <p className="truncate text-[16px] font-semibold text-[var(--primary)]">{activeTenant.productName}</p>
                 <p className="mt-1 truncate text-[12px] text-[var(--text-muted)]">{activeTenant.companyTagline}</p>
               </div>
             </div>
@@ -81,46 +86,80 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
             </button>
           </div>
 
-          <nav className="mt-6 space-y-2 lg:mt-8">
-            {visibleNav.map((item) => {
-              const Icon = iconMap[item.label as keyof typeof iconMap];
-              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          <div className="sidebar-profile-wrap hidden lg:flex">
+            <Link href="/profile" className="sidebar-profile-chip">
+              <span className="sidebar-profile-badge">{currentUserInitials}</span>
+              <span className="sidebar-profile-copy min-w-0">
+                <span className="block truncate text-[13px] font-semibold text-white">{currentUser?.name ?? "Admin User"}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-[rgba(255,255,255,0.62)]">{currentUserRoleLabel}</span>
+              </span>
+            </Link>
+          </div>
 
-              return (
-                <Link key={item.href} href={item.href} className={clsx("nav-item", active && "nav-item-active")}>
-                  <Icon className="h-5 w-5" />
-                  <span className="truncate text-[15px] font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="sidebar-divider sidebar-divider-top hidden lg:block" />
 
-          <div className="flex-1" />
+          <div className="sidebar-section sidebar-section-main">
+            <nav className="sidebar-nav sidebar-nav-main mt-6 space-y-2 lg:mt-0 lg:space-y-0">
+              {visibleNav.map((item) => {
+                const Icon = iconMap[item.label as keyof typeof iconMap];
+                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-          <div className="space-y-5 border-t border-[var(--border)] pt-6">
-            <AttendanceQuickAction label="Clock In" className="primary-button w-full" />
+                return (
+                  <Link key={item.href} href={item.href} className={clsx("nav-item", active && "nav-item-active")}>
+                    <span className="nav-item-indicator" />
+                    <span className="nav-item-box">
+                      <span className="nav-item-icon">
+                        <Icon className="h-5 w-5" />
+                      </span>
+                    </span>
+                    <span className="nav-item-label truncate text-[15px] font-medium">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
 
-            <div className="space-y-1">
+          <div className="sidebar-section sidebar-section-utility mt-auto">
+            <div className="sidebar-divider sidebar-divider-bottom mt-4 hidden lg:mt-0 lg:block" />
+
+            <div className="sidebar-nav sidebar-nav-utility space-y-2 pt-4 lg:pt-0 lg:space-y-0">
+              <AttendanceQuickAction label="Clock In" className="primary-button sidebar-action w-full" />
+
               <button className="nav-item w-full">
-                <HelpCircle className="h-5 w-5" />
-                <span className="text-[15px] font-medium">Help Center</span>
+                <span className="nav-item-indicator" />
+                <span className="nav-item-box">
+                  <span className="nav-item-icon">
+                    <HelpCircle className="h-5 w-5" />
+                  </span>
+                </span>
+                <span className="nav-item-label text-[15px] font-medium">Help Center</span>
               </button>
 
               <Link href="/login" className="nav-item">
-                <Users className="h-5 w-5" />
-                <span className="text-[15px] font-medium">Switch Account</span>
+                <span className="nav-item-indicator" />
+                <span className="nav-item-box">
+                  <span className="nav-item-icon">
+                    <Users className="h-5 w-5" />
+                  </span>
+                </span>
+                <span className="nav-item-label text-[15px] font-medium">Switch Account</span>
               </Link>
 
-              <LogoutButton className="nav-item !w-full !justify-start !px-4">
-                <LogOut className="h-5 w-5" />
-                <span className="text-[15px] font-medium">Sign Out</span>
+              <LogoutButton className="nav-item !w-full">
+                <span className="nav-item-indicator" />
+                <span className="nav-item-box">
+                  <span className="nav-item-icon">
+                    <LogOut className="h-5 w-5" />
+                  </span>
+                </span>
+                <span className="nav-item-label text-[15px] font-medium">Sign Out</span>
               </LogoutButton>
             </div>
           </div>
         </div>
       </aside>
 
-      <div className="app-surface min-h-screen">
+      <div className="app-surface min-h-screen min-w-0">
         <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[rgba(243,245,249,0.92)] backdrop-blur">
           <div className="flex min-h-16 items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-3">
@@ -131,8 +170,8 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
               <p className="truncate text-[14px] font-semibold text-[var(--primary)]">{title}</p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <label className="topbar-control hidden w-[240px] sm:flex sm:w-[220px] lg:w-[280px]">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <label className="topbar-control hidden min-w-0 sm:flex sm:w-[200px] lg:w-[280px]">
                 <Search className="h-4 w-4 text-[var(--text-muted)]" />
                 <input className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]" placeholder="Search..." />
               </label>
@@ -148,9 +187,9 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
                 <Settings className="h-4 w-4" />
               </button>
 
-              <div className="flex items-center gap-3 rounded-full border border-[var(--border)] bg-white px-2 py-1.5 sm:px-2.5">
+              <div className="flex min-w-0 items-center gap-2 rounded-full border border-[var(--border)] bg-white px-2 py-1.5 sm:px-2.5">
                 <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--primary)] text-xs font-semibold text-white">
-                  {currentUser?.name.split(" ").map((part) => part[0]).join("").slice(0, 2) ?? "AU"}
+                  {currentUserInitials}
                 </div>
                 <div className="hidden min-w-0 sm:block">
                   <p className="truncate text-[14px] font-semibold text-[var(--primary)]">{currentUser?.name ?? "Admin User"}</p>
@@ -160,13 +199,13 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
           </div>
         </header>
 
-        <main className={clsx("px-4 py-5 sm:px-6 lg:px-8", compact ? "lg:py-6" : "lg:py-8", isEmployeeSurface && "pb-28 sm:pb-8")}>
+        <main className={clsx("min-w-0 px-4 py-5 sm:px-6 lg:px-8", compact ? "lg:py-6" : "lg:py-8", isEmployeeSurface && "pb-28 sm:pb-8")}>
           <div className={clsx("flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between", compact ? "mb-6" : "mb-8")}>
             <div className="min-w-0">
               <h1 className={clsx("section-title font-semibold leading-tight text-[var(--primary)]", compact ? "text-[30px] sm:text-[32px] lg:text-[36px]" : "text-[32px] sm:text-[36px] lg:text-[44px]")}>{title}</h1>
               <p className={clsx("mt-2 max-w-3xl text-[var(--text-muted)]", compact ? "text-[14px] leading-5" : "text-[14px] leading-6 sm:text-[15px]")}>{subtitle}</p>
             </div>
-            {actions ? <div className="shrink-0 max-sm:w-full max-sm:[&>*]:w-full">{actions}</div> : null}
+            {actions ? <div className="min-w-0 shrink-0 max-sm:w-full max-sm:[&>*]:w-full">{actions}</div> : null}
           </div>
 
           {children}

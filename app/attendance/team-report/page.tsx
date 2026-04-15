@@ -27,22 +27,22 @@ export default async function TeamAttendanceReportPage() {
     {
       label: "Active Employees",
       value: String(activeEmployees.length),
-      note: `${checkedInIds.size} karyawan punya record attendance`
+      note: `${checkedInIds.size} employees have attendance records`
     },
     {
       label: "Departments Covered",
       value: String(departmentCoverage),
-      note: "Departemen yang muncul di laporan attendance"
+      note: "Departments represented in attendance activity"
     },
     {
       label: "Late Records",
       value: String(lateCount),
-      note: "Butuh follow-up HR atau leader"
+      note: "Requires follow-up from HR or team leads"
     },
     {
       label: "Pending Overtime",
       value: String(pendingOvertime),
-      note: "Queue lembur yang masih menunggu keputusan"
+      note: "Requests still waiting for a decision"
     }
   ];
 
@@ -65,11 +65,11 @@ export default async function TeamAttendanceReportPage() {
   return (
     <AppShell
       title="Attendance Report"
-      subtitle="Report kehadiran seluruh karyawan untuk kebutuhan monitoring HRD, lengkap dengan rekap punctuality dan queue overtime."
+      subtitle="Monitor organization-wide attendance coverage, punctuality, and overtime activity."
       actions={(
         <div className="flex flex-wrap gap-2">
           <Link href="/attendance" className="secondary-button">
-            Kembali ke Attendance
+            Back to Attendance
           </Link>
           <button className="secondary-button">
             <Download className="h-4 w-4" />
@@ -81,9 +81,9 @@ export default async function TeamAttendanceReportPage() {
       <div className="space-y-6">
         <section className="rounded-[20px] bg-[var(--primary)] px-6 py-6 text-white lg:px-8">
           <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/68">HR Attendance Report</p>
-          <h2 className="mt-4 text-[28px] font-semibold leading-tight">Satu tempat untuk lihat kehadiran semua karyawan.</h2>
+          <h2 className="mt-4 text-[28px] font-semibold leading-tight">A clear view of attendance across the entire organization.</h2>
           <p className="mt-3 max-w-3xl text-[14px] leading-6 text-white/78">
-            HRD bisa tetap pakai menu attendance seperti karyawan, lalu pindah ke report ini saat butuh rekap organisasi secara menyeluruh.
+            Use this report to review attendance performance, coverage, and pending overtime in one place.
           </p>
         </section>
 
@@ -107,22 +107,22 @@ export default async function TeamAttendanceReportPage() {
               </div>
               <div>
                 <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Monitoring Notes</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Titik cepat yang biasanya dibutuhkan HRD saat review kehadiran.</p>
+                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Quick highlights for daily attendance review.</p>
               </div>
             </div>
 
             <div className="mt-5 space-y-3">
               <div className="panel-muted flex gap-3 p-4 text-[14px] text-[var(--text-muted)]">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning)]" />
-                <span>{lateCount} record keterlambatan muncul di laporan ini dan perlu dipantau follow-up-nya.</span>
+                <span>{lateCount} late attendance records need follow-up.</span>
               </div>
               <div className="panel-muted flex gap-3 p-4 text-[14px] text-[var(--text-muted)]">
                 <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" />
-                <span>{checkedInIds.size} karyawan sudah tercatat hadir dibanding {activeEmployees.length} karyawan aktif.</span>
+                <span>{checkedInIds.size} employees have checked in out of {activeEmployees.length} active employees.</span>
               </div>
               <div className="panel-muted flex gap-3 p-4 text-[14px] text-[var(--text-muted)]">
                 <Users className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" />
-                <span>Punctuality organisasi saat ini berada di {punctuality.toFixed(1)}% dengan {overview.openCheckIns} sesi check-in yang masih terbuka.</span>
+                <span>Punctuality is currently {punctuality.toFixed(1)}% with {overview.openCheckIns} open check-in sessions.</span>
               </div>
             </div>
           </div>

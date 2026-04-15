@@ -8,18 +8,8 @@ set "BACKEND_LOG=%LOG_DIR%\backend.log"
 set "FRONTEND_LOG=%LOG_DIR%\frontend.log"
 set "BACKEND_PID_FILE=%LOG_DIR%\backend.pid"
 set "FRONTEND_PID_FILE=%LOG_DIR%\frontend.pid"
+set "PS_FILE=%TEMP%\hr_app_launch_%RANDOM%.ps1"
 set "IS_CLI=0"
-set "BACKEND_ENV_FILE=%PROJECT_DIR%\backend\.env"
-set "DB_HOST=127.0.0.1"
-set "DB_PORT=5432"
-set "DB_NAME=pralux_hr_app"
-set "DB_USER=postgres"
-set "DB_PASS=postgres"
-set "PG_BIN=C:\Program Files\PostgreSQL\16\bin"
-set "PG_CTL=%PG_BIN%\pg_ctl.exe"
-set "PG_ISREADY=%PG_BIN%\pg_isready.exe"
-set "PG_DATA_DIR=%LOCALAPPDATA%\PraluxHRApp\PostgreSQL16\data"
-set "GIT_CMD=git"
 
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>nul
 
@@ -67,30 +57,13 @@ echo [INFO] Pakai: start ^| stop ^| status ^| pull ^| restart
 goto end
 
 :preflight
-call :resolve_git || (echo [ERROR] Git belum tersedia di PATH.& exit /b 1)
+where git >nul 2>nul || (echo [ERROR] Git belum tersedia di PATH.& exit /b 1)
 where node >nul 2>nul || (echo [ERROR] Node.js belum tersedia di PATH.& exit /b 1)
 where npm >nul 2>nul || (echo [ERROR] npm belum tersedia di PATH.& exit /b 1)
 if not exist "%PROJECT_DIR%\package.json" (echo [ERROR] package.json frontend tidak ditemukan.& exit /b 1)
 if not exist "%PROJECT_DIR%\backend\package.json" (echo [ERROR] package.json backend tidak ditemukan.& exit /b 1)
-call "%GIT_CMD%" -C "%PROJECT_DIR%" rev-parse --is-inside-work-tree >nul 2>nul || (echo [ERROR] Folder ini bukan git repository.& exit /b 1)
-call :load_backend_env
+git -C "%PROJECT_DIR%" rev-parse --is-inside-work-tree >nul 2>nul || (echo [ERROR] Folder ini bukan git repository.& exit /b 1)
 exit /b 0
-
-:resolve_git
-where git >nul 2>nul
-if not errorlevel 1 (
-  set "GIT_CMD=git"
-  exit /b 0
-)
-if exist "C:\Users\nizar.alfi\AppData\Local\Programs\Git\cmd\git.exe" (
-  set "GIT_CMD=C:\Users\nizar.alfi\AppData\Local\Programs\Git\cmd\git.exe"
-  exit /b 0
-)
-if exist "C:\Program Files\Git\cmd\git.exe" (
-  set "GIT_CMD=C:\Program Files\Git\cmd\git.exe"
-  exit /b 0
-)
-exit /b 1
 
 :pull_only
 cls
@@ -100,7 +73,7 @@ echo ==============================
 echo.
 call :preflight || (pause & goto post_action)
 echo [INFO] Menarik update terbaru...
-call "%GIT_CMD%" -C "%PROJECT_DIR%" pull --ff-only origin main
+git -C "%PROJECT_DIR%" pull --ff-only origin main
 if errorlevel 1 (
   echo [ERROR] Git pull gagal.
 ) else (
@@ -120,15 +93,9 @@ echo [STEP] Stop service lama kalau masih ada...
 call :stop_app_silent
 
 echo [STEP] Pull update terbaru...
-call "%GIT_CMD%" -C "%PROJECT_DIR%" pull --ff-only origin main
+git -C "%PROJECT_DIR%" pull --ff-only origin main
 if errorlevel 1 (
-  echo [WARN] Git pull gagal. Lanjut jalankan service dengan code lokal yang ada.
-)
-
-echo [STEP] Memastikan database PostgreSQL lokal aktif...
-call :ensure_database_ready
-if errorlevel 1 (
-  echo [ERROR] Database PostgreSQL gagal disiapkan.
+  echo [ERROR] Git pull gagal. Service tidak dijalankan.
   goto post_action
 )
 
@@ -160,14 +127,24 @@ del /f /q "%BACKEND_PID_FILE%" >nul 2>nul
 del /f /q "%FRONTEND_PID_FILE%" >nul 2>nul
 
 echo [STEP] Menjalankan backend...
-call :launch_service "backend" "%PROJECT_DIR%\backend" "set PORT=4000&& npm.cmd run build&& npm.cmd run start" "%BACKEND_LOG%" "%BACKEND_PID_FILE%"
-if errorlevel 1 (
-  echo [ERROR] Gagal menjalankan backend process.
-  goto post_action
-)
+call :write_ps_launch "backend" "%PROJECT_DIR%\backend" "npm.cmd run dev" "%BACKEND_LOG%" "%BACKEND_PID_FILE%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_FILE%"
+del /f /q "%PS_FILE%" >nul 2>nul
 
 echo [STEP] Menunggu backend siap (http://127.0.0.1:4000/api/health)...
-call :wait_http "http://127.0.0.1:4000/api/health" 90
+call :wait_http "http://127.0.0.1:4000/api/health" 55
+if errorlevel 1 (
+  echo [WARN] Backend dev mode belum siap. Coba fallback build + start...
+  if exist "%BACKEND_PID_FILE%" (
+    set /p BPID=<"%BACKEND_PID_FILE%"
+    if not "!BPID!"=="" taskkill /PID !BPID! /T /F >nul 2>nul
+  )
+  del /f /q "%BACKEND_PID_FILE%" >nul 2>nul
+  call :write_ps_launch "backend" "%PROJECT_DIR%\backend" "npm.cmd run build ^&^& npm.cmd run start" "%BACKEND_LOG%" "%BACKEND_PID_FILE%"
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_FILE%"
+  del /f /q "%PS_FILE%" >nul 2>nul
+  call :wait_http "http://127.0.0.1:4000/api/health" 90
+)
 if errorlevel 1 (
   echo [ERROR] Backend gagal start.
   call :print_log_tail "%BACKEND_LOG%" "backend"
@@ -175,11 +152,9 @@ if errorlevel 1 (
 )
 
 echo [STEP] Menjalankan frontend...
-call :launch_service "frontend" "%PROJECT_DIR%" "set PORT=3000&& npm.cmd run dev -- --hostname 127.0.0.1 --port 3000" "%FRONTEND_LOG%" "%FRONTEND_PID_FILE%"
-if errorlevel 1 (
-  echo [ERROR] Gagal menjalankan frontend process.
-  goto post_action
-)
+call :write_ps_launch "frontend" "%PROJECT_DIR%" "npm.cmd run dev" "%FRONTEND_LOG%" "%FRONTEND_PID_FILE%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_FILE%"
+del /f /q "%PS_FILE%" >nul 2>nul
 
 echo [STEP] Menunggu frontend siap (http://127.0.0.1:3000)...
 call :wait_http "http://127.0.0.1:3000" 75
@@ -274,7 +249,6 @@ echo ==============================
 echo        SERVICE STATUS
 echo ==============================
 echo.
-call :print_db_status
 call :print_status_line "Backend" "%BACKEND_PID_FILE%" 4000
 call :print_status_line "Frontend" "%FRONTEND_PID_FILE%" 3000
 echo.
@@ -282,91 +256,6 @@ echo [INFO] Endpoint check:
 call :print_http_status "Backend Health" "http://127.0.0.1:4000/api/health"
 call :print_http_status "Frontend Root " "http://127.0.0.1:3000"
 goto post_action
-
-:load_backend_env
-if not exist "%BACKEND_ENV_FILE%" exit /b 0
-for /f "usebackq tokens=1,* delims==" %%A in ("%BACKEND_ENV_FILE%") do (
-  if /i "%%A"=="DATABASE_URL" call :parse_database_url "%%~B"
-)
-exit /b 0
-
-:parse_database_url
-set "RAW_DB_URL=%~1"
-set "RAW_DB_URL=%RAW_DB_URL:"=%"
-for /f "tokens=1,2,3 delims=/" %%A in ("%RAW_DB_URL%") do (
-  set "DB_URL_REST=%%C"
-)
-for /f "tokens=1,2 delims=@" %%A in ("%DB_URL_REST%") do (
-  set "DB_AUTH=%%A"
-  set "DB_HOST_PART=%%B"
-)
-for /f "tokens=1,2 delims=:" %%A in ("%DB_AUTH%") do (
-  set "DB_USER=%%A"
-  set "DB_PASS=%%B"
-)
-for /f "tokens=1,2 delims=/" %%A in ("%DB_HOST_PART%") do (
-  set "DB_HOSTPORT=%%A"
-  set "DB_NAME_PART=%%B"
-)
-for /f "tokens=1,2 delims=:" %%A in ("%DB_HOSTPORT%") do (
-  set "DB_HOST=%%A"
-  set "DB_PORT=%%B"
-)
-for /f "tokens=1 delims=?" %%A in ("%DB_NAME_PART%") do set "DB_NAME=%%A"
-exit /b 0
-
-:ensure_database_ready
-call :is_database_ready
-if not errorlevel 1 (
-  echo [OK] Database sudah aktif di %DB_HOST%:%DB_PORT%.
-  exit /b 0
-)
-
-if not exist "%PG_CTL%" (
-  echo [ERROR] PostgreSQL tools tidak ditemukan di %PG_BIN%.
-  exit /b 1
-)
-
-if not exist "%PG_DATA_DIR%" (
-  echo [ERROR] PostgreSQL data directory tidak ditemukan: %PG_DATA_DIR%
-  exit /b 1
-)
-
-echo [INFO] Menjalankan PostgreSQL dari %PG_DATA_DIR%...
-powershell -NoProfile -Command "$env:PGPASSWORD='%DB_PASS%'; & '%PG_CTL%' -D '%PG_DATA_DIR%' -l '%PG_DATA_DIR%\server.log' start" >nul 2>nul
-call :wait_database 30
-if errorlevel 1 (
-  echo [ERROR] PostgreSQL belum merespons di %DB_HOST%:%DB_PORT%.
-  exit /b 1
-)
-echo [OK] Database aktif.
-exit /b 0
-
-:is_database_ready
-if exist "%PG_ISREADY%" (
-  powershell -NoProfile -Command "$env:PGPASSWORD='%DB_PASS%'; & '%PG_ISREADY%' -h '%DB_HOST%' -p %DB_PORT% -U '%DB_USER%' -d '%DB_NAME%' > $null 2>&1; if($LASTEXITCODE -eq 0){exit 0}else{exit 1}" >nul 2>nul
-  exit /b %errorlevel%
-)
-powershell -NoProfile -Command "try { $client = New-Object System.Net.Sockets.TcpClient; $client.Connect('%DB_HOST%', %DB_PORT%); $client.Close(); exit 0 } catch { exit 1 }" >nul 2>nul
-exit /b %errorlevel%
-
-:wait_database
-set "DB_RETRY=%~1"
-for /l %%i in (1,1,%DB_RETRY%) do (
-  call :is_database_ready
-  if not errorlevel 1 exit /b 0
-  powershell -NoProfile -Command "Start-Sleep -Seconds 1" >nul 2>nul
-)
-exit /b 1
-
-:print_db_status
-call :is_database_ready
-if not errorlevel 1 (
-  echo Database : RUNNING ^(%DB_HOST%:%DB_PORT%, %DB_NAME%^)
-) else (
-  echo Database : STOPPED ^(%DB_HOST%:%DB_PORT% tidak aktif^)
-)
-exit /b 0
 
 :print_status_line
 set "SVC_NAME=%~1"
@@ -426,25 +315,21 @@ if exist "%LOG_FILE%.err" (
 echo ===============================
 exit /b 0
 
-:launch_service
+:write_ps_launch
 set "SVC_NAME=%~1"
 set "WORKDIR=%~2"
 set "RUN_CMD=%~3"
 set "LOG_FILE=%~4"
 set "PID_FILE=%~5"
-set "HR_APP_LAUNCH_WORKDIR=%WORKDIR%"
-set "HR_APP_LAUNCH_LOG=%LOG_FILE%"
-set "HR_APP_LAUNCH_ERR=%LOG_FILE%.err"
-set "HR_APP_LAUNCH_PID=%PID_FILE%"
-set "HR_APP_LAUNCH_CMD=%RUN_CMD%"
-powershell -NoProfile -Command "$workDir=$env:HR_APP_LAUNCH_WORKDIR; $logPath=$env:HR_APP_LAUNCH_LOG; $errLogPath=$env:HR_APP_LAUNCH_ERR; $pidFilePath=$env:HR_APP_LAUNCH_PID; $cmd=$env:HR_APP_LAUNCH_CMD; $p=Start-Process -FilePath 'cmd.exe' -ArgumentList @('/d','/c',$cmd) -WorkingDirectory $workDir -WindowStyle Hidden -RedirectStandardOutput $logPath -RedirectStandardError $errLogPath -PassThru; $p.Id | Out-File -FilePath $pidFilePath -Encoding ascii -Force"
-set "LAUNCH_EXIT=%errorlevel%"
-set "HR_APP_LAUNCH_WORKDIR="
-set "HR_APP_LAUNCH_LOG="
-set "HR_APP_LAUNCH_ERR="
-set "HR_APP_LAUNCH_PID="
-set "HR_APP_LAUNCH_CMD="
-exit /b %LAUNCH_EXIT%
+(
+  echo $workDir = "%WORKDIR%"
+  echo $logPath = "%LOG_FILE%"
+  echo $errLogPath = "%LOG_FILE%.err"
+  echo $pidFilePath = "%PID_FILE%"
+  echo $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c %RUN_CMD%" -WorkingDirectory $workDir -WindowStyle Hidden -RedirectStandardOutput $logPath -RedirectStandardError $errLogPath -PassThru
+  echo $p.Id ^| Out-File -FilePath $pidFilePath -Encoding ascii -Force
+) > "%PS_FILE%"
+exit /b 0
 
 :post_action
 if /i "%IS_CLI%"=="1" goto end

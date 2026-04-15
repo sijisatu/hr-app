@@ -15,7 +15,7 @@ export default async function PayrollPage() {
   return (
     <AppShell
       title="Payroll"
-      subtitle={session.role === "employee" || session.role === "manager" ? "Generate slip gaji dan lihat history slip gaji untuk akun kamu sendiri." : "Kelola komponen gaji, hitung payroll otomatis, review draft, dan publish payslip karyawan."}
+      subtitle={session.role === "employee" || session.role === "manager" ? "Access published payslips and review your payroll history." : "Manage payroll components, generate pay runs, and publish employee payslips."}
     >
       <PayrollWorkspace
         role={session.role}
@@ -28,5 +28,4 @@ export default async function PayrollPage() {
     </AppShell>
   );
 }
-
 

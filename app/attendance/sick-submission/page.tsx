@@ -8,7 +8,7 @@ export default async function SickSubmissionPage() {
   return (
     <AppShell
       title="Sick Submission"
-      subtitle="Submit pengajuan sakit dari halaman khusus Sick Submission."
+      subtitle="Submit and review sick leave requests from a dedicated workspace."
     >
       <EmployeeAttendanceWorkspace fixedAction="sick" />
     </AppShell>

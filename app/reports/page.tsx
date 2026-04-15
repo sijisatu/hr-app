@@ -11,7 +11,7 @@ export default async function ReportsPage() {
   return (
     <AppShell
       title="Reports"
-      subtitle="Attendance, employee, and payroll reporting center with local export generation."
+      subtitle="Centralized attendance, employee, and payroll reporting with export-ready output."
       actions={
         <button className="secondary-button gap-3">
           <CalendarDays className="h-4 w-4" />

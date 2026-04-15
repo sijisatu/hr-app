@@ -8,7 +8,7 @@ export default async function LeavePage() {
   return (
     <AppShell
       title="Leave System"
-      subtitle="Kelola alokasi leave balance karyawan, carry over, dan expiration. Approval request tetap diproses manager."
+      subtitle="Manage leave balances, carry over, and expiration policies for active employees."
     >
       <LeaveWorkflowBoard />
     </AppShell>

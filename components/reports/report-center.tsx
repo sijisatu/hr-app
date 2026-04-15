@@ -100,7 +100,7 @@ export function ReportCenter({ overview }: ReportCenterProps) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Generate HR Reports</p>
-            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Klik report untuk preview data dulu, lalu download file Excel.</p>
+            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Preview the dataset first, then download the Excel file.</p>
           </div>
           <FileSpreadsheet className="h-7 w-7 text-[var(--primary)]" />
         </div>
@@ -247,7 +247,7 @@ function ReportPreviewModal({
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Preview {reportNameMap[reportKey]}</p>
-            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Cek dulu data yang mau didownload, lalu klik Download Excel.</p>
+            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Review the dataset before downloading the Excel export.</p>
           </div>
           <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={onClose}>
             <X className="h-4 w-4" />

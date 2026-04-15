@@ -10,7 +10,7 @@ export default async function EmployeesPage() {
   return (
     <AppShell
       title="Employee Management"
-      subtitle="Kelola data employee lengkap, hubungkan jabatan ke gaji pokok, lalu pilih allowance, deduction, dan tax profile per karyawan."
+      subtitle="Manage employee records, compensation mapping, and payroll profile assignments."
     >
       <EmployeeManagementWorkspace initialEmployees={employees} initialCompensationProfiles={profiles} />
     </AppShell>

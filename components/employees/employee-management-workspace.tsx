@@ -91,14 +91,14 @@ const tabs: { key: TabKey; label: string }[] = [
 ];
 
 const documentTypeOptions: [EmployeeDocumentType, string][] = [
-  ["ktp", "KTP"],
-  ["ijazah", "Ijazah"],
-  ["sertifikat", "Sertifikat"],
+  ["ktp", "Identity Card"],
+  ["ijazah", "Diploma"],
+  ["sertifikat", "Certificate"],
   ["npwp", "NPWP"],
-  ["kk", "Kartu Keluarga"],
-  ["kontrak-kerja", "Kontrak Kerja"],
+  ["kk", "Family Card"],
+  ["kontrak-kerja", "Employment Contract"],
   ["bpjs", "BPJS"],
-  ["lainnya", "Lainnya"]
+  ["lainnya", "Other"]
 ];
 
 function blankEducation(): EducationForm {
@@ -314,7 +314,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
         setExistingDocuments(uploaded);
         setQueuedDocuments([]);
       }
-      setMessage("Data karyawan berhasil ditambahkan.");
+      setMessage("Employee record added successfully.");
       setMode(null);
       await refresh();
     },
@@ -324,7 +324,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
   const updateMutation = useMutation({
     mutationFn: () => updateEmployee(form.id ?? "", savePayload),
     onSuccess: async () => {
-      setMessage("Data karyawan berhasil diperbarui.");
+      setMessage("Employee record updated successfully.");
       setMode(null);
       await refresh();
     },
@@ -334,7 +334,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteEmployee(id),
     onSuccess: async () => {
-      setMessage("Data karyawan berhasil dihapus.");
+      setMessage("Employee record deleted successfully.");
       await refresh();
     },
     onError: (error: Error) => setMessage(error.message)
@@ -345,7 +345,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     onSuccess: (uploaded) => {
       setExistingDocuments((prev) => [...uploaded, ...prev]);
       setQueuedDocuments([]);
-      setMessage("Dokumen karyawan berhasil di-upload.");
+      setMessage("Employee documents uploaded successfully.");
     },
     onError: (error: Error) => setMessage(error.message)
   });
@@ -354,7 +354,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     mutationFn: ({ employeeId, documentId }: { employeeId: string; documentId: string }) => deleteEmployeeDocument(employeeId, documentId),
     onSuccess: (_, payload) => {
       setExistingDocuments((prev) => prev.filter((item) => item.id !== payload.documentId));
-      setMessage("Dokumen karyawan berhasil dihapus.");
+      setMessage("Employee document deleted successfully.");
     },
     onError: (error: Error) => setMessage(error.message)
   });
@@ -408,7 +408,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Employee Directory</p>
-            <p className="mt-2 max-w-3xl text-[14px] leading-6 text-[var(--text-muted)]">Kelola data employee, buka financial setup, dan tambah employee baru dari action bar ini.</p>
+            <p className="mt-2 max-w-3xl text-[14px] leading-6 text-[var(--text-muted)]">Manage employee records, open financial setup, and add new employees from this action bar.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link href="/employees/financial-details" className="secondary-button"><WalletCards className="h-4 w-4" /> Financial Setup</Link>
@@ -421,41 +421,41 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
       {message ? <div className="page-card p-4 text-[14px] text-[var(--text-muted)]">{message}</div> : null}
 
       {mode ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4">
-          <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
-            <div className="shrink-0 border-b border-[var(--border)] px-6 py-5">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="section-title text-[28px] font-semibold text-[var(--primary)]">{mode === "create" ? "Add Employee" : mode === "edit" ? "Edit Employee" : "Employee Detail"}</p>
-                  <p className="mt-2 text-[14px] text-[var(--text-muted)]">Input employee dipisah per bagian, dengan pendidikan dan pengalaman kerja yang bisa diisi lebih dari satu data.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-3 sm:p-4">
+          <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
+            <div className="shrink-0 border-b border-[var(--border)] px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="section-title text-[24px] font-semibold text-[var(--primary)] sm:text-[28px]">{mode === "create" ? "Add Employee" : mode === "edit" ? "Edit Employee" : "Employee Detail"}</p>
+                  <p className="mt-2 text-[14px] text-[var(--text-muted)]">Employee data is organized by section, with support for multiple education and work experience entries.</p>
                 </div>
                 <button className="secondary-button" onClick={() => setMode(null)}>Close</button>
               </div>
             </div>
-            <div className="shrink-0 border-b border-[var(--border)] px-6 pt-4">
-              <div className="flex gap-1 overflow-x-auto">
+            <div className="shrink-0 border-b border-[var(--border)] px-4 pt-4 sm:px-6">
+              <div className="mobile-scroll-shadow flex gap-1 overflow-x-auto">
                 {tabs.map((item) => <button key={item.key} className={tab === item.key ? "rounded-t-[14px] border border-[var(--border)] border-b-white bg-white px-4 py-3 text-[14px] font-semibold text-[var(--primary)]" : "rounded-t-[14px] px-4 py-3 text-[14px] text-[var(--text-muted)]"} onClick={() => setTab(item.key)}>{item.label}</button>)}
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
               {tab === "personal" ? <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Nama" value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} disabled={readOnly} />
+                <Field label="Full Name" value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} disabled={readOnly} />
                 <Field label="NIK" value={form.nik} onChange={(value) => setForm((prev) => ({ ...prev, nik: value, loginUsername: prev.loginUsername || value }))} disabled={readOnly} />
                 <Field label="Email" value={form.email} onChange={(value) => setForm((prev) => ({ ...prev, email: value }))} disabled={readOnly} />
                 <Field label="Phone" value={form.phone} onChange={(value) => setForm((prev) => ({ ...prev, phone: value }))} disabled={readOnly} />
-                <Field label="Tempat Lahir" value={form.birthPlace} onChange={(value) => setForm((prev) => ({ ...prev, birthPlace: value }))} disabled={readOnly} />
-                <Field label="Tanggal Lahir" type="date" value={form.birthDate} onChange={(value) => setForm((prev) => ({ ...prev, birthDate: value }))} disabled={readOnly} />
+                <Field label="Place of Birth" value={form.birthPlace} onChange={(value) => setForm((prev) => ({ ...prev, birthPlace: value }))} disabled={readOnly} />
+                <Field label="Date of Birth" type="date" value={form.birthDate} onChange={(value) => setForm((prev) => ({ ...prev, birthDate: value }))} disabled={readOnly} />
                 <Pick label="Gender" value={form.gender} onChange={(value) => setForm((prev) => ({ ...prev, gender: value as FormState["gender"] }))} options={[["male", "Male"], ["female", "Female"]]} disabled={readOnly} />
                 <Pick label="Marital Status" value={form.maritalStatus} onChange={(value) => setForm((prev) => ({ ...prev, maritalStatus: value as FormState["maritalStatus"] }))} options={[["single", "Single"], ["married", "Married"], ["divorced", "Divorced"], ["widowed", "Widowed"]]} disabled={readOnly} />
                 <Field label="Date of Marriage" type="date" value={form.marriageDate} onChange={(value) => setForm((prev) => ({ ...prev, marriageDate: value }))} disabled={readOnly || form.maritalStatus !== "married"} />
-                <Field label="No KTP" value={form.idCardNumber} onChange={(value) => setForm((prev) => ({ ...prev, idCardNumber: value }))} disabled={readOnly} />
-                <Area label="Alamat" value={form.address} onChange={(value) => setForm((prev) => ({ ...prev, address: value }))} disabled={readOnly} className="md:col-span-2" />
+                <Field label="ID Card Number" value={form.idCardNumber} onChange={(value) => setForm((prev) => ({ ...prev, idCardNumber: value }))} disabled={readOnly} />
+                <Area label="Address" value={form.address} onChange={(value) => setForm((prev) => ({ ...prev, address: value }))} disabled={readOnly} className="md:col-span-2" />
                 <div className="page-card p-5 md:col-span-2">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
                       <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Account Access</p>
-                      <p className="mt-2 text-[14px] text-[var(--text-muted)]">HR bisa langsung buat akun login employee dari form add employee ini.</p>
+                      <p className="mt-2 text-[14px] text-[var(--text-muted)]">HR can create an employee login directly from this form.</p>
                     </div>
                     <label className="inline-flex items-center gap-2 text-[14px] font-medium text-[var(--text)]">
                       <input
@@ -469,14 +469,14 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                         }))}
                         disabled={readOnly}
                       />
-                      Buat akun aplikasi
+                      Create application account
                     </label>
                   </div>
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <Field label="Username" value={form.loginUsername} onChange={(value) => setForm((prev) => ({ ...prev, loginUsername: value }))} disabled={readOnly || !form.appLoginEnabled} />
                     <Field label="Password" type="text" value={form.loginPassword} onChange={(value) => setForm((prev) => ({ ...prev, loginPassword: value }))} disabled={readOnly || !form.appLoginEnabled} />
                   </div>
-                  <p className="mt-3 text-[13px] text-[var(--text-muted)]">Default username bisa pakai NIK, dan password diisi sendiri oleh HR saat membuat akun.</p>
+                  <p className="mt-3 text-[13px] text-[var(--text-muted)]">The default username can use the employee ID, and HR can set the initial password here.</p>
                 </div>
               </div> : null}
 
@@ -500,18 +500,18 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
               </div> : null}
 
               {tab === "job" ? <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Departemen" value={form.department} onChange={(value) => setForm((prev) => ({ ...prev, department: value }))} disabled={readOnly} />
-                <Pick label="Jabatan" value={form.positionSalaryId} onChange={applyPosition} options={[["", "Pilih Jabatan"], ...positions.map((item) => [item.id, item.position] as [string, string])]} disabled={readOnly} />
+                <Field label="Department" value={form.department} onChange={(value) => setForm((prev) => ({ ...prev, department: value }))} disabled={readOnly} />
+                <Pick label="Position" value={form.positionSalaryId} onChange={applyPosition} options={[["", "Select Position"], ...positions.map((item) => [item.id, item.position] as [string, string])]} disabled={readOnly} />
                 <Pick label="Role" value={form.role} onChange={(value) => setForm((prev) => ({ ...prev, role: value as FormState["role"] }))} options={[["employee", "Employee"], ["manager", "Manager"], ["hr", "HR"], ["admin", "Admin"]]} disabled={readOnly} />
                 <Pick label="Status" value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value as FormState["status"] }))} options={[["active", "Active"], ["inactive", "Inactive"]]} disabled={readOnly} />
-                <Pick label="Contract Status" value={form.contractStatus} onChange={(value) => setForm((prev) => ({ ...prev, contractStatus: value as FormState["contractStatus"], employmentType: value as FormState["employmentType"], contractEnd: value === "permanent" ? "" : prev.contractEnd }))} options={[["permanent", "Permanent"], ["contract", "Contract"], ["intern", "Magang"]]} disabled={readOnly} />
+                <Pick label="Contract Status" value={form.contractStatus} onChange={(value) => setForm((prev) => ({ ...prev, contractStatus: value as FormState["contractStatus"], employmentType: value as FormState["employmentType"], contractEnd: value === "permanent" ? "" : prev.contractEnd }))} options={[["permanent", "Permanent"], ["contract", "Contract"], ["intern", "Intern"]]} disabled={readOnly} />
                 <Field label="Contract Start" type="date" value={form.contractStart} onChange={(value) => setForm((prev) => ({ ...prev, contractStart: value }))} disabled={readOnly} />
                 <Field label="Contract End" type="date" value={form.contractEnd} onChange={(value) => setForm((prev) => ({ ...prev, contractEnd: value }))} disabled={readOnly || form.contractStatus === "permanent"} />
                 <Field label="Manager" value={form.managerName} onChange={(value) => setForm((prev) => ({ ...prev, managerName: value }))} disabled={readOnly} />
                 <Field label="Work Location" value={form.workLocation} onChange={(value) => setForm((prev) => ({ ...prev, workLocation: value }))} disabled={readOnly} />
                 <Pick label="Work Type" value={form.workType} onChange={(value) => setForm((prev) => ({ ...prev, workType: value as FormState["workType"] }))} options={[["onsite", "Onsite"], ["hybrid", "Hybrid"], ["remote", "Remote"]]} disabled={readOnly} />
                 <div className="panel-muted p-4 md:col-span-2 text-[14px] text-[var(--text-muted)]">
-                  {selectedPosition ? `Jabatan ${selectedPosition.position} terhubung ke gaji pokok ${money(selectedPosition.baseSalary)}.` : "Pilih jabatan untuk menghubungkan employee ke master gaji pokok."}
+                  {selectedPosition ? `Position ${selectedPosition.position} is linked to a base salary of ${money(selectedPosition.baseSalary)}.` : "Select a position to link the employee to a base salary profile."}
                 </div>
               </div> : null}
 
@@ -537,7 +537,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
               {tab === "financial" ? <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="Base Salary" value={selectedPosition ? money(selectedPosition.baseSalary) : "-"} onChange={() => undefined} disabled />
-                  <Pick label="Tax Profile" value={form.taxProfileId} onChange={(value) => setForm((prev) => ({ ...prev, taxProfileId: value, taxProfile: taxProfiles.find((item) => item.id === value)?.name ?? "" }))} options={[["", "Pilih Tax Profile"], ...taxProfiles.map((item) => [item.id, `${item.name} • ${item.rate}%`] as [string, string])]} disabled={readOnly} />
+                  <Pick label="Tax Profile" value={form.taxProfileId} onChange={(value) => setForm((prev) => ({ ...prev, taxProfileId: value, taxProfile: taxProfiles.find((item) => item.id === value)?.name ?? "" }))} options={[["", "Select Tax Profile"], ...taxProfiles.map((item) => [item.id, `${item.name} • ${item.rate}%`] as [string, string])]} disabled={readOnly} />
                   <Field label="Bank" value={form.bankName} onChange={(value) => setForm((prev) => ({ ...prev, bankName: value }))} disabled={readOnly} />
                   <Field label="Bank Account" value={form.bankAccountMasked} onChange={(value) => setForm((prev) => ({ ...prev, bankAccountMasked: value }))} disabled={readOnly} />
                 </div>
@@ -569,9 +569,9 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
-                  <MiniCard label="Base Salary" value={selectedPosition ? money(selectedPosition.baseSalary) : "-"} note="Dari master jabatan" />
-                  <MiniCard label="Selected Allowances" value={money(selectedAllowancePreview)} note={`${selectedFinancials.filter((item) => item.type === "earning").length} item terpilih`} />
-                  <MiniCard label="Tax Profile" value={selectedTaxProfile?.name ?? "-"} note={selectedTaxProfile ? `${selectedTaxProfile.rate}% tax rate` : "Belum dipilih"} />
+                  <MiniCard label="Base Salary" value={selectedPosition ? money(selectedPosition.baseSalary) : "-"} note="Linked from the position profile" />
+                  <MiniCard label="Selected Allowances" value={money(selectedAllowancePreview)} note={`${selectedFinancials.filter((item) => item.type === "earning").length} selected items`} />
+                  <MiniCard label="Tax Profile" value={selectedTaxProfile?.name ?? "-"} note={selectedTaxProfile ? `${selectedTaxProfile.rate}% tax rate` : "Not selected"} />
                 </div>
               </div> : null}
 
@@ -579,13 +579,13 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                 <div className="page-card p-5">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
-                      <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Upload Dokumen Karyawan</p>
+                      <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Upload Employee Documents</p>
                       <p className="mt-2 text-[14px] text-[var(--text-muted)]">
-                        Upload KTP, ijazah, sertifikat, NPWP, BPJS, atau dokumen pendukung lainnya.
-                        {form.id ? " Untuk employee existing, upload bisa dilakukan langsung dari tab ini." : " Untuk employee baru, dokumen akan di-upload otomatis setelah data employee disimpan."}
+                        Upload ID cards, diplomas, certificates, tax documents, insurance files, or other supporting documents.
+                        {form.id ? " For existing employees, uploads can be completed directly from this tab." : " For new employees, queued documents will be uploaded after the employee record is saved."}
                       </p>
                     </div>
-                    {!readOnly ? <label className="secondary-button cursor-pointer"><Upload className="h-4 w-4" /> Pilih File<input type="file" className="hidden" multiple onChange={(event) => queueFiles(event.target.files)} /></label> : null}
+                    {!readOnly ? <label className="secondary-button cursor-pointer"><Upload className="h-4 w-4" /> Select Files<input type="file" className="hidden" multiple onChange={(event) => queueFiles(event.target.files)} /></label> : null}
                   </div>
                 </div>
 
@@ -603,10 +603,10 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                               <p className="text-[15px] font-semibold text-[var(--text)]">{item.file.name}</p>
                               <p className="mt-1 text-[13px] text-[var(--text-muted)]">{Math.max(1, Math.round(item.file.size / 1024))} KB</p>
                             </div>
-                            <Pick label="Jenis Dokumen" value={item.type} onChange={(value) => updateQueuedDocumentType(item.id, value as EmployeeDocumentType)} options={documentTypeOptions} disabled={readOnly} />
+                            <Pick label="Document Type" value={item.type} onChange={(value) => updateQueuedDocumentType(item.id, value as EmployeeDocumentType)} options={documentTypeOptions} disabled={readOnly} />
                             <div className="grid gap-4 md:grid-cols-2">
-                              <Field label="Judul Dokumen" value={item.title} onChange={(value) => updateQueuedDocumentField(item.id, "title", value)} disabled={readOnly} />
-                              <Field label="Catatan" value={item.notes} onChange={(value) => updateQueuedDocumentField(item.id, "notes", value)} disabled={readOnly} />
+                              <Field label="Document Title" value={item.title} onChange={(value) => updateQueuedDocumentField(item.id, "title", value)} disabled={readOnly} />
+                              <Field label="Notes" value={item.notes} onChange={(value) => updateQueuedDocumentField(item.id, "notes", value)} disabled={readOnly} />
                             </div>
                             {!readOnly ? <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setQueuedDocuments((prev) => prev.filter((entry) => entry.id !== item.id))}><Trash2 className="h-4 w-4" /></button> : null}
                           </div>
@@ -619,12 +619,12 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                 <section className="page-card p-5">
                   <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Uploaded Documents</p>
                   <div className="mt-4 space-y-3">
-                    {existingDocuments.length === 0 ? <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Belum ada dokumen yang terupload untuk karyawan ini.</div> : existingDocuments.map((item) => (
+                    {existingDocuments.length === 0 ? <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">No uploaded documents are available for this employee.</div> : existingDocuments.map((item) => (
                       <div key={item.id} className="panel-muted flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="min-w-0">
                           <p className="text-[15px] font-semibold text-[var(--text)]">{item.title}</p>
                           <p className="mt-1 text-[13px] text-[var(--text-muted)]">{documentTypeOptions.find(([value]) => value === item.type)?.[1] ?? item.type} • {item.fileName}</p>
-                          <p className="mt-1 text-[12px] text-[var(--text-muted)]">Upload: {new Date(item.uploadedAt).toLocaleString("id-ID")}</p>
+                          <p className="mt-1 text-[12px] text-[var(--text-muted)]">Uploaded: {new Date(item.uploadedAt).toLocaleString("en-GB")}</p>
                           {item.notes ? <p className="mt-2 text-[13px] text-[var(--text-muted)]">{item.notes}</p> : null}
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -640,10 +640,10 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
               </div> : null}
             </div>
 
-            <div className="shrink-0 border-t border-[var(--border)] bg-white px-6 py-5">
-              <div className="flex items-center justify-between gap-4">
-                <p className="text-[13px] text-[var(--text-muted)]">{selectedPosition ? `Jabatan aktif: ${selectedPosition.position}` : "Belum memilih jabatan."}</p>
-                <div className="flex gap-3">
+            <div className="shrink-0 border-t border-[var(--border)] bg-white px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[13px] text-[var(--text-muted)]">{selectedPosition ? `Active position: ${selectedPosition.position}` : "No position selected yet."}</p>
+                <div className="flex flex-col gap-3 sm:flex-row">
                   <button className="secondary-button" onClick={() => setMode(null)}>Cancel</button>
                   {mode === "create" ? <button className="primary-button" onClick={() => createMutation.mutate()} disabled={busy}>{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null} Save Employee</button> : null}
                   {mode === "edit" ? <button className="primary-button" onClick={() => updateMutation.mutate()} disabled={busy}>{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null} Update Employee</button> : null}
@@ -655,9 +655,9 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
       ) : null}
 
       {previewDocument ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(15,23,42,0.58)] p-4">
-          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(15,23,42,0.58)] p-3 sm:p-4">
+          <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-4 py-4 sm:px-6 sm:py-5">
               <div className="min-w-0">
                 <p className="section-title truncate text-[24px] font-semibold text-[var(--primary)]">{previewDocument.title}</p>
                 <p className="mt-2 text-[14px] text-[var(--text-muted)]">
@@ -669,7 +669,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface-muted)] p-5">
+            <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface-muted)] p-4 sm:p-5">
               <DocumentPreview document={previewDocument} />
             </div>
           </div>
@@ -707,8 +707,8 @@ function DocumentPreview({ document }: { document: EmployeeDocumentRecord }) {
     <div className="flex h-[72vh] flex-col items-center justify-center gap-4 rounded-[20px] border border-dashed border-[var(--border)] bg-white p-8 text-center">
       <FileText className="h-12 w-12 text-[var(--primary)]" />
       <div>
-        <p className="text-[18px] font-semibold text-[var(--text)]">Preview belum tersedia untuk tipe file ini.</p>
-        <p className="mt-2 text-[14px] text-[var(--text-muted)]">Silakan download atau buka file di tab baru untuk melihat dokumen lengkapnya.</p>
+        <p className="text-[18px] font-semibold text-[var(--text)]">Preview is not available for this file type.</p>
+        <p className="mt-2 text-[14px] text-[var(--text-muted)]">Download the file or open it in a new tab to view the full document.</p>
       </div>
       <div className="flex gap-3">
         <a href={resolvedUrl} download={document.fileName} className="secondary-button"><Download className="h-4 w-4" /> Download</a>

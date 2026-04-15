@@ -8,7 +8,7 @@ export default async function HalfDayRequestPage() {
   return (
     <AppShell
       title="Half Day Request"
-      subtitle="Ajukan izin setengah hari dari halaman khusus Half Day Request."
+      subtitle="Submit and review half-day leave requests from a dedicated workspace."
     >
       <EmployeeAttendanceWorkspace fixedAction="half-day" />
     </AppShell>

@@ -8,7 +8,7 @@ export default async function LeaveRequestPage() {
   return (
     <AppShell
       title="Leave Request"
-      subtitle="Ajukan cuti dengan pilihan jenis leave dari halaman khusus Leave Request."
+      subtitle="Submit and review leave requests from a dedicated workspace."
     >
       <EmployeeAttendanceWorkspace fixedAction="leave" />
     </AppShell>

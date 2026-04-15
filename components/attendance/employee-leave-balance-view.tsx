@@ -69,9 +69,9 @@ export function EmployeeLeaveBalanceView() {
           <WalletCards className="h-5 w-5" />
           <p className="text-[12px] font-semibold uppercase tracking-[0.18em]">Leave Balance</p>
         </div>
-        <h2 className="mt-4 text-[28px] font-semibold leading-tight">Ringkasan sisa cuti kamu per jenis.</h2>
+        <h2 className="mt-4 text-[28px] font-semibold leading-tight">See your remaining leave by type at a glance.</h2>
         <p className="mt-3 max-w-3xl text-[14px] leading-6 text-white/78">
-          Lihat current allocation, carry over, request pending, sampai sisa cuti yang masih bisa dipakai.
+          Review current allocation, carry over, pending usage, and remaining balance in one place.
         </p>
       </section>
 
@@ -79,7 +79,7 @@ export function EmployeeLeaveBalanceView() {
         <div className="flex flex-col gap-3 border-b border-[var(--border)] px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Leave Balance Detail</p>
-            <p className="mt-2 text-[14px] text-[var(--text-muted)]">Data ini otomatis sinkron dengan pengajuan leave dan approval manager.</p>
+            <p className="mt-2 text-[14px] text-[var(--text-muted)]">This view stays in sync with leave requests and manager approvals.</p>
           </div>
           <div className="inline-flex items-center gap-2 rounded-[12px] bg-[var(--panel-alt)] px-4 py-3 text-[13px] text-[var(--text-muted)]">
             <CalendarClock className="h-4 w-4" />
@@ -127,7 +127,7 @@ export function EmployeeLeaveBalanceView() {
 
           {!employeesQuery.isLoading && !leavesQuery.isLoading && rows.length === 0 ? (
             <div className="panel-muted mt-4 px-4 py-5 text-[14px] text-[var(--text-muted)]">
-              Data leave balance belum tersedia untuk akun ini.
+              Leave balance data is not available for this account.
             </div>
           ) : null}
         </div>

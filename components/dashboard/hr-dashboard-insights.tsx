@@ -62,17 +62,17 @@ export function HrDashboardInsights({ logs, totalEmployees }: { logs: Attendance
   const avgCoverage = totalEmployees > 0 ? Number(((avgDailyEmployees / totalEmployees) * 100).toFixed(1)) : 0;
 
   return (
-    <section className="page-card p-6 lg:p-8">
+    <section className="page-card min-w-0 p-5 sm:p-6 lg:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="section-title text-[28px] font-semibold text-[var(--primary)]">HR Attendance Insights</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Grafik interaktif attendance dan jumlah karyawan check-in per hari.</p>
+          <p className="section-title text-[24px] font-semibold text-[var(--primary)] sm:text-[28px]">HR Attendance Insights</p>
+          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Interactive attendance volume and employee check-in trends by day.</p>
         </div>
         <div className="rounded-[12px] bg-[var(--panel-alt)] px-4 py-2 text-[13px] font-medium text-[var(--text)]">Last 7 Days</div>
       </div>
 
-      <div className="relative mt-6 overflow-x-auto">
-        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="min-w-[720px] w-full">
+      <div className="mobile-scroll-shadow relative mt-6 overflow-x-auto">
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="min-w-[560px] w-full sm:min-w-[720px]">
           {[0, 25, 50, 75, 100].map((value) => {
             const y = chartPadding.top + usableHeight - (value / 100) * usableHeight;
             return (
@@ -124,16 +124,16 @@ export function HrDashboardInsights({ logs, totalEmployees }: { logs: Attendance
         ) : null}
       </div>
 
-      <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="panel-muted p-4">
           <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--text-muted)]">Total Attendance</p>
           <p className="mt-3 text-[28px] font-semibold text-[var(--primary)]">{totalAttendance}</p>
-          <p className="mt-2 text-[13px] text-[var(--text-muted)]">Akumulasi record 7 hari terakhir.</p>
+          <p className="mt-2 text-[13px] text-[var(--text-muted)]">Rolling total for the last 7 days.</p>
         </div>
         <div className="panel-muted p-4">
           <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--text-muted)]">Avg Attendance / Day</p>
           <p className="mt-3 text-[28px] font-semibold text-[var(--primary)]">{avgDailyAttendance}</p>
-          <p className="mt-2 text-[13px] text-[var(--text-muted)]">Rata-rata check-in harian.</p>
+          <p className="mt-2 text-[13px] text-[var(--text-muted)]">Average daily check-ins.</p>
         </div>
         <div className="panel-muted p-4">
           <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--text-muted)]">Peak Attendance Day</p>

@@ -8,7 +8,7 @@ export default async function SubmitOvertimePage() {
   return (
     <AppShell
       title="Submit Overtime"
-      subtitle="Kirim lembur manual dari halaman khusus Submit Overtime."
+      subtitle="Submit and review overtime requests from a dedicated workspace."
     >
       <EmployeeAttendanceWorkspace fixedAction="overtime" />
     </AppShell>

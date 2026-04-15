@@ -72,7 +72,7 @@ export function OvertimeApprovalBoard() {
         })}
 
         {overtimeItems.length === 0 ? (
-          <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Belum ada overtime request.</div>
+          <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">No overtime requests are waiting in this queue.</div>
         ) : null}
       </div>
     </section>

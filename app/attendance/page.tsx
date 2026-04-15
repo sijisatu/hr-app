@@ -44,8 +44,8 @@ export default async function AttendancePage() {
       <AppShell
         title="Employee Attendance"
         subtitle={session.role === "hr"
-          ? "HRD memakai modul attendance yang sama seperti karyawan, dengan tambahan akses report kehadiran seluruh karyawan."
-          : "Setiap request attendance dipisah ke halaman khusus. Manager juga bisa approve request di setiap halaman menu."}
+          ? "Manage employee attendance requests and access team-level reporting."
+          : "Choose a request type and manage each attendance workflow from its dedicated page."}
       >
         <EmployeeAttendanceHub showAttendanceReport={session.role === "hr"} />
       </AppShell>

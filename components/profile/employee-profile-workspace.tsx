@@ -167,7 +167,7 @@ export function EmployeeProfileWorkspace({
               <ReadOnlyArea label="Alamat" value={employee.address} className="md:col-span-2" />
               <div className="page-card p-4 sm:p-5 md:col-span-2">
                 <p className="section-title text-[18px] font-semibold text-[var(--primary)] sm:text-[20px]">Account Access</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Data akun aplikasi yang dipakai untuk login ke sistem.</p>
+                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Application account details used to sign in.</p>
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <ReadOnlyField label="Akun Aktif" value={employee.appLoginEnabled ? "Yes" : "No"} />
                   <ReadOnlyField label="Username" value={employee.loginUsername ?? "-"} />
@@ -180,7 +180,7 @@ export function EmployeeProfileWorkspace({
           {tab === "education" ? (
             <div className="space-y-4">
               {employee.educationHistory.length === 0 ? (
-                <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Belum ada data pendidikan.</div>
+                <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">No education records available.</div>
               ) : employee.educationHistory.map((item, index) => (
                 <div key={`edu-${index}`} className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                   <p className="mb-4 text-[15px] font-semibold text-[var(--primary)]">Education #{index + 1}</p>
@@ -215,7 +215,7 @@ export function EmployeeProfileWorkspace({
           {tab === "experience" ? (
             <div className="space-y-4">
               {employee.workExperiences.length === 0 ? (
-                <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Belum ada data pengalaman kerja.</div>
+                <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">No work experience records available.</div>
               ) : employee.workExperiences.map((item, index) => (
                 <div key={`exp-${index}`} className="rounded-[18px] border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                   <p className="mb-4 text-[15px] font-semibold text-[var(--primary)]">Experience #{index + 1}</p>
@@ -260,7 +260,7 @@ export function EmployeeProfileWorkspace({
               <section className="page-card p-4 sm:p-5">
                 <div className="space-y-3">
                   {employee.documents.length === 0 ? (
-                    <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Belum ada dokumen yang terupload untuk akun ini.</div>
+                    <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">No uploaded documents are available for this account.</div>
                   ) : employee.documents.map((item) => (
                     <div key={item.id} className="panel-muted flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0">

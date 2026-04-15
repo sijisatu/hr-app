@@ -214,7 +214,7 @@ export function LeaveWorkflowBoard() {
           <p className="text-[12px] font-semibold uppercase tracking-[0.22em]">Leave System</p>
         </div>
         <p className="mt-6 max-w-4xl text-[15px] leading-[1.6] text-white/80">
-          Kelola alokasi jatah cuti karyawan per jenis di satu tempat. Approval request tetap ada di manager/leader.
+          Manage leave balances, carry over, and expiration rules for active employees in one place.
         </p>
       </section>
 
@@ -226,7 +226,7 @@ export function LeaveWorkflowBoard() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
-              placeholder="Search karyawan, NIK, department, atau jabatan..."
+              placeholder="Search employee, ID, department, or role..."
             />
           </label>
           <button className="primary-button shrink-0" onClick={openCreate}>
@@ -240,7 +240,7 @@ export function LeaveWorkflowBoard() {
         <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-5">
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Leave Allocation List</p>
-            <p className="mt-2 text-[14px] text-[var(--text-muted)]">{filteredEmployees.length} data karyawan aktif.</p>
+            <p className="mt-2 text-[14px] text-[var(--text-muted)]">{filteredEmployees.length} active employees.</p>
           </div>
         </div>
 
@@ -299,7 +299,7 @@ export function LeaveWorkflowBoard() {
 
           {!employeesQuery.isLoading && filteredEmployees.length === 0 ? (
             <div className="panel-muted mt-4 px-4 py-5 text-[14px] text-[var(--text-muted)]">
-              Data karyawan untuk leave allocation tidak ditemukan.
+              No employee records matched the current leave allocation filters.
             </div>
           ) : null}
         </div>
@@ -308,9 +308,9 @@ export function LeaveWorkflowBoard() {
       <section className="panel rounded-[14px] p-6">
         <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Leave Allocation Rules</p>
         <div className="mt-5 space-y-4 text-[14px] leading-[1.55] text-[var(--muted)]">
-          <div className="flex gap-3"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>HR mengelola allocation, carry over, dan expiration cuti untuk setiap karyawan aktif.</span></div>
-          <div className="flex gap-3"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Setiap karyawan baru wajib diinput allocation cutinya dari tombol <strong>Add Leave Allocation</strong>.</span></div>
-          <div className="flex gap-3"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Approval request tetap diproses manager/leader dari menu attendance request.</span></div>
+          <div className="flex gap-3"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>HR owns leave allocation, carry over, and expiry setup for active employees.</span></div>
+          <div className="flex gap-3"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>New employees should receive leave allocation through <strong>Add Leave Allocation</strong>.</span></div>
+          <div className="flex gap-3"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" /> <span>Request approvals continue to run through the attendance workflow.</span></div>
         </div>
       </section>
 
@@ -322,7 +322,7 @@ export function LeaveWorkflowBoard() {
             <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
               <div>
                 <p className="section-title text-[28px] font-semibold text-[var(--primary)]">{mode === "create" ? "Add Leave Allocation" : "Edit Leave Allocation"}</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Input jatah cuti per jenis untuk karyawan terpilih.</p>
+                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Set leave allocation values for the selected employee.</p>
               </div>
               <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setMode(null)}>
                 <X className="h-4 w-4" />
@@ -347,7 +347,7 @@ export function LeaveWorkflowBoard() {
                             setEmployeePickerOpen(true);
                           }}
                           className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
-                          placeholder="Search nama, NIK, department, atau jabatan..."
+                          placeholder="Search employee, ID, department, or role..."
                         />
                       </label>
                       {employeePickerOpen ? (
@@ -368,7 +368,7 @@ export function LeaveWorkflowBoard() {
                             </button>
                           ))}
                           {employeeSearchOptions.length === 0 ? (
-                            <div className="px-3 py-3 text-[13px] text-[var(--text-muted)]">Karyawan tidak ditemukan.</div>
+                            <div className="px-3 py-3 text-[13px] text-[var(--text-muted)]">No employees found.</div>
                           ) : null}
                         </div>
                       ) : null}

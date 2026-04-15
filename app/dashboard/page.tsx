@@ -6,21 +6,24 @@ import { ActivityPanel } from "@/components/dashboard/activity-panel";
 import { IntegrityCard } from "@/components/dashboard/integrity-card";
 import { EmployeeDashboardOverview } from "@/components/dashboard/employee-dashboard-overview";
 import { HrDashboardInsights } from "@/components/dashboard/hr-dashboard-insights";
+import { HrWorkforcePanels } from "@/components/dashboard/hr-workforce-panels";
 import { requireSession } from "@/lib/auth";
 import {
   deriveActivityStream,
   deriveAttendanceSeries,
   getAttendanceHistory,
   getDashboardSummary,
+  getEmployees,
   getLeaveHistory
 } from "@/lib/api";
 
 export default async function DashboardPage() {
   const session = await requireSession(["admin", "hr", "manager", "employee"]);
-  const [summary, attendanceLogs, leaveRequests] = await Promise.all([
+  const [summary, attendanceLogs, leaveRequests, employees] = await Promise.all([
     getDashboardSummary(),
     getAttendanceHistory(),
-    getLeaveHistory()
+    getLeaveHistory(),
+    getEmployees()
   ]);
 
   const isEmployeeView = session.role === "employee" || session.role === "manager";
@@ -36,7 +39,7 @@ export default async function DashboardPage() {
         { label: "Open Sessions", value: scopedLogs.filter((item) => !item.checkOut).length.toLocaleString("en-US"), note: "Pending check-out", tone: "warning" }
       ] as const
     : [
-        { label: "Employees", value: summary.employees.toLocaleString("en-US"), note: `${summary.storageMode} storage`, tone: "neutral" },
+        { label: "Employees", value: summary.employees.toLocaleString("en-US"), note: "Total employees in Company", tone: "neutral" },
         { label: "On-Time", value: summary.onTime.toLocaleString("en-US"), note: "Live attendance", tone: "success" },
         { label: "Late", value: summary.late.toLocaleString("en-US"), note: "Review required", tone: "danger" },
         { label: "Absent", value: summary.absent.toLocaleString("en-US"), note: `${summary.leavePending} leave pending`, tone: "warning" }
@@ -48,7 +51,7 @@ export default async function DashboardPage() {
   return (
     <AppShell
       title="Dashboard"
-      subtitle={isEmployeeView ? "Grafik attendance dan ringkasan kehadiran untuk akun kamu sendiri." : "Attendance overview, activity feed, and operational signals in one workspace."}
+      subtitle={isEmployeeView ? "Track your attendance activity and current request summary." : "Monitor attendance activity and operational signals in one workspace."}
       actions={<AttendanceQuickAction compact label="Clock In" />}
     >
       <div className="space-y-6">
@@ -63,10 +66,11 @@ export default async function DashboardPage() {
         ) : isHrView ? (
           <div className="space-y-6">
             <HrDashboardInsights logs={scopedLogs} totalEmployees={summary.employees} />
+            <HrWorkforcePanels employees={employees} leaves={leaveRequests} />
             <ActivityPanel
               entries={activity}
               title="Latest History Activity"
-              subtitle="Riwayat aktivitas attendance terbaru lintas karyawan."
+              subtitle="Latest attendance activity across the organization."
             />
           </div>
         ) : (

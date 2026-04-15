@@ -108,7 +108,7 @@ export function AttendanceTable({
         <div className="flex flex-col gap-4 border-b border-[var(--border)] px-6 py-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:flex-wrap">
-              <label className="topbar-control min-w-[220px] lg:max-w-[280px]">
+              <label className="topbar-control w-full min-w-0 lg:max-w-[280px]">
                 <Search className="h-4 w-4 text-[var(--text-muted)]" />
                 <input
                   value={search}
@@ -146,7 +146,7 @@ export function AttendanceTable({
               </select>
             </div>
 
-            <div className="panel-muted max-w-[360px] px-4 py-3 text-[13px] leading-5 text-[var(--text-muted)]">
+            <div className="panel-muted w-full max-w-[360px] px-4 py-3 text-[13px] leading-5 text-[var(--text-muted)]">
               GPS and selfie compliance are tracked at check-in time and stored in local directory mode.
             </div>
           </div>
@@ -157,7 +157,7 @@ export function AttendanceTable({
           </div>
         </div>
 
-        <div className="overflow-x-auto px-4 py-4 lg:px-6">
+        <div className="mobile-scroll-shadow overflow-x-auto px-4 py-4 lg:px-6">
           <table className="min-w-full border-separate border-spacing-y-2">
             <thead>
               <tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">

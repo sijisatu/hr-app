@@ -64,7 +64,7 @@ export function DepartmentSnapshotChart({ items }: { items: DepartmentSnapshotIt
         </div>
         <div className="min-w-0">
           <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Department Snapshot</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Ringkasan coverage attendance dari departemen dengan volume record terbesar.</p>
+          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Attendance coverage for the departments with the highest activity volume.</p>
         </div>
       </div>
 

@@ -12,6 +12,12 @@ export const metadata: Metadata = {
   description: activeTenant.description
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover"
+};
+
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const currentUser = await getCurrentSession();
   const themeVars = {
@@ -31,4 +37,3 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     </html>
   );
 }
-

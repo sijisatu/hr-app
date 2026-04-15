@@ -8,7 +8,7 @@ export default async function LeaveBalancePage() {
   return (
     <AppShell
       title="Leave Balance"
-      subtitle="Lihat detail sisa cuti kamu berdasarkan alokasi terbaru dari HR."
+      subtitle="Review your available leave balance based on the latest HR allocation."
     >
       <EmployeeLeaveBalanceView />
     </AppShell>

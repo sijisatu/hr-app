@@ -8,7 +8,7 @@ export default async function OnDutyRequestPage() {
   return (
     <AppShell
       title="On Duty Request"
-      subtitle="Ajukan tugas dinas atau aktivitas kerja lapangan dari halaman khusus On Duty."
+      subtitle="Submit and track on-duty or field activity requests from a dedicated workspace."
     >
       <EmployeeAttendanceWorkspace fixedAction="on-duty" />
     </AppShell>

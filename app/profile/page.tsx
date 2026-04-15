@@ -14,14 +14,14 @@ export default async function ProfilePage() {
 
   if (!employee) {
     return (
-      <AppShell title="Profile" subtitle="Data karyawan untuk akun yang sedang login.">
-        <div className="page-card p-6 text-[14px] text-[var(--text-muted)]">Data karyawan tidak ditemukan untuk akun ini.</div>
+      <AppShell title="Profile" subtitle="Employee information for the current signed-in account.">
+        <div className="page-card p-6 text-[14px] text-[var(--text-muted)]">Employee information is not available for this account.</div>
       </AppShell>
     );
   }
 
   return (
-    <AppShell title="Profile" subtitle="Data karyawan untuk akun yang sedang login.">
+    <AppShell title="Profile" subtitle="Employee information for the current signed-in account.">
       <EmployeeProfileWorkspace employee={employee} sickLeaveUsed={sickLeaveUsed} />
     </AppShell>
   );

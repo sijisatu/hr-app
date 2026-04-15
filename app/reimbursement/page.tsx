@@ -14,7 +14,7 @@ export default async function ReimbursementPage() {
   return (
     <AppShell
       title="Reimbursement"
-      subtitle={session.role === "hr" || session.role === "admin" ? "Kelola seluruh reimbursement karyawan sekaligus atur allocation claim type per employee." : "Submit reimbursement, cek entitlement, review draft, dan pantau status approval di satu tempat."}
+      subtitle={session.role === "hr" || session.role === "admin" ? "Review employee claims and manage claim type allocations in one workspace." : "Submit claims, check entitlements, and track approval progress."}
     >
       <ReimbursementWorkspace
         role={session.role}

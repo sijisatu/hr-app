@@ -10,7 +10,7 @@ export function EmployeeAttendanceHub({ showAttendanceReport = false }: { showAt
     {
       key: "leave-balance",
       label: "Leave Balance",
-      description: "Lihat detail sisa cuti per jenis, termasuk carry over dan request pending.",
+      description: "Review balances by leave type, including carry over and pending usage.",
       icon: WalletCards,
       href: "/attendance/leave-balance"
     },
@@ -19,7 +19,7 @@ export function EmployeeAttendanceHub({ showAttendanceReport = false }: { showAt
         {
           key: "attendance-report",
           label: "Attendance Report",
-          description: "Lihat rekap kehadiran seluruh karyawan khusus untuk HRD.",
+          description: "View attendance coverage and request activity across the organization.",
           icon: ChartNoAxesColumn,
           href: "/attendance/team-report"
         }
@@ -31,9 +31,9 @@ export function EmployeeAttendanceHub({ showAttendanceReport = false }: { showAt
     <div className="space-y-6">
       <section className="rounded-[18px] bg-[var(--primary)] px-6 py-6 text-white lg:px-8">
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/68">Employee Attendance</p>
-        <h2 className="mt-4 text-[28px] font-semibold leading-tight">Pilih jenis request yang mau kamu proses.</h2>
+        <h2 className="mt-4 text-[28px] font-semibold leading-tight">Choose the attendance workflow you want to manage.</h2>
         <p className="mt-3 max-w-3xl text-[14px] leading-6 text-white/78">
-          Setiap request sekarang punya halaman sendiri berisi form submit dan history attendance kamu.
+          Each request type has its own focused page for submission, review, and history.
         </p>
       </section>
 
@@ -51,7 +51,7 @@ export function EmployeeAttendanceHub({ showAttendanceReport = false }: { showAt
                 <p className="mt-4 text-[15px] font-semibold">{item.label}</p>
                 <p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">{item.description}</p>
                 <div className="mt-4 inline-flex items-center gap-2 text-[13px] font-semibold text-[var(--primary)]">
-                  Buka halaman
+                  Open page
                   <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
                 </div>
               </Link>

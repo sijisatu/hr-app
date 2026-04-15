@@ -41,11 +41,11 @@ export const actionCards: {
   description: string;
   icon: typeof BriefcaseBusiness;
 }[] = [
-  { key: "on-duty", label: "On Duty Request", description: "Ajukan tugas dinas atau kerja lapangan.", icon: BriefcaseBusiness },
-  { key: "sick", label: "Sick Submission", description: "Laporkan sakit dan submit kebutuhan approval.", icon: Stethoscope },
-  { key: "leave", label: "Leave Request", description: "Ajukan cuti tahunan langsung dari attendance.", icon: NotebookPen },
-  { key: "half-day", label: "Half Day Leave", description: "Submit izin setengah hari untuk kebutuhan singkat.", icon: Clock3 },
-  { key: "overtime", label: "Submit Overtime", description: "Masukkan lembur manual untuk direview supervisor.", icon: PlusCircle }
+  { key: "on-duty", label: "On Duty Request", description: "Submit field work or business assignment requests.", icon: BriefcaseBusiness },
+  { key: "sick", label: "Sick Submission", description: "Log sick leave requests and supporting details.", icon: Stethoscope },
+  { key: "leave", label: "Leave Request", description: "Submit standard leave requests from a dedicated page.", icon: NotebookPen },
+  { key: "half-day", label: "Half Day Leave", description: "Submit short leave requests in half-day increments.", icon: Clock3 },
+  { key: "overtime", label: "Submit Overtime", description: "Log overtime for supervisor review.", icon: PlusCircle }
 ];
 
 const actionHrefMap: Record<ActionKey, string> = {
@@ -204,10 +204,10 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   const leaveMutation = useMutation({
     mutationFn: async () => {
       if (!currentUser) {
-        throw new Error("Session employee tidak ditemukan.");
+        throw new Error("No active employee session was found.");
       }
       if (!leaveReason.trim()) {
-        throw new Error(activeAction === "on-duty" ? "Description wajib diisi." : "Reason wajib diisi.");
+        throw new Error(activeAction === "on-duty" ? "Description is required." : "Reason is required.");
       }
       const type = activeAction === "leave" ? leaveCategory : leaveTypeForAction(activeAction as Exclude<ActionKey, "overtime">);
       const normalizedReason = activeAction === "half-day" ? `[${halfDaySlot}] ${leaveReason.trim()}` : leaveReason.trim();
@@ -223,7 +223,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     },
     onSuccess: async (result) => {
       setLeaveReason("");
-      setMessage(`${formatLeaveType(result.type)} berhasil dikirim.`);
+      setMessage(`${formatLeaveType(result.type)} submitted successfully.`);
       await queryClient.invalidateQueries({ queryKey: ["leave-history"] });
     },
     onError: (error: Error) => setMessage(error.message)
@@ -232,14 +232,14 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   const overtimeMutation = useMutation({
     mutationFn: async () => {
       if (!currentUser) {
-        throw new Error("Session employee tidak ditemukan.");
+        throw new Error("No active employee session was found.");
       }
       if (!overtimeReason.trim()) {
-        throw new Error("Reason wajib diisi.");
+        throw new Error("Reason is required.");
       }
       const minutes = Number(overtimeMinutes);
       if (!Number.isFinite(minutes) || minutes <= 0) {
-        throw new Error("Durasi overtime harus lebih dari 0 menit.");
+        throw new Error("Overtime duration must be greater than 0 minutes.");
       }
       return createOvertimeRequest({
         userId: currentUser.id,
@@ -252,7 +252,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     },
     onSuccess: async () => {
       setOvertimeReason("");
-      setMessage("Submit Overtime berhasil dikirim.");
+      setMessage("Overtime request submitted successfully.");
       await queryClient.invalidateQueries({ queryKey: ["attendance-overtime"] });
     },
     onError: (error: Error) => setMessage(error.message)
@@ -262,7 +262,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     mutationFn: async (payload: { leaveId: string; status: "approved" | "rejected" }) =>
       approveLeaveRequest({ ...payload, actor: "Manager/Leader" }),
     onSuccess: async () => {
-      setMessage("Leave request berhasil diupdate.");
+      setMessage("Leave request updated successfully.");
       await queryClient.invalidateQueries({ queryKey: ["leave-history"] });
     },
     onError: (error: Error) => setMessage(error.message)
@@ -272,7 +272,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     mutationFn: async (payload: { overtimeId: string; status: "approved" | "rejected" }) =>
       approveOvertimeRequest({ ...payload, actor: "Manager/Leader" }),
     onSuccess: async () => {
-      setMessage("Overtime request berhasil diupdate.");
+      setMessage("Overtime request updated successfully.");
       await queryClient.invalidateQueries({ queryKey: ["attendance-overtime"] });
     },
     onError: (error: Error) => setMessage(error.message)
@@ -281,10 +281,10 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   const summaryCards = useMemo<SummaryItem[]>(() => {
     if (activeAction === "on-duty") {
       return [
-        { label: "Attendance Records", value: String(attendanceLogs.length), note: "Total history attendance akun ini." },
-        { label: "On Time", value: String(attendanceLogs.filter((item) => item.status === "on-time").length), note: "Presensi tepat waktu." },
-        { label: "Late Records", value: String(attendanceLogs.filter((item) => item.status === "late").length), note: "Riwayat keterlambatan." },
-        { label: "On Duty Requests", value: String(onDutyRequests.length), note: "Total request on duty yang pernah diajukan.", tone: "primary" }
+        { label: "Attendance Records", value: String(attendanceLogs.length), note: "Total attendance history for this account." },
+        { label: "On Time", value: String(attendanceLogs.filter((item) => item.status === "on-time").length), note: "On-time attendance records." },
+        { label: "Late Records", value: String(attendanceLogs.filter((item) => item.status === "late").length), note: "Late attendance history." },
+        { label: "On Duty Requests", value: String(onDutyRequests.length), note: "Total on-duty requests submitted.", tone: "primary" }
       ];
     }
 
@@ -293,10 +293,10 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       const pending = sickRequests.filter((item) => item.status !== "approved" && item.status !== "rejected").length;
       const days = sickRequests.reduce((sum, item) => sum + item.daysRequested, 0);
       return [
-        { label: "Sick Submissions", value: String(sickRequests.length), note: "Total pengajuan sakit." },
-        { label: "Approved", value: String(approved), note: "Sudah disetujui." },
-        { label: "Pending", value: String(pending), note: "Menunggu keputusan manager." },
-        { label: "Requested Days", value: String(days), note: "Total hari yang diajukan.", tone: "primary" }
+        { label: "Sick Submissions", value: String(sickRequests.length), note: "Total sick leave submissions." },
+        { label: "Approved", value: String(approved), note: "Approved requests." },
+        { label: "Pending", value: String(pending), note: "Awaiting manager review." },
+        { label: "Requested Days", value: String(days), note: "Total requested days.", tone: "primary" }
       ];
     }
 
@@ -305,10 +305,10 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       const pending = annualLeaveRequests.filter((item) => item.status !== "approved" && item.status !== "rejected").length;
       const days = annualLeaveRequests.reduce((sum, item) => sum + item.daysRequested, 0);
       return [
-        { label: "Leave Requests", value: String(annualLeaveRequests.length), note: "Total request cuti." },
-        { label: "Approved", value: String(approved), note: "Sudah disetujui." },
-        { label: "Pending", value: String(pending), note: "Menunggu keputusan manager." },
-        { label: "Requested Days", value: String(days), note: "Akumulasi hari cuti diajukan.", tone: "primary" }
+        { label: "Leave Requests", value: String(annualLeaveRequests.length), note: "Total leave requests." },
+        { label: "Approved", value: String(approved), note: "Approved requests." },
+        { label: "Pending", value: String(pending), note: "Awaiting manager review." },
+        { label: "Requested Days", value: String(days), note: "Total requested days.", tone: "primary" }
       ];
     }
 
@@ -317,11 +317,11 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       const pending = halfDayRequests.filter((item) => item.status !== "approved" && item.status !== "rejected").length;
       const totalDays = Number(halfDayRequests.reduce((sum, item) => sum + item.daysRequested, 0).toFixed(1));
       return [
-        { label: "Half Day Requests", value: String(halfDayRequests.length), note: "Total request half day." },
-        { label: "Approved", value: String(approved), note: "Sudah disetujui." },
-        { label: "Pending", value: String(pending), note: "Menunggu keputusan manager." },
-        { label: "Annual Balance", value: `${annualLeaveAvailable}`, note: "Sisa cuti tahunan. Half day = 0.5 day.", tone: "primary" },
-        { label: "Half Day Used", value: `${totalDays}`, note: "Akumulasi hari dari request half day." }
+        { label: "Half Day Requests", value: String(halfDayRequests.length), note: "Total half-day requests." },
+        { label: "Approved", value: String(approved), note: "Approved requests." },
+        { label: "Pending", value: String(pending), note: "Awaiting manager review." },
+        { label: "Annual Balance", value: `${annualLeaveAvailable}`, note: "Half-day leave deducts 0.5 day.", tone: "primary" },
+        { label: "Half Day Used", value: `${totalDays}`, note: "Total half-day leave used." }
       ];
     }
 
@@ -329,10 +329,10 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     const pending = overtimeItems.filter((item) => item.status === "pending").length;
     const totalHours = Number((overtimeItems.reduce((sum, item) => sum + item.minutes, 0) / 60).toFixed(1));
     return [
-      { label: "Overtime Submissions", value: String(overtimeItems.length), note: "Total submit overtime." },
-      { label: "Approved/Paid", value: String(approvedOrPaid), note: "Sudah approved atau paid." },
-      { label: "Pending", value: String(pending), note: "Menunggu keputusan manager." },
-      { label: "Overtime Hours", value: String(totalHours), note: "Akumulasi jam overtime.", tone: "primary" }
+      { label: "Overtime Submissions", value: String(overtimeItems.length), note: "Total overtime entries." },
+      { label: "Approved/Paid", value: String(approvedOrPaid), note: "Approved or paid entries." },
+      { label: "Pending", value: String(pending), note: "Awaiting manager review." },
+      { label: "Overtime Hours", value: String(totalHours), note: "Total overtime hours.", tone: "primary" }
     ];
   }, [activeAction, annualLeaveAvailable, annualLeaveRequests, attendanceLogs, halfDayRequests, onDutyRequests, overtimeItems, sickRequests]);
 
@@ -396,9 +396,9 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     <div className="space-y-6">
       <section className="rounded-[18px] bg-[var(--primary)] px-5 py-5 text-white sm:px-6 lg:px-8">
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/68">Employee Attendance</p>
-        <h2 className="mt-4 text-[24px] font-semibold leading-tight sm:text-[28px]">Semua request employee dipusatkan di satu modul.</h2>
+        <h2 className="mt-4 text-[24px] font-semibold leading-tight sm:text-[28px]">Manage every attendance request from one focused workspace.</h2>
         <p className="mt-3 max-w-3xl text-[13px] leading-6 text-white/78 sm:text-[14px]">
-          Gunakan halaman ini untuk submit request sesuai menu yang dipilih dan cek record yang relevan.
+          Submit requests, review related history, and keep approvals organized by workflow.
         </p>
       </section>
 
@@ -429,12 +429,12 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
             {fixedAction ? (
               <Link href={backHref} className="inline-flex items-center gap-2 text-[13px] font-medium text-[var(--text-muted)] hover:text-[var(--primary)]">
                 <ArrowLeft className="h-4 w-4" />
-                Kembali ke menu request
+                Back to request menu
               </Link>
             ) : null}
             <p className="section-title mt-2 text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">{actionCards.find((item) => item.key === activeAction)?.label}</p>
             <p className="mt-2 text-[14px] leading-6 text-[var(--text-muted)]">
-              {activeAction === "overtime" ? "Form submit overtime manual untuk kebutuhan review supervisor." : "Form request employee aktif sesuai menu yang dipilih."}
+              {activeAction === "overtime" ? "Submit overtime details for supervisor review." : "Complete the form for the selected attendance workflow."}
             </p>
           </div>
           {message ? <div className="rounded-[12px] border border-[var(--border)] bg-[var(--panel-alt)] px-4 py-3 text-[13px] text-[var(--text-muted)]">{message}</div> : null}
@@ -457,7 +457,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
             </div>
             <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
               <span>Reason</span>
-              <input value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} placeholder="Jelaskan kebutuhan lembur" className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
+              <input value={overtimeReason} onChange={(event) => setOvertimeReason(event.target.value)} placeholder="Describe the overtime request" className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
             </label>
             <button type="button" onClick={() => overtimeMutation.mutate()} disabled={overtimeMutation.isPending} className="primary-button w-full sm:w-auto lg:self-end">
               {overtimeMutation.isPending ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Sending...</> : "Submit"}
@@ -495,12 +495,12 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
               <div className="rounded-[12px] border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3">
                 <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Annual Leave Balance</p>
                 <p className="mt-2 text-[16px] font-semibold text-[var(--primary)]">{annualLeaveAvailable} days</p>
-                <p className="mt-1 text-[12px] text-[var(--text-muted)]">Setiap Half Day Leave mengurangi 0.5 day dari annual leave.</p>
+                <p className="mt-1 text-[12px] text-[var(--text-muted)]">Each half-day request deducts 0.5 day from annual leave.</p>
               </div>
             ) : null}
             <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
               <span>{activeAction === "on-duty" ? "Description" : "Reason"}</span>
-              <input value={leaveReason} onChange={(event) => setLeaveReason(event.target.value)} placeholder={activeAction === "on-duty" ? "Tulis deskripsi on duty" : "Tulis alasan request"} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
+              <input value={leaveReason} onChange={(event) => setLeaveReason(event.target.value)} placeholder={activeAction === "on-duty" ? "Describe the on-duty activity" : "Describe the request reason"} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
             </label>
             <button type="button" onClick={() => leaveMutation.mutate()} disabled={leaveMutation.isPending} className="primary-button w-full sm:w-auto lg:self-end">
               {leaveMutation.isPending ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Sending...</> : "Submit"}
@@ -521,17 +521,17 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
 
       {activeAction === "on-duty" ? (
         <section className="page-card overflow-hidden p-0">
-          <div className="flex flex-col gap-4 border-b border-[var(--border)] px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-4 border-b border-[var(--border)] px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
             <div>
               <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Attendance Records</p>
-              <p className="mt-2 text-[14px] text-[var(--text-muted)]">History absensi personal khusus On Duty Request.</p>
+              <p className="mt-2 text-[14px] text-[var(--text-muted)]">Personal attendance history related to on-duty activity.</p>
             </div>
             <div className="rounded-[12px] bg-[var(--panel-alt)] px-4 py-3 text-[13px] text-[var(--text-muted)]">
               {attendanceQuery.isLoading ? "Loading attendance history..." : `${attendanceLogs.length} records loaded`}
             </div>
           </div>
 
-          <div className="overflow-x-auto px-4 py-4 lg:px-6">
+          <div className="mobile-scroll-shadow overflow-x-auto px-4 py-4 lg:px-6">
             <table className="min-w-full border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
@@ -573,16 +573,16 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       {activeAction !== "on-duty" && activeAction !== "overtime" ? (
         <section className="page-card p-5 sm:p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">{actionCards.find((item) => item.key === activeAction)?.label} Records</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Record khusus untuk menu request yang sedang dibuka.</p>
+          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Records for the currently selected request type.</p>
           {activeAction === "leave" ? (
             <div className="mt-4 space-y-4">
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 lg:grid-cols-3">
                 <label className="space-y-2 text-[13px] font-medium text-[var(--primary)]">
                   <span>Search</span>
                   <input
                     value={leaveSearch}
                     onChange={(event) => setLeaveSearch(event.target.value)}
-                    placeholder="Search type atau reason..."
+                    placeholder="Search type or reason..."
                     className="w-full rounded-[10px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]"
                   />
                 </label>
@@ -605,7 +605,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                   />
                 </label>
               </div>
-              <div className="overflow-x-auto">
+              <div className="mobile-scroll-shadow overflow-x-auto">
               <table className="min-w-full border-separate border-spacing-y-2">
                 <thead>
                   <tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
@@ -635,7 +635,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                 </tbody>
               </table>
               {filteredLeaveRecords.length === 0 ? (
-                <div className="panel-muted mt-4 px-4 py-5 text-[14px] text-[var(--text-muted)]">Tidak ada data yang cocok dengan filter/search.</div>
+                <div className="panel-muted mt-4 px-4 py-5 text-[14px] text-[var(--text-muted)]">No records match the current filters.</div>
               ) : null}
             </div>
             </div>
@@ -664,8 +664,8 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       {activeAction === "overtime" ? (
         <section className="page-card p-5 sm:p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Overtime Records</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Record khusus submit overtime employee ini.</p>
-          <div className="mt-4 overflow-x-auto">
+          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Overtime records for this account.</p>
+          <div className="mobile-scroll-shadow mt-4 overflow-x-auto">
             <table className="min-w-full border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
@@ -690,7 +690,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       {canApprove && activeAction !== "overtime" ? (
         <section className="page-card p-5 sm:p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Approval Queue</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Manager/leader approval untuk menu request ini.</p>
+          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Manager approval queue for the current request type.</p>
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             {leaveApprovalQueue.map((request) => (
               <div key={request.id} className="panel-muted p-4">
@@ -708,7 +708,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                 </div>
               </div>
             ))}
-            {leaveApprovalQueue.length === 0 ? <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Tidak ada request yang menunggu approval pada menu ini.</div> : null}
+            {leaveApprovalQueue.length === 0 ? <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">No requests are waiting for approval in this queue.</div> : null}
           </div>
         </section>
       ) : null}
@@ -716,7 +716,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       {canApprove && activeAction === "overtime" ? (
         <section className="page-card p-5 sm:p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Approval Queue</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Manager/leader approval untuk Submit Overtime.</p>
+          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Manager approval queue for overtime submissions.</p>
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             {overtimeApprovalQueue.map((item) => (
               <div key={item.id} className="panel-muted p-4">
@@ -734,7 +734,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                 </div>
               </div>
             ))}
-            {overtimeApprovalQueue.length === 0 ? <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">Tidak ada overtime yang menunggu approval.</div> : null}
+            {overtimeApprovalQueue.length === 0 ? <div className="panel-muted p-4 text-[14px] text-[var(--text-muted)]">No overtime requests are waiting for approval.</div> : null}
           </div>
         </section>
       ) : null}

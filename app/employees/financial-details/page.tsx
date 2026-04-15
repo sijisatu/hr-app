@@ -10,7 +10,7 @@ export default async function FinancialDetailsPage() {
   return (
     <AppShell
       title="Financial Setup"
-      subtitle="Kelola master jabatan dan gaji pokok, allowance atau deduction, serta tax profile yang nanti dipilih saat add employee."
+      subtitle="Maintain compensation profiles, payroll components, and tax setup for employee onboarding."
     >
       <CompensationProfileWorkspace initialProfiles={profiles} />
     </AppShell>

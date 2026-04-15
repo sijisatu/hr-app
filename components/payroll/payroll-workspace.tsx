@@ -197,7 +197,7 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
                 </div>
               </div>
             ) : (
-              <p className="mt-6 text-[14px] text-[var(--text-muted)]">Belum ada payslip yang tersedia untuk akun ini.</p>
+              <p className="mt-6 text-[14px] text-[var(--text-muted)]">No payslips are available for this account yet.</p>
             )}
           </section>
 
@@ -407,4 +407,3 @@ function InfoMetric({ label, value, compact = false }: { label: string; value: s
     </div>
   );
 }
-

@@ -43,7 +43,7 @@ export function AttendanceQuickAction({
       )}
     >
       <Clock3 className="h-4 w-4" />
-      {hasOpenAttendance ? "Clock Out" : label}
+      <span className="attendance-action-label">{hasOpenAttendance ? "Clock Out" : label}</span>
     </button>
   );
 }

@@ -47,8 +47,8 @@ export function InteractiveReportCharts({ attendance, employeeCount }: Interacti
       <article className="page-card p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="section-title text-[26px] font-semibold text-[var(--primary)]">Grafik Attendance</p>
-            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Jumlah record attendance dan karyawan unik per hari.</p>
+            <p className="section-title text-[26px] font-semibold text-[var(--primary)]">Attendance Trends</p>
+            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Daily attendance volume and unique employee activity.</p>
           </div>
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)]">
             <Activity className="h-5 w-5" />
@@ -65,7 +65,7 @@ export function InteractiveReportCharts({ attendance, employeeCount }: Interacti
                   <div className="absolute -top-2 z-10 w-[136px] rounded-[12px] bg-[var(--primary)] px-3 py-2 text-[12px] text-white shadow-xl">
                     <p className="font-semibold">{point.label}</p>
                     <p className="mt-1">Records: {point.records}</p>
-                    <p>Karyawan: {point.uniqueEmployees}</p>
+                    <p>Employees: {point.uniqueEmployees}</p>
                   </div>
                 ) : null}
                 <div className="flex h-full w-full items-end rounded-[12px] bg-[var(--surface-muted)] px-2">
@@ -87,8 +87,8 @@ export function InteractiveReportCharts({ attendance, employeeCount }: Interacti
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <SummaryTile label="Total Record" value={String(attendanceSummary.totalRecords)} note="Minggu ini" />
-          <SummaryTile label="Rata-rata/Hari" value={String(attendanceSummary.averageDaily)} note="Volume attendance" />
+          <SummaryTile label="Total Records" value={String(attendanceSummary.totalRecords)} note="This week" />
+          <SummaryTile label="Average / Day" value={String(attendanceSummary.averageDaily)} note="Attendance volume" />
           <SummaryTile label="Peak Day" value={attendanceSummary.peak.label} note={`${attendanceSummary.peak.records} records`} />
         </div>
       </article>
@@ -96,8 +96,8 @@ export function InteractiveReportCharts({ attendance, employeeCount }: Interacti
       <article className="page-card p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="section-title text-[26px] font-semibold text-[var(--primary)]">Grafik Jumlah Karyawan</p>
-            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Tren total headcount dan karyawan baru per bulan.</p>
+            <p className="section-title text-[26px] font-semibold text-[var(--primary)]">Headcount Trends</p>
+            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Monthly total headcount and new hire movement.</p>
           </div>
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--success-soft)] text-[var(--success)]">
             <UsersRound className="h-5 w-5" />
@@ -148,9 +148,9 @@ export function InteractiveReportCharts({ attendance, employeeCount }: Interacti
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <SummaryTile label="Headcount Saat Ini" value={String(employeeSummary.latest.totalEmployees)} note="Employee aktif + nonaktif" />
-          <SummaryTile label="Pertumbuhan" value={`${employeeSummary.growth >= 0 ? "+" : ""}${employeeSummary.growth}`} note="Dibanding 6 bulan lalu" />
-          <SummaryTile label="New Joiners" value={String(employeeSummary.newHires)} note="6 bulan terakhir" />
+          <SummaryTile label="Current Headcount" value={String(employeeSummary.latest.totalEmployees)} note="Active and inactive employees" />
+          <SummaryTile label="Growth" value={`${employeeSummary.growth >= 0 ? "+" : ""}${employeeSummary.growth}`} note="Compared with 6 months ago" />
+          <SummaryTile label="New Joiners" value={String(employeeSummary.newHires)} note="Last 6 months" />
         </div>
       </article>
     </section>
