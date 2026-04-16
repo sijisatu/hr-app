@@ -86,6 +86,14 @@ export type CompensationProfileRecord = {
   notes: string;
 };
 
+export type DepartmentRecord = {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type TaxProfileRecord = {
   id: string;
   name: string;
@@ -313,7 +321,26 @@ export type Anomaly = {
   subtitle: string;
 };
 
-const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+const API_BASE =
+  process.env.API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://localhost:4000");
+const LOCAL_FALLBACK_API_BASE = "http://127.0.0.1:4000";
+
+function shouldTryLocalFallback() {
+  return API_BASE !== LOCAL_FALLBACK_API_BASE && (process.env.NODE_ENV ?? "").toLowerCase() !== "production";
+}
+
+async function fetchWithFallback(pathname: string, init: RequestInit) {
+  try {
+    return await fetch(`${API_BASE}${pathname}`, init);
+  } catch (error) {
+    if (!shouldTryLocalFallback()) {
+      throw error;
+    }
+    return fetch(`${LOCAL_FALLBACK_API_BASE}${pathname}`, init);
+  }
+}
 
 async function parseResponse<T>(response: Response): Promise<T> {
   let payload: ApiResponse<T> | null = null;
@@ -341,7 +368,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function apiFetch<T>(pathname: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, { cache: "no-store" });
+  const response = await fetchWithFallback(pathname, { cache: "no-store", credentials: "include" });
   return parseResponse<T>(response);
 }
 
@@ -361,8 +388,9 @@ function toQueryString(params?: Record<string, string | number | boolean | undef
 }
 
 async function apiPostJson<T>(pathname: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, {
+  const response = await fetchWithFallback(pathname, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
@@ -370,8 +398,9 @@ async function apiPostJson<T>(pathname: string, body: unknown): Promise<T> {
 }
 
 async function apiPatchJson<T>(pathname: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, {
+  const response = await fetchWithFallback(pathname, {
     method: "PATCH",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
@@ -379,12 +408,12 @@ async function apiPatchJson<T>(pathname: string, body: unknown): Promise<T> {
 }
 
 async function apiDelete<T>(pathname: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, { method: "DELETE" });
+  const response = await fetchWithFallback(pathname, { method: "DELETE", credentials: "include" });
   return parseResponse<T>(response);
 }
 
 async function apiPostForm<T>(pathname: string, body: FormData): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, { method: "POST", body });
+  const response = await fetchWithFallback(pathname, { method: "POST", body, credentials: "include" });
   return parseResponse<T>(response);
 }
 
@@ -482,6 +511,22 @@ export async function deleteEmployeeDocument(employeeId: string, documentId: str
 
 export async function getCompensationProfiles() {
   return apiFetch<CompensationProfileRecord[]>("/api/compensation-profiles");
+}
+
+export async function getDepartments() {
+  return apiFetch<DepartmentRecord[]>("/api/departments");
+}
+
+export async function createDepartment(payload: { name: string; active: boolean }) {
+  return apiPostJson<DepartmentRecord>("/api/departments", payload);
+}
+
+export async function updateDepartment(id: string, payload: Partial<{ name: string; active: boolean }>) {
+  return apiPatchJson<DepartmentRecord>(`/api/departments/${id}`, payload);
+}
+
+export async function deleteDepartment(id: string) {
+  return apiDelete<{ deleted: boolean; id: string }>(`/api/departments/${id}`);
 }
 
 export async function createCompensationProfile(payload: Omit<CompensationProfileRecord, "id">) {
@@ -721,9 +766,10 @@ export async function updateReimbursementRequest(payload: {
   if (payload.receipt) {
     formData.set("receipt", payload.receipt);
   }
-  const response = await fetch(`${API_BASE}/api/reimbursement/requests/${payload.reimbursementId}`, {
+  const response = await fetchWithFallback(`/api/reimbursement/requests/${payload.reimbursementId}`, {
     method: "PATCH",
-    body: formData
+    body: formData,
+    credentials: "include"
   });
   return parseResponse<ReimbursementRequestRecord>(response);
 }

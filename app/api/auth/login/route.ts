@@ -1,27 +1,53 @@
 import { NextResponse } from "next/server";
-import { authCookieName, authProfileCookieName, defaultRouteForRole, encodeSessionProfile, findDemoUser, type SessionUser } from "@/lib/auth-config";
+import {
+  authCookieName,
+  authProfileCookieName,
+  defaultRouteForRole,
+  encodeSessionProfile,
+  findDemoUser,
+  type SessionUser
+} from "@/lib/auth-config";
+import { signSessionToken } from "@/lib/session-token";
 
-const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+const isProduction = (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+const API_BASE =
+  process.env.API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (isProduction ? "https://localhost:4000" : "http://localhost:4000");
+
+function sanitizeRedirectPath(value: string | null | undefined) {
+  const target = (value ?? "/dashboard").trim();
+  if (!target.startsWith("/")) {
+    return "/dashboard";
+  }
+  if (target.startsWith("//")) {
+    return "/dashboard";
+  }
+  return target;
+}
 
 function buildAuthResponse(user?: SessionUser, redirectTo?: string) {
   if (!user) {
     return NextResponse.json({ success: false, error: "Invalid account" }, { status: 400 });
   }
 
+  const safeRedirect = sanitizeRedirectPath(redirectTo);
   const response = redirectTo
-    ? NextResponse.redirect(new URL(redirectTo, "http://127.0.0.1:3000"))
+    ? NextResponse.redirect(new URL(safeRedirect, "http://localhost:3000"))
     : NextResponse.json({ success: true, data: { redirectTo: defaultRouteForRole(user.role), user }, error: null });
 
-  response.cookies.set(authCookieName, user.sessionKey, {
+  response.cookies.set(authCookieName, signSessionToken(user.sessionKey), {
     path: "/",
-    sameSite: "lax",
-    httpOnly: false,
+    sameSite: "strict",
+    httpOnly: true,
+    secure: isProduction,
     maxAge: 60 * 60 * 24 * 30
   });
   response.cookies.set(authProfileCookieName, encodeSessionProfile(user), {
     path: "/",
-    sameSite: "lax",
-    httpOnly: false,
+    sameSite: "strict",
+    httpOnly: true,
+    secure: isProduction,
     maxAge: 60 * 60 * 24 * 30
   });
 
@@ -31,7 +57,7 @@ function buildAuthResponse(user?: SessionUser, redirectTo?: string) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionKey = searchParams.get("sessionKey") ?? undefined;
-  const redirectTo = searchParams.get("redirect") ?? "/dashboard";
+  const redirectTo = sanitizeRedirectPath(searchParams.get("redirect") ?? "/dashboard");
   const user = findDemoUser(sessionKey);
   return buildAuthResponse(user ?? undefined, redirectTo);
 }

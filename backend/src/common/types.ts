@@ -205,6 +205,14 @@ export type CompensationProfileRecord = {
   notes: string;
 };
 
+export type DepartmentRecord = {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type TaxProfileRecord = {
   id: string;
   name: string;
@@ -310,6 +318,7 @@ export type ReimbursementRequestRecord = {
 };
 
 export type DatabaseShape = {
+  departments: DepartmentRecord[];
   employees: EmployeeRecord[];
   attendanceLogs: AttendanceRecord[];
   overtimeRequests: OvertimeRecord[];

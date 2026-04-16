@@ -5,32 +5,17 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react";
 import {
-  createCompensationProfile,
   createPayrollComponent,
   createTaxProfile,
-  deleteCompensationProfile,
   deletePayrollComponent,
   deleteTaxProfile,
-  getCompensationProfiles,
   getPayrollComponents,
   getTaxProfiles,
-  updateCompensationProfile,
   updatePayrollComponent,
   updateTaxProfile,
-  type CompensationProfileRecord,
   type PayrollComponentRecord,
   type TaxProfileRecord
 } from "@/lib/api";
-
-type Props = { initialProfiles: CompensationProfileRecord[] };
-
-type SalaryForm = {
-  id?: string;
-  position: string;
-  baseSalary: string;
-  active: boolean;
-  notes: string;
-};
 
 type ComponentForm = {
   id?: string;
@@ -57,10 +42,6 @@ function money(value: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
 }
 
-function emptySalaryForm(): SalaryForm {
-  return { position: "", baseSalary: "0", active: true, notes: "" };
-}
-
 function emptyComponentForm(): ComponentForm {
   return { code: "", name: "", type: "earning", calculationType: "fixed", amount: "0", percentage: "0", taxable: true, active: true, description: "" };
 }
@@ -69,34 +50,20 @@ function emptyTaxForm(): TaxForm {
   return { name: "", rate: "5", active: true, description: "" };
 }
 
-export function CompensationProfileWorkspace({ initialProfiles }: Props) {
+export function CompensationProfileWorkspace() {
   const qc = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
-  const [salaryForm, setSalaryForm] = useState<SalaryForm>(emptySalaryForm());
   const [componentForm, setComponentForm] = useState<ComponentForm>(emptyComponentForm());
   const [taxForm, setTaxForm] = useState<TaxForm>(emptyTaxForm());
 
-  const salaryQuery = useQuery({ queryKey: ["compensation-profiles"], queryFn: getCompensationProfiles, initialData: initialProfiles });
   const componentQuery = useQuery({ queryKey: ["payroll-components"], queryFn: getPayrollComponents });
   const taxQuery = useQuery({ queryKey: ["tax-profiles"], queryFn: getTaxProfiles });
 
   const refresh = async () => {
-    await qc.invalidateQueries({ queryKey: ["compensation-profiles"] });
     await qc.invalidateQueries({ queryKey: ["payroll-components"] });
     await qc.invalidateQueries({ queryKey: ["tax-profiles"] });
     await qc.invalidateQueries({ queryKey: ["employees"] });
   };
-
-  const saveSalary = useMutation({
-    mutationFn: () => salaryForm.id
-      ? updateCompensationProfile(salaryForm.id, { position: salaryForm.position, baseSalary: Number(salaryForm.baseSalary), active: salaryForm.active, notes: salaryForm.notes })
-      : createCompensationProfile({ position: salaryForm.position, baseSalary: Number(salaryForm.baseSalary), active: salaryForm.active, notes: salaryForm.notes }),
-    onSuccess: async () => {
-      setMessage("Master jabatan dan gaji pokok berhasil disimpan.");
-      setSalaryForm(emptySalaryForm());
-      await refresh();
-    }
-  });
 
   const saveComponent = useMutation({
     mutationFn: () => componentForm.id
@@ -144,15 +111,6 @@ export function CompensationProfileWorkspace({ initialProfiles }: Props) {
     }
   });
 
-  const deleteSalary = useMutation({
-    mutationFn: (id: string) => deleteCompensationProfile(id),
-    onSuccess: async () => {
-      setMessage("Master jabatan berhasil dihapus.");
-      setSalaryForm(emptySalaryForm());
-      await refresh();
-    }
-  });
-
   const deleteComponent = useMutation({
     mutationFn: (id: string) => deletePayrollComponent(id),
     onSuccess: async () => {
@@ -171,7 +129,6 @@ export function CompensationProfileWorkspace({ initialProfiles }: Props) {
     }
   });
 
-  const salaries = salaryQuery.data ?? [];
   const components = componentQuery.data ?? [];
   const taxProfiles = taxQuery.data ?? [];
 
@@ -181,18 +138,7 @@ export function CompensationProfileWorkspace({ initialProfiles }: Props) {
         <Link href="/employees" className="secondary-button">Back to Employee List</Link>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <section className="page-card p-6">
-          <p className="section-title text-[22px] font-semibold text-[var(--primary)]">Base Salary by Position</p>
-          <div className="mt-4 space-y-4">
-            <Field label="Jabatan" value={salaryForm.position} onChange={(value) => setSalaryForm((prev) => ({ ...prev, position: value }))} />
-            <Field label="Gaji Pokok" type="number" value={salaryForm.baseSalary} onChange={(value) => setSalaryForm((prev) => ({ ...prev, baseSalary: value }))} />
-            <Area label="Notes" value={salaryForm.notes} onChange={(value) => setSalaryForm((prev) => ({ ...prev, notes: value }))} />
-            <label className="inline-flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><input type="checkbox" checked={salaryForm.active} onChange={(event) => setSalaryForm((prev) => ({ ...prev, active: event.target.checked }))} /> Active</label>
-            <button className="primary-button" onClick={() => saveSalary.mutate()} disabled={saveSalary.isPending}>{saveSalary.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{salaryForm.id ? "Update Jabatan" : "Add Jabatan"}</button>
-          </div>
-        </section>
-
+      <div className="grid gap-6 xl:grid-cols-2">
         <section className="page-card p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)]">Allowance & Deduction Master</p>
           <div className="mt-4 space-y-4">
@@ -202,9 +148,16 @@ export function CompensationProfileWorkspace({ initialProfiles }: Props) {
             <Pick label="Calculation" value={componentForm.calculationType} onChange={(value) => setComponentForm((prev) => ({ ...prev, calculationType: value as ComponentForm["calculationType"] }))} options={[["fixed", "Fixed"], ["percentage", "Percentage"]]} />
             <Field label={componentForm.calculationType === "percentage" ? "Percentage" : "Amount"} type="number" value={componentForm.calculationType === "percentage" ? componentForm.percentage : componentForm.amount} onChange={(value) => componentForm.calculationType === "percentage" ? setComponentForm((prev) => ({ ...prev, percentage: value })) : setComponentForm((prev) => ({ ...prev, amount: value }))} />
             <Area label="Description" value={componentForm.description} onChange={(value) => setComponentForm((prev) => ({ ...prev, description: value }))} />
-            <label className="inline-flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><input type="checkbox" checked={componentForm.taxable} onChange={(event) => setComponentForm((prev) => ({ ...prev, taxable: event.target.checked }))} /> Taxable</label>
-            <label className="inline-flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><input type="checkbox" checked={componentForm.active} onChange={(event) => setComponentForm((prev) => ({ ...prev, active: event.target.checked }))} /> Active</label>
-            <button className="primary-button" onClick={() => saveComponent.mutate()} disabled={saveComponent.isPending}>{saveComponent.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{componentForm.id ? "Update Item" : "Add Item"}</button>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="inline-flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><input type="checkbox" checked={componentForm.taxable} onChange={(event) => setComponentForm((prev) => ({ ...prev, taxable: event.target.checked }))} /> Taxable</label>
+                <label className="inline-flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><input type="checkbox" checked={componentForm.active} onChange={(event) => setComponentForm((prev) => ({ ...prev, active: event.target.checked }))} /> Active</label>
+              </div>
+              <button className="primary-button" onClick={() => saveComponent.mutate()} disabled={saveComponent.isPending}>
+                {saveComponent.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {componentForm.id ? "Update Item" : "Add Item"}
+              </button>
+            </div>
           </div>
         </section>
 
@@ -214,14 +167,18 @@ export function CompensationProfileWorkspace({ initialProfiles }: Props) {
             <Field label="Name" value={taxForm.name} onChange={(value) => setTaxForm((prev) => ({ ...prev, name: value }))} />
             <Field label="Rate (%)" type="number" value={taxForm.rate} onChange={(value) => setTaxForm((prev) => ({ ...prev, rate: value }))} />
             <Area label="Description" value={taxForm.description} onChange={(value) => setTaxForm((prev) => ({ ...prev, description: value }))} />
-            <label className="inline-flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><input type="checkbox" checked={taxForm.active} onChange={(event) => setTaxForm((prev) => ({ ...prev, active: event.target.checked }))} /> Active</label>
-            <button className="primary-button" onClick={() => saveTax.mutate()} disabled={saveTax.isPending}>{saveTax.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{taxForm.id ? "Update Tax Profile" : "Add Tax Profile"}</button>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+              <label className="inline-flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><input type="checkbox" checked={taxForm.active} onChange={(event) => setTaxForm((prev) => ({ ...prev, active: event.target.checked }))} /> Active</label>
+              <button className="primary-button" onClick={() => saveTax.mutate()} disabled={saveTax.isPending}>
+                {saveTax.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {taxForm.id ? "Update Tax Profile" : "Add Tax Profile"}
+              </button>
+            </div>
           </div>
         </section>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <CatalogCard title="Jabatan Library" items={salaries.map((item) => ({ id: item.id, title: item.position, subtitle: money(item.baseSalary), description: item.notes, active: item.active, onEdit: () => setSalaryForm({ id: item.id, position: item.position, baseSalary: String(item.baseSalary), active: item.active, notes: item.notes }), onDelete: () => deleteSalary.mutate(item.id) }))} />
+      <div className="grid gap-6 xl:grid-cols-2">
         <CatalogCard title="Allowance / Deduction Library" items={components.map((item) => ({ id: item.id, title: item.name, subtitle: item.type === "earning" ? "Allowance" : "Deduction", description: describeComponent(item), active: item.active, onEdit: () => setComponentForm({ id: item.id, code: item.code, name: item.name, type: item.type, calculationType: item.calculationType, amount: String(item.amount), percentage: String(item.percentage ?? 0), taxable: item.taxable, active: item.active, description: item.description }), onDelete: () => deleteComponent.mutate(item.id) }))} />
         <CatalogCard title="Tax Profile Library" items={taxProfiles.map((item) => ({ id: item.id, title: item.name, subtitle: `${item.rate}%`, description: item.description, active: item.active, onEdit: () => setTaxForm({ id: item.id, name: item.name, rate: String(item.rate), active: item.active, description: item.description }), onDelete: () => deleteTax.mutate(item.id) }))} />
       </div>

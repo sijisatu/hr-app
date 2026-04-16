@@ -1,18 +1,16 @@
 import { CompensationProfileWorkspace } from "@/components/employees/compensation-profile-workspace";
 import { AppShell } from "@/components/layout/app-shell";
 import { requireSession } from "@/lib/auth";
-import { getCompensationProfiles } from "@/lib/api";
 
 export default async function FinancialDetailsPage() {
   await requireSession(["admin", "hr"]);
-  const profiles = await getCompensationProfiles();
 
   return (
     <AppShell
       title="Financial Setup"
-      subtitle="Maintain compensation profiles, payroll components, and tax setup for employee onboarding."
+      subtitle="Maintain allowance & deduction components and tax setup for employee onboarding."
     >
-      <CompensationProfileWorkspace initialProfiles={profiles} />
+      <CompensationProfileWorkspace />
     </AppShell>
   );
 }

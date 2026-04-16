@@ -19,6 +19,18 @@ function toDate(value: string | null | undefined) {
   return parsed;
 }
 
+function toDateOnly(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim();
+  const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(normalized) ? `${normalized}T00:00:00.000Z` : normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
 async function loadSourceData() {
   const dataPath = path.resolve(process.cwd(), "storage", "data.json");
 
@@ -30,8 +42,30 @@ async function loadSourceData() {
   }
 }
 
+function normalizeDepartments(source: DatabaseShape) {
+  const provided = Array.isArray((source as Partial<DatabaseShape>).departments)
+    ? (source as Partial<DatabaseShape>).departments!
+    : [];
+  const names = new Set(provided.map((entry) => entry.name.trim().toLowerCase()));
+  const inferred = source.employees
+    .map((entry) => entry.department.trim())
+    .filter((entry) => entry.length > 0 && !names.has(entry.toLowerCase()));
+  const now = new Date().toISOString();
+  return [
+    ...provided,
+    ...inferred.map((name, index) => ({
+      id: `dept-import-${index + 1}`,
+      name,
+      active: true,
+      createdAt: now,
+      updatedAt: now
+    }))
+  ];
+}
+
 async function main() {
   const source = await loadSourceData();
+  const departments = normalizeDepartments(source);
 
   await prisma.$connect();
 
@@ -47,6 +81,17 @@ async function main() {
     await tx.compensationProfile.deleteMany();
     await tx.taxProfile.deleteMany();
     await tx.employee.deleteMany();
+    await tx.department.deleteMany();
+
+    await tx.department.createMany({
+      data: departments.map((department) => ({
+        id: department.id,
+        name: department.name,
+        active: department.active,
+        createdAt: toDate(department.createdAt) ?? new Date(),
+        updatedAt: toDate(department.updatedAt) ?? new Date()
+      }))
+    });
 
     await tx.employee.createMany({
       data: source.employees.map((employee) => ({
@@ -56,10 +101,10 @@ async function main() {
         name: employee.name,
         email: employee.email,
         birthPlace: employee.birthPlace,
-        birthDate: employee.birthDate,
+        birthDate: toDateOnly(employee.birthDate) ?? new Date(),
         gender: employee.gender,
         maritalStatus: employee.maritalStatus,
-        marriageDate: employee.marriageDate,
+        marriageDate: toDateOnly(employee.marriageDate),
         address: employee.address,
         idCardNumber: employee.idCardNumber,
         education: employee.education,
@@ -71,14 +116,14 @@ async function main() {
         role: employee.role,
         status: employee.status,
         phone: employee.phone,
-        joinDate: employee.joinDate,
+        joinDate: toDateOnly(employee.joinDate) ?? new Date(),
         workLocation: employee.workLocation,
         workType: employee.workType,
         managerName: employee.managerName,
         employmentType: employee.employmentType,
         contractStatus: employee.contractStatus,
-        contractStart: employee.contractStart,
-        contractEnd: employee.contractEnd,
+        contractStart: toDateOnly(employee.contractStart) ?? new Date(),
+        contractEnd: toDateOnly(employee.contractEnd),
         baseSalary: employee.baseSalary,
         allowance: employee.allowance,
         positionSalaryId: employee.positionSalaryId,
@@ -138,7 +183,7 @@ async function main() {
         userId: record.userId,
         employeeName: record.employeeName,
         department: record.department,
-        timestamp: record.timestamp,
+        timestamp: toDate(record.timestamp) ?? new Date(),
         checkIn: record.checkIn,
         checkOut: record.checkOut,
         location: record.location,
@@ -159,7 +204,7 @@ async function main() {
         userId: record.userId,
         employeeName: record.employeeName,
         department: record.department,
-        date: record.date,
+        date: toDateOnly(record.date) ?? new Date(),
         minutes: record.minutes,
         reason: record.reason,
         status: record.status
@@ -172,13 +217,13 @@ async function main() {
         userId: record.userId,
         employeeName: record.employeeName,
         type: record.type,
-        startDate: record.startDate,
-        endDate: record.endDate,
+        startDate: toDateOnly(record.startDate) ?? new Date(),
+        endDate: toDateOnly(record.endDate) ?? new Date(),
         reason: record.reason,
         status: record.status,
         approverFlow: record.approverFlow,
         balanceLabel: record.balanceLabel,
-        requestedAt: record.requestedAt,
+        requestedAt: toDate(record.requestedAt) ?? new Date(),
         daysRequested: record.daysRequested,
         autoApproved: record.autoApproved
       }))
@@ -188,9 +233,9 @@ async function main() {
       data: source.payRuns.map((run) => ({
         id: run.id,
         periodLabel: run.periodLabel,
-        periodStart: run.periodStart,
-        periodEnd: run.periodEnd,
-        payDate: run.payDate,
+        periodStart: toDateOnly(run.periodStart) ?? new Date(),
+        periodEnd: toDateOnly(run.periodEnd) ?? new Date(),
+        payDate: toDateOnly(run.payDate) ?? new Date(),
         status: run.status,
         totalGross: run.totalGross,
         totalNet: run.totalNet,
@@ -211,9 +256,9 @@ async function main() {
         department: slip.department,
         position: slip.position,
         periodLabel: slip.periodLabel,
-        periodStart: slip.periodStart,
-        periodEnd: slip.periodEnd,
-        payDate: slip.payDate,
+        periodStart: toDateOnly(slip.periodStart) ?? new Date(),
+        periodEnd: toDateOnly(slip.periodEnd) ?? new Date(),
+        payDate: toDateOnly(slip.payDate) ?? new Date(),
         status: slip.status,
         baseSalary: slip.baseSalary,
         allowance: slip.allowance,
@@ -264,7 +309,7 @@ async function main() {
         category: request.category,
         currency: request.currency,
         amount: request.amount,
-        receiptDate: request.receiptDate,
+        receiptDate: toDateOnly(request.receiptDate) ?? new Date(),
         remarks: request.remarks,
         receiptFileName: request.receiptFileName,
         receiptFileUrl: request.receiptFileUrl,

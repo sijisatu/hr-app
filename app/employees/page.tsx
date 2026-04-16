@@ -1,18 +1,18 @@
 import { EmployeeManagementWorkspace } from "@/components/employees/employee-management-workspace";
 import { AppShell } from "@/components/layout/app-shell";
 import { requireSession } from "@/lib/auth";
-import { getCompensationProfiles, getEmployees } from "@/lib/api";
+import { getCompensationProfiles, getDepartments, getEmployees } from "@/lib/api";
 
 export default async function EmployeesPage() {
   await requireSession(["admin", "hr", "manager"]);
-  const [employees, profiles] = await Promise.all([getEmployees(), getCompensationProfiles()]);
+  const [employees, profiles, departments] = await Promise.all([getEmployees(), getCompensationProfiles(), getDepartments()]);
 
   return (
     <AppShell
       title="Employee Management"
       subtitle="Manage employee records, compensation mapping, and payroll profile assignments."
     >
-      <EmployeeManagementWorkspace initialEmployees={employees} initialCompensationProfiles={profiles} />
+      <EmployeeManagementWorkspace initialEmployees={employees} initialCompensationProfiles={profiles} initialDepartments={departments} />
     </AppShell>
   );
 }

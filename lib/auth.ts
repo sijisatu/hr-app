@@ -2,9 +2,21 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { authCookieName, authProfileCookieName, decodeSessionProfile, defaultRouteForRole, findDemoUser, type SessionUser, type UserRole } from "@/lib/auth-config";
+import {
+  authCookieName,
+  authProfileCookieName,
+  decodeSessionProfile,
+  defaultRouteForRole,
+  findDemoUser,
+  type SessionUser,
+  type UserRole
+} from "@/lib/auth-config";
+import { verifyAndExtractSessionKey } from "@/lib/session-token";
 
-const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+const API_BASE =
+  process.env.API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://localhost:4000");
 
 async function getEmployeeSessionById(employeeId: string): Promise<SessionUser | null> {
   const response = await fetch(`${API_BASE}/api/auth/employee-session/${employeeId}`, { cache: "no-store" });
@@ -18,7 +30,7 @@ async function getEmployeeSessionById(employeeId: string): Promise<SessionUser |
 
 export async function getCurrentSession(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
-  const sessionKey = cookieStore.get(authCookieName)?.value;
+  const sessionKey = verifyAndExtractSessionKey(cookieStore.get(authCookieName)?.value);
   const cachedProfile = decodeSessionProfile(cookieStore.get(authProfileCookieName)?.value);
   if (cachedProfile && cachedProfile.sessionKey === sessionKey) {
     return cachedProfile;

@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Download, FileSpreadsheet, LoaderCircle, X } from "lucide-react";
 import { InteractiveReportCharts } from "@/components/reports/interactive-report-charts";
+import { formatReimbursementStatus } from "@/lib/api";
 import { money } from "@/lib/payroll";
 import { exportReport, toAssetUrl, type ReportCenterOverview, type ReportSnapshotMetric } from "@/lib/reporting";
 
@@ -11,12 +12,12 @@ type ReportCenterProps = {
   overview: ReportCenterOverview;
 };
 
-type ReportKey = "attendance" | "employees" | "payroll";
+type ReportKey = "attendance" | "employees" | "reimbursement";
 
 const reportNameMap: Record<ReportKey, string> = {
   attendance: "Attendance Report",
   employees: "Employee List Report",
-  payroll: "Payroll Report"
+  reimbursement: "Reimbursement Report"
 };
 
 export function ReportCenter({ overview }: ReportCenterProps) {
@@ -57,9 +58,10 @@ export function ReportCenter({ overview }: ReportCenterProps) {
         reportName: reportNameMap[key],
         fileExtension: "xlsx" as const,
         sheetName: "Attendance",
-        columns: ["EMPLOYEE", "DESCRIPTION", "CHECK WINDOW", "GPS", "STATUS", "OVERTIME"],
+        columns: ["EMPLOYEE", "ATTENDANCE DATE", "DESCRIPTION", "CHECK WINDOW", "GPS", "STATUS", "OVERTIME"],
         rows: overview.attendance.list.map((item) => [
           item.employee,
+          item.attendanceDate,
           item.description,
           item.checkWindow,
           item.gps,
@@ -72,9 +74,16 @@ export function ReportCenter({ overview }: ReportCenterProps) {
     return {
       reportName: reportNameMap[key],
       fileExtension: "xlsx" as const,
-      sheetName: "Payroll",
-      columns: ["EMPLOYEE", "PERIOD", "GROSS", "TAX", "NET"],
-      rows: overview.payroll.list.map((item) => [item.employee, item.period, item.gross, item.tax, item.net])
+      sheetName: "Reimbursement",
+      columns: ["EMPLOYEE", "DEPARTMENT", "CLAIM TYPE", "RECEIPT DATE", "AMOUNT", "STATUS"],
+      rows: overview.reimbursement.list.map((item) => [
+        item.employee,
+        item.department,
+        item.claimType,
+        item.receiptDate,
+        item.amount,
+        item.status
+      ])
     };
   };
 
@@ -101,6 +110,7 @@ export function ReportCenter({ overview }: ReportCenterProps) {
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Generate HR Reports</p>
             <p className="mt-1 text-[14px] text-[var(--text-muted)]">Preview the dataset first, then download the Excel file.</p>
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">Current filter: {overview.period.label}</p>
           </div>
           <FileSpreadsheet className="h-7 w-7 text-[var(--primary)]" />
         </div>
@@ -113,9 +123,9 @@ export function ReportCenter({ overview }: ReportCenterProps) {
             <Download className="h-4 w-4" />
             Employee List Report
           </button>
-          <button className="primary-button w-full" disabled={exportMutation.isPending} onClick={() => setPreviewKey("payroll")}>
+          <button className="primary-button w-full" disabled={exportMutation.isPending} onClick={() => setPreviewKey("reimbursement")}>
             <Download className="h-4 w-4" />
-            Payroll Report
+            Reimbursement Report
           </button>
         </div>
       </div>
@@ -183,29 +193,31 @@ export function ReportCenter({ overview }: ReportCenterProps) {
         </ModuleSection>
 
         <ModuleSection
-          title="Payroll Report"
-          subtitle="Pay run monitoring, payout totals, and high-value payslip visibility."
-          metrics={overview.payroll.metrics}
-          action={<ExportButton pending={exportMutation.isPending} onClick={() => setPreviewKey("payroll")} />}
+          title="Reimbursement Report"
+          subtitle="Claim request visibility, pending approvals, and high-value reimbursement monitoring."
+          metrics={overview.reimbursement.metrics}
+          action={<ExportButton pending={exportMutation.isPending} onClick={() => setPreviewKey("reimbursement")} />}
         >
           <div className="grid gap-6 lg:grid-cols-2">
-            <MetricListCard title="Recent Pay Runs">
-              {overview.payroll.recentRuns.map((item) => (
-                <div key={item.periodLabel} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
-                  <p className="text-[15px] font-semibold text-[var(--text)]">{item.periodLabel}</p>
-                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.status} | {item.employeeCount} employees | {money(item.totalNet)}</p>
+            <MetricListCard title="Pending Queue">
+              {overview.reimbursement.pendingQueue.map((item) => (
+                <div key={`${item.employeeName}-${item.claimType}`} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
+                  <p className="text-[15px] font-semibold text-[var(--text)]">{item.employeeName}</p>
+                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                    {item.claimType} | {formatReimbursementStatus(item.status)} | {money(item.amount)}
+                  </p>
                 </div>
               ))}
             </MetricListCard>
 
-            <MetricListCard title="Top Net Pay">
-              {overview.payroll.topEarners.map((item) => (
+            <MetricListCard title="Top Claim Amount">
+              {overview.reimbursement.topClaims.map((item) => (
                 <div key={item.employeeName} className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-[14px] font-semibold text-[var(--text)]">{item.employeeName}</p>
                     <p className="mt-1 text-[12px] text-[var(--text-muted)]">{item.department}</p>
                   </div>
-                  <span className="text-[14px] font-semibold text-[var(--primary)]">{money(item.netPay)}</span>
+                  <span className="text-[14px] font-semibold text-[var(--primary)]">{money(item.amount)}</span>
                 </div>
               ))}
             </MetricListCard>
@@ -257,7 +269,7 @@ function ReportPreviewModal({
         <div className="max-h-[65vh] overflow-auto bg-[var(--surface-muted)] p-6">
           {reportKey === "attendance" ? <AttendancePreview overview={overview} /> : null}
           {reportKey === "employees" ? <EmployeePreview overview={overview} /> : null}
-          {reportKey === "payroll" ? <PayrollPreview overview={overview} /> : null}
+          {reportKey === "reimbursement" ? <ReimbursementPreview overview={overview} /> : null}
         </div>
 
         <div className="flex justify-end border-t border-[var(--border)] px-6 py-4">
@@ -275,8 +287,8 @@ function AttendancePreview({ overview }: { overview: ReportCenterOverview }) {
   return (
     <PreviewTable
       title="Attendance"
-      headers={["EMPLOYEE", "DESCRIPTION", "CHECK WINDOW", "GPS", "STATUS", "OVERTIME"]}
-      rows={overview.attendance.list.map((item) => [item.employee, item.description, item.checkWindow, item.gps, item.status, item.overtime])}
+      headers={["EMPLOYEE", "ATTENDANCE DATE", "DESCRIPTION", "CHECK WINDOW", "GPS", "STATUS", "OVERTIME"]}
+      rows={overview.attendance.list.map((item) => [item.employee, item.attendanceDate, item.description, item.checkWindow, item.gps, item.status, item.overtime])}
     />
   );
 }
@@ -291,12 +303,19 @@ function EmployeePreview({ overview }: { overview: ReportCenterOverview }) {
   );
 }
 
-function PayrollPreview({ overview }: { overview: ReportCenterOverview }) {
+function ReimbursementPreview({ overview }: { overview: ReportCenterOverview }) {
   return (
     <PreviewTable
-      title="Payroll"
-      headers={["EMPLOYEE", "PERIOD", "GROSS", "TAX", "NET"]}
-      rows={overview.payroll.list.map((item) => [item.employee, item.period, item.gross, item.tax, item.net])}
+      title="Reimbursement"
+      headers={["EMPLOYEE", "DEPARTMENT", "CLAIM TYPE", "RECEIPT DATE", "AMOUNT", "STATUS"]}
+      rows={overview.reimbursement.list.map((item) => [
+        item.employee,
+        item.department,
+        item.claimType,
+        item.receiptDate,
+        item.amount,
+        formatReimbursementStatus(item.status)
+      ])}
     />
   );
 }

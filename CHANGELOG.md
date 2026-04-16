@@ -49,3 +49,10 @@
 - Enable backend response compression and endpoint cache-control strategy.
 - Add production query indexes via Prisma schema + migration.
 - Improve report and payroll export flow with async polling and stable `.xlsx` output.
+- Fix employee login regression by preventing password wipe on employee profile update and restore affected account access.
+- Harden manager approval scope by enforcing same-department + assigned-manager validation in leave/overtime approval flow.
+- Replace payroll report export in HR Reports with reimbursement report dataset and Excel export.
+- Add report period selector (`Current Period`, `Last Month`, `Last 3 Months`, `Year to Date`, `All Time`) and apply period filtering to preview + export.
+- Add attendance date column to attendance report preview and exported Excel file.
+- Complete observability & operations checklist (`E1`-`E5`): JSON request logging + correlation ID, metrics/alerts endpoint, liveness/readiness probes, production deployment blueprint, and CI quality gate workflow.
+- Update pre-production audit document with completed checklist evidence and references.

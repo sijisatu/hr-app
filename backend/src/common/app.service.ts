@@ -1,16 +1,18 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { DatabaseService } from "./database.service";
 import { EmployeeSessionPayload } from "./auth.types";
+import type { AuthenticatedActor } from "./authz";
 import { hashPassword, isPasswordHash, verifyPassword } from "./password.service";
 import { seedData } from "../data/seed";
 import {
   AttendanceRecord,
   CompensationProfileRecord,
+  DepartmentRecord,
   DatabaseShape,
   EducationRecord,
   EmployeeDocumentRecord,
@@ -32,6 +34,7 @@ import {
   CheckInDto,
   CheckOutDto,
   CreateCompensationProfileDto,
+  CreateDepartmentDto,
   CreateEmployeeDto,
   CreateExportDto,
   EmployeeListQueryDto,
@@ -52,6 +55,7 @@ import {
   ReimbursementProcessDto,
   UploadEmployeeDocumentDto,
   UpdateCompensationProfileDto,
+  UpdateDepartmentDto,
   UpdateReimbursementClaimTypeDto,
   UpdateReimbursementRequestDto,
   UpdateTaxProfileDto,
@@ -111,6 +115,11 @@ type ExportJob = {
 export class AppService {
   private readonly storageRoot = path.resolve(process.cwd(), "storage");
   private readonly dbPath = path.join(this.storageRoot, "data.json");
+  private readonly auditLogPath = path.join(this.storageRoot, "audit.log");
+  private readonly isProduction = (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  private readonly useDemoSeedData =
+    (process.env.BOOTSTRAP_DEMO_DATA ?? "").toLowerCase() === "true" ||
+    (!this.isProduction && (process.env.BOOTSTRAP_DEMO_DATA ?? "").toLowerCase() !== "false");
   private cache: DatabaseShape | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
   private exportQueue: ExportJob[] = [];
@@ -130,23 +139,81 @@ export class AppService {
     ]);
 
     if (!existsSync(this.dbPath)) {
-      await writeFile(this.dbPath, JSON.stringify(seedData, null, 2), "utf8");
+      const initialSnapshot = this.useDemoSeedData ? seedData : this.createEmptyDatabaseSnapshot();
+      await writeFile(this.dbPath, JSON.stringify(initialSnapshot, null, 2), "utf8");
     }
 
     const current = await this.readDb();
+    current.departments = this.normalizeDepartments(current.departments, current.employees);
     current.employees = current.employees.map((employee, index) => this.normalizeEmployee(employee, index));
     current.attendanceLogs = (current.attendanceLogs ?? []).map((attendance, index) => this.normalizeAttendance(attendance, current.employees, index));
-    current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : seedData.overtimeRequests).map((record, index) => this.normalizeOvertime(record, index));
+    current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : this.useDemoSeedData ? seedData.overtimeRequests : []).map((record, index) => this.normalizeOvertime(record, index));
     current.leaveRequests = (current.leaveRequests ?? []).map((record, index) => this.normalizeLeave(record, current.employees, index));
-    current.reimbursementClaimTypes = (current.reimbursementClaimTypes?.length ? current.reimbursementClaimTypes : seedData.reimbursementClaimTypes).map((record, index) => this.normalizeReimbursementClaimType(record, current.employees, index));
-    current.reimbursementRequests = (current.reimbursementRequests?.length ? current.reimbursementRequests : seedData.reimbursementRequests).map((record, index) => this.normalizeReimbursementRequest(record, current.employees, current.reimbursementClaimTypes, index));
-    current.compensationProfiles = (current.compensationProfiles?.length ? current.compensationProfiles : seedData.compensationProfiles).map((profile, index) => this.normalizeCompensationProfile(profile, index));
-    current.taxProfiles = (current.taxProfiles?.length ? current.taxProfiles : seedData.taxProfiles).map((profile, index) => this.normalizeTaxProfile(profile, index));
-    current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : seedData.payrollComponents).map((component, index) => this.normalizePayrollComponent(component, index));
-    current.payRuns = (current.payRuns?.length ? current.payRuns : seedData.payRuns).map((run, index) => this.normalizePayRun(run, index));
-    current.payslips = (current.payslips?.length ? current.payslips : seedData.payslips).map((slip, index) => this.normalizePayslip(slip, current.employees, index));
+    current.reimbursementClaimTypes = (current.reimbursementClaimTypes?.length ? current.reimbursementClaimTypes : this.useDemoSeedData ? seedData.reimbursementClaimTypes : []).map((record, index) => this.normalizeReimbursementClaimType(record, current.employees, index));
+    current.reimbursementRequests = (current.reimbursementRequests?.length ? current.reimbursementRequests : this.useDemoSeedData ? seedData.reimbursementRequests : []).map((record, index) => this.normalizeReimbursementRequest(record, current.employees, current.reimbursementClaimTypes, index));
+    current.compensationProfiles = (current.compensationProfiles?.length ? current.compensationProfiles : this.useDemoSeedData ? seedData.compensationProfiles : []).map((profile, index) => this.normalizeCompensationProfile(profile, index));
+    current.taxProfiles = (current.taxProfiles?.length ? current.taxProfiles : this.useDemoSeedData ? seedData.taxProfiles : []).map((profile, index) => this.normalizeTaxProfile(profile, index));
+    current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : this.useDemoSeedData ? seedData.payrollComponents : []).map((component, index) => this.normalizePayrollComponent(component, index));
+    current.payRuns = (current.payRuns?.length ? current.payRuns : this.useDemoSeedData ? seedData.payRuns : []).map((run, index) => this.normalizePayRun(run, index));
+    current.payslips = (current.payslips?.length ? current.payslips : this.useDemoSeedData ? seedData.payslips : []).map((slip, index) => this.normalizePayslip(slip, current.employees, index));
     await this.ensureEmployeePasswordsHashed(current);
     await this.writeDb(current);
+  }
+
+  private createEmptyDatabaseSnapshot(): DatabaseShape {
+    return {
+      departments: [],
+      employees: [],
+      attendanceLogs: [],
+      overtimeRequests: [],
+      leaveRequests: [],
+      reimbursementClaimTypes: [],
+      reimbursementRequests: [],
+      compensationProfiles: [],
+      taxProfiles: [],
+      payrollComponents: [],
+      payRuns: [],
+      payslips: []
+    };
+  }
+
+  private normalizeDepartment(
+    record: Partial<DepartmentRecord> & Record<string, unknown>,
+    index: number
+  ): DepartmentRecord {
+    return {
+      id: String(record.id ?? `dept-${String(index + 1).padStart(3, "0")}`),
+      name: String(record.name ?? `Department ${index + 1}`),
+      active: Boolean(record.active ?? true),
+      createdAt: String(record.createdAt ?? new Date().toISOString()),
+      updatedAt: String(record.updatedAt ?? new Date().toISOString())
+    };
+  }
+
+  private normalizeDepartments(rawDepartments: unknown, employees: EmployeeRecord[]) {
+    const base = Array.isArray(rawDepartments)
+      ? (rawDepartments as Array<Partial<DepartmentRecord> & Record<string, unknown>>)
+      : [];
+    const normalized = base.map((record, index) => this.normalizeDepartment(record, index));
+    const names = new Set(normalized.map((entry) => entry.name.trim().toLowerCase()));
+    const inferred = Array.from(new Set(
+      employees
+        .map((entry) => entry.department.trim())
+        .filter((entry) => entry.length > 0)
+    ));
+    for (const name of inferred) {
+      if (names.has(name.toLowerCase())) {
+        continue;
+      }
+      normalized.push({
+        id: `dept-${randomUUID().slice(0, 8)}`,
+        name,
+        active: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+    return normalized.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   private normalizeEmployee(employee: Partial<EmployeeRecord> & Record<string, unknown>, index: number): EmployeeRecord {
@@ -454,6 +521,7 @@ export class AppService {
     }
     if (prisma) {
       const [
+        departments,
         employees,
         attendanceLogs,
         overtimeRequests,
@@ -466,6 +534,7 @@ export class AppService {
         payRuns,
         payslips
       ] = await Promise.all([
+        prisma.department.findMany({ orderBy: { name: "asc" } }),
         prisma.employee.findMany({ orderBy: { name: "asc" } }),
         prisma.attendanceLog.findMany({ orderBy: { timestamp: "desc" } }),
         prisma.overtimeRequest.findMany({ orderBy: { date: "desc" } }),
@@ -480,28 +549,43 @@ export class AppService {
       ]);
 
       this.cache = {
+        departments: departments.map((record: any) => ({
+          ...record,
+          createdAt: record.createdAt.toISOString(),
+          updatedAt: record.updatedAt.toISOString()
+        })),
         employees: employees.map((employee: any) => ({
           ...employee,
+          birthDate: this.toDateString(employee.birthDate),
+          marriageDate: employee.marriageDate ? this.toDateString(employee.marriageDate) : null,
+          joinDate: this.toDateString(employee.joinDate),
+          contractStart: this.toDateString(employee.contractStart),
+          contractEnd: employee.contractEnd ? this.toDateString(employee.contractEnd) : null,
           baseSalary: Number(employee.baseSalary),
           allowance: Number(employee.allowance),
           educationHistory: Array.isArray(employee.educationHistory) ? employee.educationHistory : [],
           workExperiences: Array.isArray(employee.workExperiences) ? employee.workExperiences : [],
           financialComponentIds: Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds : [],
           documents: Array.isArray(employee.documents) ? employee.documents : [],
-          leaveBalances: employee.leaveBalances ?? seedData.employees[0]?.leaveBalances
+          leaveBalances: employee.leaveBalances ?? this.normalizeLeaveBalances()
         })),
         attendanceLogs: attendanceLogs.map((record: any) => ({
           ...record,
+          timestamp: this.toIsoString(record.timestamp),
           latitude: Number(record.latitude),
           longitude: Number(record.longitude),
           gpsDistanceMeters: Number(record.gpsDistanceMeters)
         })),
         overtimeRequests: overtimeRequests.map((record: any) => ({
           ...record,
+          date: this.toDateString(record.date),
           minutes: Number(record.minutes)
         })),
         leaveRequests: leaveRequests.map((record: any) => ({
           ...record,
+          startDate: this.toDateString(record.startDate),
+          endDate: this.toDateString(record.endDate),
+          requestedAt: this.toIsoString(record.requestedAt),
           daysRequested: Number(record.daysRequested)
         })),
         reimbursementClaimTypes: reimbursementClaimTypes.map((record: any) => ({
@@ -513,6 +597,7 @@ export class AppService {
         })),
         reimbursementRequests: reimbursementRequests.map((record: any) => ({
           ...record,
+          receiptDate: this.toDateString(record.receiptDate),
           amount: Number(record.amount),
           balanceSnapshot: Number(record.balanceSnapshot),
           submittedAt: record.submittedAt ? record.submittedAt.toISOString() : null,
@@ -536,6 +621,9 @@ export class AppService {
         })),
         payRuns: payRuns.map((record: any) => ({
           ...record,
+          periodStart: this.toDateString(record.periodStart),
+          periodEnd: this.toDateString(record.periodEnd),
+          payDate: this.toDateString(record.payDate),
           totalGross: Number(record.totalGross),
           totalNet: Number(record.totalNet),
           totalTax: Number(record.totalTax),
@@ -544,6 +632,9 @@ export class AppService {
         })),
         payslips: payslips.map((record: any) => ({
           ...record,
+          periodStart: this.toDateString(record.periodStart),
+          periodEnd: this.toDateString(record.periodEnd),
+          payDate: this.toDateString(record.payDate),
           baseSalary: Number(record.baseSalary),
           allowance: Number(record.allowance),
           overtimePay: Number(record.overtimePay),
@@ -592,6 +683,37 @@ export class AppService {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
+  private toDateOnly(value: string | null | undefined) {
+    if (!value) {
+      return null;
+    }
+    const normalized = value.trim();
+    const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(normalized) ? `${normalized}T00:00:00.000Z` : normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private toDateString(value: Date | string | null | undefined) {
+    if (!value) {
+      return "";
+    }
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  private toIsoString(value: Date | string | null | undefined) {
+    if (!value) {
+      return "";
+    }
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+    return parsed.toISOString();
+  }
+
   private toPageMeta(page?: number, pageSize?: number) {
     const normalizedPage = Math.max(1, Number(page) || 1);
     const normalizedPageSize = Math.max(1, Math.min(200, Number(pageSize) || 25));
@@ -627,6 +749,112 @@ export class AppService {
     };
   }
 
+  private assertEmployeeUniqueness(db: DatabaseShape, candidate: {
+    nik: string;
+    email: string;
+    idCardNumber: string;
+    appLoginEnabled: boolean;
+    loginUsername: string | null;
+  }, existingEmployeeId?: string) {
+    const conflicts = db.employees.find((entry) => {
+      if (existingEmployeeId && entry.id === existingEmployeeId) {
+        return false;
+      }
+      if (entry.nik.trim().toLowerCase() === candidate.nik.trim().toLowerCase()) {
+        return true;
+      }
+      if (entry.email.trim().toLowerCase() === candidate.email.trim().toLowerCase()) {
+        return true;
+      }
+      if (entry.idCardNumber.trim() === candidate.idCardNumber.trim()) {
+        return true;
+      }
+      if (
+        candidate.appLoginEnabled &&
+        candidate.loginUsername &&
+        entry.appLoginEnabled &&
+        entry.loginUsername &&
+        entry.loginUsername.trim().toLowerCase() === candidate.loginUsername.trim().toLowerCase()
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    if (!conflicts) {
+      return;
+    }
+
+    if (conflicts.nik.trim().toLowerCase() === candidate.nik.trim().toLowerCase()) {
+      throw new BadRequestException("NIK sudah dipakai oleh karyawan lain.");
+    }
+    if (conflicts.email.trim().toLowerCase() === candidate.email.trim().toLowerCase()) {
+      throw new BadRequestException("Email sudah dipakai oleh karyawan lain.");
+    }
+    if (conflicts.idCardNumber.trim() === candidate.idCardNumber.trim()) {
+      throw new BadRequestException("Nomor KTP sudah dipakai oleh karyawan lain.");
+    }
+    if (
+      candidate.appLoginEnabled &&
+      candidate.loginUsername &&
+      conflicts.appLoginEnabled &&
+      conflicts.loginUsername &&
+      conflicts.loginUsername.trim().toLowerCase() === candidate.loginUsername.trim().toLowerCase()
+    ) {
+      throw new BadRequestException("Username login sudah dipakai oleh karyawan lain.");
+    }
+  }
+
+  private assertDepartmentExistsAndActive(db: DatabaseShape, departmentName: string) {
+    const normalized = departmentName.trim().toLowerCase();
+    const department = db.departments.find((entry) => entry.name.trim().toLowerCase() === normalized);
+    if (!department) {
+      throw new BadRequestException("Department belum terdaftar di master.");
+    }
+    if (!department.active) {
+      throw new BadRequestException("Department tidak aktif.");
+    }
+  }
+
+  private assertManagerAssignment(
+    db: DatabaseShape,
+    payload: { department: string; managerName: string; employeeId?: string }
+  ) {
+    const managerName = payload.managerName.trim();
+    if (!managerName) {
+      return;
+    }
+    const manager = db.employees.find((entry) =>
+      entry.name.trim().toLowerCase() === managerName.toLowerCase() &&
+      entry.role === "manager" &&
+      entry.status === "active"
+    );
+    if (!manager) {
+      throw new BadRequestException("Manager approval tidak ditemukan atau tidak aktif.");
+    }
+    if (manager.department.trim().toLowerCase() !== payload.department.trim().toLowerCase()) {
+      throw new BadRequestException("Manager approval harus berasal dari department yang sama.");
+    }
+    if (payload.employeeId && manager.id === payload.employeeId) {
+      throw new BadRequestException("Manager approval tidak boleh memilih dirinya sendiri.");
+    }
+  }
+
+  private assertManagerApprovalScope(actor: AuthenticatedActor | undefined, employee: EmployeeRecord | undefined) {
+    if (!actor || actor.role !== "manager") {
+      return;
+    }
+    if (!employee) {
+      throw new NotFoundException("Employee not found for manager approval validation.");
+    }
+    if (employee.department.trim().toLowerCase() !== actor.department.trim().toLowerCase()) {
+      throw new ForbiddenException("Manager can only approve requests within their own department.");
+    }
+    if (employee.managerName.trim().toLowerCase() !== actor.name.trim().toLowerCase()) {
+      throw new ForbiddenException("Manager can only approve employees assigned to them.");
+    }
+  }
+
   private toEmployeeSessionPayload(employee: EmployeeRecord): EmployeeSessionPayload {
     return {
       sessionKey: `employee:${employee.id}`,
@@ -637,6 +865,92 @@ export class AppService {
       department: employee.department,
       position: employee.position
     };
+  }
+
+  async resolveSessionActor(sessionKey: string): Promise<AuthenticatedActor | null> {
+    const demoUsers: AuthenticatedActor[] = [
+      {
+        sessionKey: "global-admin",
+        id: "admin-001",
+        name: "Global Admin",
+        email: "admin@praluxstd.com",
+        role: "admin",
+        department: "Enterprise HQ",
+        position: "Platform Owner"
+      },
+      {
+        sessionKey: "elena-hr",
+        id: "emp-003",
+        name: "Elena Rodriguez",
+        email: "e.rodriguez@praluxstd.com",
+        role: "hr",
+        department: "Logistics & Supply Chain",
+        position: "Operations Manager / HR"
+      },
+      {
+        sessionKey: "sarah-manager",
+        id: "emp-001",
+        name: "Sarah Jenkins",
+        email: "s.jenkins@praluxstd.com",
+        role: "manager",
+        department: "Brand Identity & Strategy",
+        position: "Creative Director"
+      },
+      {
+        sessionKey: "james-employee",
+        id: "emp-004",
+        name: "James Wilson",
+        email: "j.wilson@praluxstd.com",
+        role: "employee",
+        department: "Consumer Insights",
+        position: "Product Strategist"
+      }
+    ];
+
+    const demo = demoUsers.find((entry) => entry.sessionKey === sessionKey);
+    if (demo) {
+      return demo;
+    }
+
+    if (!sessionKey.startsWith("employee:")) {
+      return null;
+    }
+
+    const employeeId = sessionKey.replace("employee:", "");
+    let session: EmployeeSessionPayload | null = null;
+    try {
+      session = await this.getEmployeeSession(employeeId);
+    } catch {
+      session = null;
+    }
+    if (!session) {
+      return null;
+    }
+
+    return {
+      ...session,
+      role: session.role as AuthenticatedActor["role"]
+    };
+  }
+
+  private async writeAuditLog(action: string, details: Record<string, unknown>) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      action,
+      ...details
+    };
+    await appendFile(this.auditLogPath, `${JSON.stringify(entry)}\n`, "utf8");
+  }
+
+  private safeFileBaseName(input: string, fallback: string) {
+    const normalized = input
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9-_ ]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .toLowerCase();
+    return normalized.length > 0 ? normalized : fallback;
   }
 
   private async ensureEmployeePasswordsHashed(db: DatabaseShape) {
@@ -662,6 +976,14 @@ export class AppService {
       return;
     }
 
+    const departmentRows = next.departments.map((department) => ({
+      id: department.id,
+      name: department.name,
+      active: department.active,
+      createdAt: this.toDate(department.createdAt) ?? new Date(),
+      updatedAt: this.toDate(department.updatedAt) ?? new Date()
+    }));
+
     const employeeRows = next.employees.map((employee) => ({
       id: employee.id,
       employeeNumber: employee.employeeNumber,
@@ -669,10 +991,10 @@ export class AppService {
       name: employee.name,
       email: employee.email,
       birthPlace: employee.birthPlace,
-      birthDate: employee.birthDate,
+      birthDate: this.toDateOnly(employee.birthDate) ?? new Date(),
       gender: employee.gender,
       maritalStatus: employee.maritalStatus,
-      marriageDate: employee.marriageDate,
+      marriageDate: this.toDateOnly(employee.marriageDate),
       address: employee.address,
       idCardNumber: employee.idCardNumber,
       education: employee.education,
@@ -684,14 +1006,14 @@ export class AppService {
       role: employee.role,
       status: employee.status,
       phone: employee.phone,
-      joinDate: employee.joinDate,
+      joinDate: this.toDateOnly(employee.joinDate) ?? new Date(),
       workLocation: employee.workLocation,
       workType: employee.workType,
       managerName: employee.managerName,
       employmentType: employee.employmentType,
       contractStatus: employee.contractStatus,
-      contractStart: employee.contractStart,
-      contractEnd: employee.contractEnd,
+      contractStart: this.toDateOnly(employee.contractStart) ?? new Date(),
+      contractEnd: this.toDateOnly(employee.contractEnd),
       baseSalary: employee.baseSalary,
       allowance: employee.allowance,
       positionSalaryId: employee.positionSalaryId,
@@ -741,9 +1063,9 @@ export class AppService {
     const payRunRows = next.payRuns.map((run) => ({
       id: run.id,
       periodLabel: run.periodLabel,
-      periodStart: run.periodStart,
-      periodEnd: run.periodEnd,
-      payDate: run.payDate,
+      periodStart: this.toDateOnly(run.periodStart) ?? new Date(),
+      periodEnd: this.toDateOnly(run.periodEnd) ?? new Date(),
+      payDate: this.toDateOnly(run.payDate) ?? new Date(),
       status: run.status,
       totalGross: run.totalGross,
       totalNet: run.totalNet,
@@ -776,7 +1098,7 @@ export class AppService {
       userId: record.userId,
       employeeName: record.employeeName,
       department: record.department,
-      timestamp: record.timestamp,
+      timestamp: this.toDate(record.timestamp) ?? new Date(),
       checkIn: record.checkIn,
       checkOut: record.checkOut,
       location: record.location,
@@ -795,7 +1117,7 @@ export class AppService {
       userId: record.userId,
       employeeName: record.employeeName,
       department: record.department,
-      date: record.date,
+      date: this.toDateOnly(record.date) ?? new Date(),
       minutes: record.minutes,
       reason: record.reason,
       status: record.status
@@ -806,13 +1128,13 @@ export class AppService {
       userId: record.userId,
       employeeName: record.employeeName,
       type: record.type,
-      startDate: record.startDate,
-      endDate: record.endDate,
+      startDate: this.toDateOnly(record.startDate) ?? new Date(),
+      endDate: this.toDateOnly(record.endDate) ?? new Date(),
       reason: record.reason,
       status: record.status,
       approverFlow: record.approverFlow,
       balanceLabel: record.balanceLabel,
-      requestedAt: record.requestedAt,
+      requestedAt: this.toDate(record.requestedAt) ?? new Date(),
       daysRequested: record.daysRequested,
       autoApproved: record.autoApproved
     }));
@@ -826,9 +1148,9 @@ export class AppService {
       department: slip.department,
       position: slip.position,
       periodLabel: slip.periodLabel,
-      periodStart: slip.periodStart,
-      periodEnd: slip.periodEnd,
-      payDate: slip.payDate,
+      periodStart: this.toDateOnly(slip.periodStart) ?? new Date(),
+      periodEnd: this.toDateOnly(slip.periodEnd) ?? new Date(),
+      payDate: this.toDateOnly(slip.payDate) ?? new Date(),
       status: slip.status,
       baseSalary: slip.baseSalary,
       allowance: slip.allowance,
@@ -857,7 +1179,7 @@ export class AppService {
       category: request.category,
       currency: request.currency,
       amount: request.amount,
-      receiptDate: request.receiptDate,
+      receiptDate: this.toDateOnly(request.receiptDate) ?? new Date(),
       remarks: request.remarks,
       receiptFileName: request.receiptFileName,
       receiptFileUrl: request.receiptFileUrl,
@@ -897,7 +1219,11 @@ export class AppService {
       await tx.compensationProfile.deleteMany();
       await tx.taxProfile.deleteMany();
       await tx.employee.deleteMany();
+      await tx.department.deleteMany();
 
+      if (departmentRows.length > 0) {
+        await tx.department.createMany({ data: departmentRows });
+      }
       if (employeeRows.length > 0) {
         await tx.employee.createMany({ data: employeeRows });
       }
@@ -1380,6 +1706,21 @@ export class AppService {
     };
   }
 
+  getExportQueueMetrics() {
+    const queued = this.exportQueue.filter((entry) => entry.status === "queued").length;
+    const processing = this.exportQueue.filter((entry) => entry.status === "processing").length;
+    const failed = this.exportQueue.filter((entry) => entry.status === "failed").length;
+    const done = this.exportQueue.filter((entry) => entry.status === "done").length;
+    return {
+      total: this.exportQueue.length,
+      queued,
+      processing,
+      failed,
+      done,
+      activeWorker: this.activeExportJob
+    };
+  }
+
   async getDashboardSummary() {
     const prisma = this.getPrisma();
 
@@ -1457,7 +1798,7 @@ export class AppService {
         workExperiences: Array.isArray(employee.workExperiences) ? employee.workExperiences : [],
         financialComponentIds: Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds : [],
         documents: Array.isArray(employee.documents) ? employee.documents : [],
-        leaveBalances: employee.leaveBalances ?? seedData.employees[0]?.leaveBalances
+        leaveBalances: employee.leaveBalances ?? this.normalizeLeaveBalances()
       } as EmployeeRecord));
 
       return {
@@ -1517,6 +1858,8 @@ export class AppService {
 
   async createEmployee(payload: CreateEmployeeDto) {
     const db = await this.readDb();
+    this.assertDepartmentExistsAndActive(db, payload.department);
+    this.assertManagerAssignment(db, { department: payload.department, managerName: payload.managerName });
     const sequence = String(db.employees.length + 1).padStart(3, "0");
     const compensationProfile = payload.positionSalaryId
       ? db.compensationProfiles.find((entry) => entry.id === payload.positionSalaryId)
@@ -1527,6 +1870,13 @@ export class AppService {
       .reduce((sum, entry) => sum + (entry.calculationType === "percentage" ? Math.round((compensationProfile?.baseSalary ?? payload.baseSalary) * ((entry.percentage ?? 0) / 100)) : entry.amount), 0);
     const selectedTaxProfile = payload.taxProfileId ? db.taxProfiles.find((entry) => entry.id === payload.taxProfileId) : null;
     const employeePassword = payload.appLoginEnabled === false ? null : (payload.loginPassword?.trim() || "employee123");
+    this.assertEmployeeUniqueness(db, {
+      nik: payload.nik,
+      email: payload.email,
+      idCardNumber: payload.idCardNumber,
+      appLoginEnabled: payload.appLoginEnabled ?? true,
+      loginUsername: payload.appLoginEnabled === false ? null : (payload.loginUsername?.trim() || payload.nik)
+    });
     const employee: EmployeeRecord = {
       id: `emp-${randomUUID().slice(0, 8)}`,
       employeeNumber: `EMP-2026-${sequence}`,
@@ -1551,6 +1901,7 @@ export class AppService {
     };
     db.employees.unshift(employee);
     await this.writeDb(db);
+    await this.writeAuditLog("employee.create", { employeeId: employee.id, role: employee.role, department: employee.department });
     return this.sanitizeEmployee(employee);
   }
 
@@ -1595,12 +1946,26 @@ export class AppService {
     }
     if (payload.loginPassword !== undefined) {
       const nextPassword = payload.loginPassword?.trim() || null;
-      employee.loginPassword = nextPassword ? await hashPassword(nextPassword) : null;
+      if (nextPassword) {
+        employee.loginPassword = await hashPassword(nextPassword);
+      } else if (payload.appLoginEnabled === false) {
+        employee.loginPassword = null;
+      }
     }
     if (payload.leaveBalances !== undefined) {
       employee.leaveBalances = this.normalizeLeaveBalances(payload.leaveBalances as Partial<EmployeeRecord["leaveBalances"]>);
     }
+    this.assertDepartmentExistsAndActive(db, employee.department);
+    this.assertManagerAssignment(db, { department: employee.department, managerName: employee.managerName, employeeId: employee.id });
+    this.assertEmployeeUniqueness(db, {
+      nik: employee.nik,
+      email: employee.email,
+      idCardNumber: employee.idCardNumber,
+      appLoginEnabled: employee.appLoginEnabled,
+      loginUsername: employee.loginUsername
+    }, employee.id);
     await this.writeDb(db);
+    await this.writeAuditLog("employee.update", { employeeId: id, fields: Object.keys(payload) });
     return this.sanitizeEmployee(employee);
   }
 
@@ -1612,6 +1977,7 @@ export class AppService {
     }
     db.employees = nextEmployees;
     await this.writeDb(db);
+    await this.writeAuditLog("employee.delete", { employeeId: id });
     return { deleted: true, id };
   }
 
@@ -1679,6 +2045,83 @@ export class AppService {
   async getCompensationProfiles() {
     const db = await this.readDb();
     return db.compensationProfiles;
+  }
+
+  async getDepartments() {
+    const db = await this.readDb();
+    return [...db.departments].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async createDepartment(payload: CreateDepartmentDto) {
+    const db = await this.readDb();
+    const name = payload.name.trim();
+    if (!name) {
+      throw new BadRequestException("Department name is required.");
+    }
+    const exists = db.departments.some((entry) => entry.name.trim().toLowerCase() === name.toLowerCase());
+    if (exists) {
+      throw new BadRequestException("Department sudah ada.");
+    }
+    const now = new Date().toISOString();
+    const department: DepartmentRecord = {
+      id: `dept-${randomUUID().slice(0, 8)}`,
+      name,
+      active: payload.active,
+      createdAt: now,
+      updatedAt: now
+    };
+    db.departments.push(department);
+    db.departments.sort((a, b) => a.name.localeCompare(b.name));
+    await this.writeDb(db);
+    await this.writeAuditLog("department.create", { departmentId: department.id, name: department.name, active: department.active });
+    return department;
+  }
+
+  async updateDepartment(id: string, payload: UpdateDepartmentDto) {
+    const db = await this.readDb();
+    const department = db.departments.find((entry) => entry.id === id);
+    if (!department) {
+      throw new NotFoundException("Department not found");
+    }
+
+    const nextName = payload.name?.trim();
+    if (nextName && nextName.toLowerCase() !== department.name.trim().toLowerCase()) {
+      const duplicate = db.departments.some((entry) => entry.id !== id && entry.name.trim().toLowerCase() === nextName.toLowerCase());
+      if (duplicate) {
+        throw new BadRequestException("Department sudah ada.");
+      }
+      const previousName = department.name;
+      department.name = nextName;
+      db.employees = db.employees.map((employee) =>
+        employee.department.trim().toLowerCase() === previousName.trim().toLowerCase()
+          ? { ...employee, department: nextName }
+          : employee
+      );
+    }
+
+    if (payload.active !== undefined) {
+      department.active = payload.active;
+    }
+    department.updatedAt = new Date().toISOString();
+    await this.writeDb(db);
+    await this.writeAuditLog("department.update", { departmentId: id, fields: Object.keys(payload) });
+    return department;
+  }
+
+  async deleteDepartment(id: string) {
+    const db = await this.readDb();
+    const department = db.departments.find((entry) => entry.id === id);
+    if (!department) {
+      throw new NotFoundException("Department not found");
+    }
+    const isUsed = db.employees.some((entry) => entry.department.trim().toLowerCase() === department.name.trim().toLowerCase());
+    if (isUsed) {
+      throw new BadRequestException("Department masih dipakai employee aktif, tidak bisa dihapus.");
+    }
+    db.departments = db.departments.filter((entry) => entry.id !== id);
+    await this.writeDb(db);
+    await this.writeAuditLog("department.delete", { departmentId: id, name: department.name });
+    return { deleted: true, id };
   }
 
   async createCompensationProfile(payload: CreateCompensationProfileDto) {
@@ -1934,14 +2377,17 @@ export class AppService {
     return record;
   }
 
-  async approveOvertimeRequest(payload: OvertimeApproveDto) {
+  async approveOvertimeRequest(payload: OvertimeApproveDto, actor?: AuthenticatedActor) {
     const db = await this.readDb();
     const overtime = db.overtimeRequests.find((entry) => entry.id === payload.overtimeId);
     if (!overtime) {
       throw new NotFoundException("Overtime request not found");
     }
+    const employee = db.employees.find((entry) => entry.id === overtime.userId);
+    this.assertManagerApprovalScope(actor, employee);
     overtime.status = payload.status;
     await this.writeDb(db);
+    await this.writeAuditLog("overtime.approve", { overtimeId: overtime.id, status: payload.status, actor: actor?.name ?? payload.actor });
     return overtime;
   }
 
@@ -1967,16 +2413,17 @@ export class AppService {
     await this.writeDb(db);
     return leave;
   }
-  async approveLeave(payload: LeaveApproveDto) {
+  async approveLeave(payload: LeaveApproveDto, actor?: AuthenticatedActor) {
     const db = await this.readDb();
     const leave = db.leaveRequests.find((entry) => entry.id === payload.leaveId);
     if (!leave) {
       throw new NotFoundException("Leave request not found");
     }
     const employee = db.employees.find((entry) => entry.id === leave.userId);
+    this.assertManagerApprovalScope(actor, employee);
     const wasApproved = leave.status === "approved";
     leave.status = payload.status;
-    leave.approverFlow = [...leave.approverFlow, `${payload.actor} -> ${payload.status}`];
+    leave.approverFlow = [...leave.approverFlow, `${actor?.name ?? payload.actor} -> ${payload.status}`];
 
     if (payload.status === "approved" && employee && !wasApproved) {
       this.applyLeaveBalance(employee, leave.type, leave.daysRequested);
@@ -1991,6 +2438,7 @@ export class AppService {
     }
 
     await this.writeDb(db);
+    await this.writeAuditLog("leave.approve", { leaveId: leave.id, status: payload.status, actor: actor?.name ?? payload.actor });
     return leave;
   }
 
@@ -2264,6 +2712,11 @@ export class AppService {
       payload.status === "approved" ? `${payload.actor} approved, HR pending` : `${payload.actor} rejected`
     ];
     await this.writeDb(db);
+    await this.writeAuditLog("reimbursement.manager-approve", {
+      reimbursementId: request.id,
+      status: payload.status,
+      actor: payload.actor
+    });
     return request;
   }
 
@@ -2287,6 +2740,7 @@ export class AppService {
       request.updatedAt = new Date().toISOString();
       request.approverFlow = [...request.approverFlow, `${payload.actor} rejected`];
       await this.writeDb(db);
+      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
       return request;
     }
 
@@ -2296,6 +2750,7 @@ export class AppService {
       request.updatedAt = new Date().toISOString();
       request.approverFlow = [...request.approverFlow, `${payload.actor} approved for payout`];
       await this.writeDb(db);
+      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
       return request;
     }
 
@@ -2311,6 +2766,7 @@ export class AppService {
     request.updatedAt = request.processedAt;
     request.approverFlow = [...request.approverFlow, `${payload.actor} processed reimbursement`];
     await this.writeDb(db);
+    await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
     return request;
   }
 
@@ -2407,6 +2863,7 @@ export class AppService {
     db.payRuns.unshift(payRun);
     db.payslips = [...slips, ...db.payslips.filter((slip) => slip.payRunId !== payRunId)];
     await this.writeDb(db);
+    await this.writeAuditLog("payroll.generate-run", { payRunId, periodLabel: payload.periodLabel, employeeCount: slips.length });
     return { payRun, payslips: slips };
   }
 
@@ -2420,6 +2877,7 @@ export class AppService {
     payRun.publishedAt = new Date().toISOString();
     db.payslips = db.payslips.map((slip) => slip.payRunId === payRun.id ? { ...slip, status: "published" } : slip);
     await this.writeDb(db);
+    await this.writeAuditLog("payroll.publish-run", { payRunId: payRun.id, periodLabel: payRun.periodLabel });
     return payRun;
   }
 
@@ -2579,7 +3037,7 @@ export class AppService {
     if (!payslip) {
       throw new NotFoundException("Payslip not found");
     }
-    const fileName = `${payslip.employeeNumber.toLowerCase()}-${payslip.periodLabel.replace(/\s+/g, "-").toLowerCase()}.xlsx`;
+    const fileName = `${this.safeFileBaseName(payslip.employeeNumber, "employee")}-${this.safeFileBaseName(payslip.periodLabel, "payslip")}.xlsx`;
     const fullPath = path.join(this.storageRoot, "documents", fileName);
 
     const rows = [
@@ -2603,11 +3061,7 @@ export class AppService {
       ["Net Pay", payslip.netPay]
     ];
 
-    const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet["!cols"] = [{ wch: 22 }, { wch: 20 }];
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, sheet, "Payslip");
-    XLSX.writeFile(workbook, fullPath, { bookType: "xlsx" });
+    await this.writeWorkbookFromRows(fullPath, "Payslip", rows);
 
     payslip.generatedFileUrl = `/storage/documents/${fileName}`;
     await this.writeDb(db);
@@ -2619,7 +3073,8 @@ export class AppService {
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "") || "txt";
 
-    const fileName = `${payload.reportName.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.${extension}`;
+    const reportSlug = this.safeFileBaseName(payload.reportName, "report");
+    const fileName = `${reportSlug}-${Date.now()}.${extension}`;
     const fullPath = path.join(this.storageRoot, "exports", fileName);
 
     if (extension === "xlsx") {
@@ -2629,28 +3084,36 @@ export class AppService {
             .filter((entry): entry is unknown[] => Array.isArray(entry))
             .map((row) => row.map((cell) => (cell == null ? "" : String(cell))))
         : [];
-      const aoa = columns.length > 0 ? [columns, ...rows] : rows;
-      const sheet = XLSX.utils.aoa_to_sheet(aoa);
-
-      if (columns.length > 0) {
-        sheet["!cols"] = columns.map((column, index) => {
-          const maxLength = Math.max(
-            column.length,
-            ...rows.map((row) => String(row[index] ?? "").length)
-          );
-          return { wch: Math.min(Math.max(maxLength + 2, 12), 40) };
-        });
-      }
-
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, sheet, (payload.sheetName?.trim() || "Report").slice(0, 31));
-      XLSX.writeFile(workbook, fullPath, { bookType: "xlsx" });
+      const workbookRows = columns.length > 0 ? [columns, ...rows] : rows;
+      await this.writeWorkbookFromRows(fullPath, (payload.sheetName?.trim() || "Report").slice(0, 31), workbookRows);
       return { fileName, fileUrl: `/storage/exports/${fileName}` };
     }
 
     const content = payload.content ?? "Generated from PulsePresence local export service.";
     await writeFile(fullPath, content, "utf8");
     return { fileName, fileUrl: `/storage/exports/${fileName}` };
+  }
+
+  private async writeWorkbookFromRows(filePath: string, sheetName: string, rows: Array<Array<string | number>>) {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet(sheetName || "Sheet1");
+    for (const row of rows) {
+      worksheet.addRow(row);
+    }
+
+    if (rows.length > 0) {
+      const maxColumns = rows.reduce((max, row) => Math.max(max, row.length), 0);
+      worksheet.columns = Array.from({ length: maxColumns }, (_, index) => {
+        const maxLength = rows.reduce((longest, row) => {
+          const value = row[index];
+          const text = value == null ? "" : String(value);
+          return Math.max(longest, text.length);
+        }, 0);
+        return { width: Math.min(Math.max(maxLength + 2, 12), 40) };
+      });
+    }
+
+    await workbook.xlsx.writeFile(filePath);
   }
 }
 

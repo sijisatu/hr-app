@@ -92,7 +92,10 @@ export type PayrollOverview = {
   publishedPayslips: number;
 };
 
-const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+const API_BASE =
+  process.env.API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://localhost:4000");
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -103,13 +106,14 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function apiFetch<T>(pathname: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, { cache: "no-store" });
+  const response = await fetch(`${API_BASE}${pathname}`, { cache: "no-store", credentials: "include" });
   return parseResponse<T>(response);
 }
 
 async function apiPostJson<T>(pathname: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${pathname}`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
@@ -134,6 +138,7 @@ function toQueryString(params?: Record<string, string | number | boolean | undef
 async function apiPatchJson<T>(pathname: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${pathname}`, {
     method: "PATCH",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });

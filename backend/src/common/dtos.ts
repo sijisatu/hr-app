@@ -782,6 +782,26 @@ export class ExportPayslipDto {
   payslipId!: string;
 }
 
+export class CreateDepartmentDto {
+  @IsString()
+  name!: string;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  active!: boolean;
+}
+
+export class UpdateDepartmentDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  active?: boolean;
+}
+
 export class ListQueryDto {
   @IsOptional()
   @Type(() => Number)

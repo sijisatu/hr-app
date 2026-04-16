@@ -1,5 +1,7 @@
-import { getAttendanceHistory, getEmployees, getLeaveHistory } from "@/lib/api";
-import { getPayRuns, getPayrollComponents, getPayslips, money } from "@/lib/payroll";
+import { getAttendanceHistory, getEmployees, getLeaveHistory, getReimbursementRequests, type ReimbursementStatus } from "@/lib/api";
+import { money } from "@/lib/payroll";
+
+export type ReportPeriodPreset = "current-month" | "last-month" | "last-3-months" | "year-to-date" | "all";
 
 export type ReportSnapshotMetric = {
   label: string;
@@ -8,6 +10,12 @@ export type ReportSnapshotMetric = {
 };
 
 export type ReportCenterOverview = {
+  period: {
+    preset: ReportPeriodPreset;
+    label: string;
+    startDate: string | null;
+    endDate: string | null;
+  };
   charts: {
     attendance: { label: string; records: number; uniqueEmployees: number }[];
     employeeCount: { label: string; totalEmployees: number; newEmployees: number }[];
@@ -18,6 +26,7 @@ export type ReportCenterOverview = {
     anomalies: { title: string; note: string }[];
     list: {
       employee: string;
+      attendanceDate: string;
       description: string;
       checkWindow: string;
       gps: string;
@@ -31,34 +40,113 @@ export type ReportCenterOverview = {
     departments: { name: string; headcount: number }[];
     list: { employeeNumber: string; name: string; department: string; position: string; status: string; joinDate: string }[];
   };
-  payroll: {
+  reimbursement: {
     metrics: ReportSnapshotMetric[];
-    recentRuns: { periodLabel: string; status: string; employeeCount: number; totalNet: number }[];
-    topEarners: { employeeName: string; netPay: number; department: string }[];
-    list: { employee: string; period: string; gross: string; tax: string; net: string }[];
+    pendingQueue: { employeeName: string; claimType: string; amount: number; status: ReimbursementStatus }[];
+    topClaims: { employeeName: string; amount: number; department: string }[];
+    list: { employee: string; department: string; claimType: string; receiptDate: string; amount: string; status: ReimbursementStatus }[];
   };
 };
 
-const API_BASE = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+const API_BASE =
+  process.env.API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://localhost:4000");
 
-export async function getReportCenterOverview(): Promise<ReportCenterOverview> {
-  const [employees, logs, leaves, payRuns, components, payslips] = await Promise.all([
+type PeriodRange = { preset: ReportPeriodPreset; label: string; start: Date | null; end: Date | null };
+
+export function normalizeReportPeriodPreset(input: string | null | undefined): ReportPeriodPreset {
+  const value = (input ?? "").trim().toLowerCase();
+  if (value === "current-month" || value === "last-month" || value === "last-3-months" || value === "year-to-date" || value === "all") {
+    return value;
+  }
+  return "current-month";
+}
+
+function resolvePeriodRange(preset: ReportPeriodPreset): PeriodRange {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const startOfCurrentMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+
+  if (preset === "all") {
+    return { preset, label: "All Time", start: null, end: null };
+  }
+  if (preset === "last-month") {
+    const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+    const end = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+    return {
+      preset,
+      label: start.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
+      start,
+      end
+    };
+  }
+  if (preset === "last-3-months") {
+    const start = new Date(Date.UTC(year, month - 2, 1, 0, 0, 0, 0));
+    return { preset, label: "Last 3 Months", start, end: now };
+  }
+  if (preset === "year-to-date") {
+    const start = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
+    return { preset, label: "Year to Date", start, end: now };
+  }
+
+  return {
+    preset: "current-month",
+    label: startOfCurrentMonth.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" }),
+    start: startOfCurrentMonth,
+    end: now
+  };
+}
+
+function isWithinRange(input: string | null | undefined, range: PeriodRange) {
+  if (!input || (!range.start && !range.end)) {
+    return true;
+  }
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+  if (range.start && date < range.start) {
+    return false;
+  }
+  if (range.end && date > range.end) {
+    return false;
+  }
+  return true;
+}
+
+export async function getReportCenterOverview(periodPreset: ReportPeriodPreset = "current-month"): Promise<ReportCenterOverview> {
+  const periodRange = resolvePeriodRange(periodPreset);
+  const [employees, logs, leaves, reimbursements] = await Promise.all([
     getEmployees(),
     getAttendanceHistory(),
     getLeaveHistory(),
-    getPayRuns(),
-    getPayrollComponents(),
-    getPayslips()
+    getReimbursementRequests()
   ]);
+
+  const filteredLogs = logs.filter((item) => isWithinRange(item.timestamp, periodRange));
+  const filteredLeaves = leaves.filter((item) => isWithinRange(item.requestedAt || item.startDate, periodRange));
+  const filteredReimbursements = reimbursements.filter((item) => isWithinRange(item.submittedAt ?? item.createdAt, periodRange));
+  const filteredEmployees = employees.filter((item) => {
+    if (!periodRange.end) {
+      return true;
+    }
+    const joinDate = new Date(item.joinDate);
+    if (Number.isNaN(joinDate.getTime())) {
+      return false;
+    }
+    return joinDate <= periodRange.end;
+  });
 
   const attendanceByDepartment = new Map<string, { present: number; total: number }>();
   const headcountByDepartment = new Map<string, number>();
 
-  for (const employee of employees) {
+  for (const employee of filteredEmployees) {
     headcountByDepartment.set(employee.department, (headcountByDepartment.get(employee.department) ?? 0) + 1);
   }
 
-  for (const log of logs) {
+  for (const log of filteredLogs) {
     const bucket = attendanceByDepartment.get(log.department) ?? { present: 0, total: 0 };
     bucket.total += 1;
     if (log.status !== "absent") {
@@ -67,33 +155,41 @@ export async function getReportCenterOverview(): Promise<ReportCenterOverview> {
     attendanceByDepartment.set(log.department, bucket);
   }
 
-  const lateRecords = logs.filter((entry) => entry.status === "late").length;
-  const gpsExceptions = logs.filter((entry) => !entry.gpsValidated).length;
-  const activeEmployees = employees.filter((entry) => entry.status === "active");
-  const publishedPayslips = payslips.filter((entry) => entry.status === "published");
-  const latestRun = [...payRuns].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))[0] ?? null;
-  const attendanceChart = buildAttendanceChart(logs);
-  const employeeCountChart = buildEmployeeCountChart(employees);
+  const lateRecords = filteredLogs.filter((entry) => entry.status === "late").length;
+  const gpsExceptions = filteredLogs.filter((entry) => !entry.gpsValidated).length;
+  const activeEmployees = filteredEmployees.filter((entry) => entry.status === "active");
+  const pendingReimbursements = filteredReimbursements.filter((entry) => entry.status === "pending-manager" || entry.status === "awaiting-hr");
+  const processedReimbursements = filteredReimbursements.filter((entry) => entry.status === "processed");
+  const approvedReimbursements = filteredReimbursements.filter((entry) => entry.status === "approved");
+  const attendanceChart = buildAttendanceChart(filteredLogs);
+  const employeeCountChart = buildEmployeeCountChart(filteredEmployees);
 
   return {
+    period: {
+      preset: periodRange.preset,
+      label: periodRange.label,
+      startDate: periodRange.start ? periodRange.start.toISOString().slice(0, 10) : null,
+      endDate: periodRange.end ? periodRange.end.toISOString().slice(0, 10) : null
+    },
     charts: {
       attendance: attendanceChart,
       employeeCount: employeeCountChart
     },
     attendance: {
       metrics: [
-        { label: "Attendance Logs", value: String(logs.length), note: "Records across all active teams" },
-        { label: "On-Time Rate", value: `${logs.length === 0 ? 0 : Math.round((logs.filter((entry) => entry.status === "on-time").length / logs.length) * 100)}%`, note: `${lateRecords} late arrivals need review` },
-        { label: "GPS Compliance", value: `${logs.length === 0 ? 0 : Math.round((logs.filter((entry) => entry.gpsValidated).length / logs.length) * 100)}%`, note: `${gpsExceptions} exceptions captured` }
+        { label: "Attendance Logs", value: String(filteredLogs.length), note: "Records across all active teams" },
+        { label: "On-Time Rate", value: `${filteredLogs.length === 0 ? 0 : Math.round((filteredLogs.filter((entry) => entry.status === "on-time").length / filteredLogs.length) * 100)}%`, note: `${lateRecords} late arrivals need review` },
+        { label: "GPS Compliance", value: `${filteredLogs.length === 0 ? 0 : Math.round((filteredLogs.filter((entry) => entry.gpsValidated).length / filteredLogs.length) * 100)}%`, note: `${gpsExceptions} exceptions captured` }
       ],
       topDepartments: [...attendanceByDepartment.entries()].map(([name, value]) => ({ name, value: Math.round((value.present / value.total) * 100) })).sort((a, b) => b.value - a.value).slice(0, 4),
       anomalies: [
         { title: lateRecords > 0 ? "Late arrival pattern" : "Arrival pattern stable", note: `${lateRecords} late check-ins in the current dataset` },
         { title: gpsExceptions > 0 ? "GPS exception review" : "GPS validation healthy", note: `${gpsExceptions} records outside the approved radius` },
-        { title: "Pending leave approvals", note: `${leaves.filter((entry) => entry.status !== "approved").length} requests still in queue` }
+        { title: "Pending leave approvals", note: `${filteredLeaves.filter((entry) => entry.status !== "approved").length} requests still in queue` }
       ],
-      list: logs.map((item) => ({
+      list: filteredLogs.map((item) => ({
         employee: item.employeeName,
+        attendanceDate: item.timestamp.slice(0, 10),
         description: item.description,
         checkWindow: `${item.checkIn} - ${item.checkOut ?? "Open"}`,
         gps: item.gpsValidated ? "Validated" : "Outside Radius",
@@ -108,13 +204,13 @@ export async function getReportCenterOverview(): Promise<ReportCenterOverview> {
     },
     employees: {
       metrics: [
-        { label: "Headcount", value: String(employees.length), note: `${activeEmployees.length} active employees` },
+        { label: "Headcount", value: String(filteredEmployees.length), note: `${activeEmployees.length} active employees` },
         { label: "Departments", value: String(headcountByDepartment.size), note: "Current org structure snapshot" },
-        { label: "Contract Alerts", value: String(employees.filter((entry) => entry.contractStatus !== "permanent" || Boolean(entry.contractEnd)).length), note: "Contract and intern employees to monitor" }
+        { label: "Contract Alerts", value: String(filteredEmployees.filter((entry) => entry.contractStatus !== "permanent" || Boolean(entry.contractEnd)).length), note: "Contract and intern employees to monitor" }
       ],
-      contractAlerts: employees.filter((entry) => entry.contractStatus !== "permanent" || Boolean(entry.contractEnd)).slice(0, 4).map((entry) => ({ employeeName: entry.name, status: entry.contractStatus, note: `${entry.position} | ${entry.contractEnd ?? entry.contractStart}` })),
+      contractAlerts: filteredEmployees.filter((entry) => entry.contractStatus !== "permanent" || Boolean(entry.contractEnd)).slice(0, 4).map((entry) => ({ employeeName: entry.name, status: entry.contractStatus, note: `${entry.position} | ${entry.contractEnd ?? entry.contractStart}` })),
       departments: [...headcountByDepartment.entries()].map(([name, headcount]) => ({ name, headcount })).sort((a, b) => b.headcount - a.headcount),
-      list: [...employees]
+      list: [...filteredEmployees]
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((employee) => ({
           employeeNumber: employee.employeeNumber,
@@ -125,20 +221,34 @@ export async function getReportCenterOverview(): Promise<ReportCenterOverview> {
           joinDate: employee.joinDate
         }))
     },
-    payroll: {
+    reimbursement: {
       metrics: [
-        { label: "Published Payslips", value: String(publishedPayslips.length), note: "Available for employee download" },
-        { label: "Active Components", value: String(components.filter((entry) => entry.active).length), note: "Earning and deduction rules" },
-        { label: "Latest Pay Run", value: latestRun ? latestRun.periodLabel : "Not generated", note: latestRun ? `${latestRun.employeeCount} employees | status ${latestRun.status}` : "Generate a payroll run to start" }
+        { label: "Total Requests", value: String(filteredReimbursements.length), note: "All reimbursement requests recorded" },
+        { label: "Pending Queue", value: String(pendingReimbursements.length), note: "Waiting manager or HR decision" },
+        { label: "Approved/Processed", value: String(approvedReimbursements.length + processedReimbursements.length), note: "Ready or completed for payout" }
       ],
-      recentRuns: [...payRuns].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd)).slice(0, 3).map((entry) => ({ periodLabel: entry.periodLabel, status: entry.status, employeeCount: entry.employeeCount, totalNet: entry.totalNet })),
-      topEarners: [...publishedPayslips].sort((a, b) => b.netPay - a.netPay).slice(0, 3).map((entry) => ({ employeeName: entry.employeeName, netPay: entry.netPay, department: entry.department })),
-      list: payslips.map((entry) => ({
+      pendingQueue: [...pendingReimbursements]
+        .sort((a, b) => (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt))
+        .slice(0, 4)
+        .map((entry) => ({
+          employeeName: entry.employeeName,
+          claimType: `${entry.claimType} - ${entry.subType}`,
+          amount: entry.amount,
+          status: entry.status
+        })),
+      topClaims: [...filteredReimbursements]
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 4)
+        .map((entry) => ({ employeeName: entry.employeeName, amount: entry.amount, department: entry.department })),
+      list: [...filteredReimbursements]
+        .sort((a, b) => (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt))
+        .map((entry) => ({
         employee: entry.employeeName,
-        period: entry.periodLabel,
-        gross: money(entry.grossPay),
-        tax: money(entry.taxDeduction),
-        net: money(entry.netPay)
+        department: entry.department,
+        claimType: `${entry.claimType} - ${entry.subType}`,
+        receiptDate: entry.receiptDate,
+        amount: money(entry.amount),
+        status: entry.status
       }))
     }
   };
@@ -200,6 +310,7 @@ export async function exportReport(payload: {
 }) {
   const response = await fetch(`${API_BASE}/api/reports/export`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
@@ -211,7 +322,9 @@ export async function exportReport(payload: {
 
   while (Date.now() - startedAt < 90_000) {
     await new Promise((resolve) => setTimeout(resolve, 900));
-    const statusResponse = await fetch(`${API_BASE}/api/reports/export/status?jobId=${encodeURIComponent(json.data.jobId)}`);
+    const statusResponse = await fetch(`${API_BASE}/api/reports/export/status?jobId=${encodeURIComponent(json.data.jobId)}`, {
+      credentials: "include"
+    });
     if (!statusResponse.ok) {
       throw new Error(`API request failed with status ${statusResponse.status}`);
     }

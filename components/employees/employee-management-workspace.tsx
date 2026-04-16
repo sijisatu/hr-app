@@ -6,16 +6,24 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Eye, FileText, LoaderCircle, Plus, Trash2, Upload, WalletCards, X } from "lucide-react";
 import { EmployeesTable } from "@/components/tables/employees-table";
 import {
+  createCompensationProfile,
+  createDepartment,
   createEmployee,
+  deleteCompensationProfile,
+  deleteDepartment,
   deleteEmployeeDocument,
   deleteEmployee,
   getCompensationProfiles,
+  getDepartments,
   getEmployees,
   getPayrollComponents,
   getTaxProfiles,
   uploadEmployeeDocument,
+  updateCompensationProfile,
+  updateDepartment,
   updateEmployee,
   type CompensationProfileRecord,
+  type DepartmentRecord,
   type EducationRecord,
   type EmployeeDocumentRecord,
   type EmployeeDocumentType,
@@ -24,10 +32,12 @@ import {
 } from "@/lib/api";
 
 const documentAssetBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
-
+const MANAGE_DEPARTMENTS_OPTION = "__manage_departments__";
+const MANAGE_POSITIONS_OPTION = "__manage_positions__";
 type Props = {
   initialEmployees: EmployeeRecord[];
   initialCompensationProfiles: CompensationProfileRecord[];
+  initialDepartments: DepartmentRecord[];
 };
 
 type Mode = "create" | "edit" | "view" | null;
@@ -40,6 +50,19 @@ type PendingDocument = {
   title: string;
   notes: string;
   file: File;
+};
+type MasterModalMode = "department" | "position" | null;
+type DepartmentMasterForm = {
+  id: string | null;
+  name: string;
+  active: boolean;
+};
+type PositionMasterForm = {
+  id: string | null;
+  position: string;
+  baseSalary: string;
+  active: boolean;
+  notes: string;
 };
 
 type FormState = {
@@ -194,23 +217,47 @@ function money(value: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
 }
 
-export function EmployeeManagementWorkspace({ initialEmployees, initialCompensationProfiles }: Props) {
+function blankDepartmentMasterForm(): DepartmentMasterForm {
+  return {
+    id: null,
+    name: "",
+    active: true
+  };
+}
+
+function blankPositionMasterForm(): PositionMasterForm {
+  return {
+    id: null,
+    position: "",
+    baseSalary: "0",
+    active: true,
+    notes: ""
+  };
+}
+
+export function EmployeeManagementWorkspace({ initialEmployees, initialCompensationProfiles, initialDepartments }: Props) {
   const qc = useQueryClient();
   const [mode, setMode] = useState<Mode>(null);
+  const readOnly = mode === "view";
   const [tab, setTab] = useState<TabKey>("personal");
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [form, setForm] = useState<FormState>(blankForm());
   const [existingDocuments, setExistingDocuments] = useState<EmployeeDocumentRecord[]>([]);
   const [queuedDocuments, setQueuedDocuments] = useState<PendingDocument[]>([]);
   const [previewDocument, setPreviewDocument] = useState<EmployeeDocumentRecord | null>(null);
+  const [masterModalMode, setMasterModalMode] = useState<MasterModalMode>(null);
+  const [departmentMasterForm, setDepartmentMasterForm] = useState<DepartmentMasterForm>(blankDepartmentMasterForm());
+  const [positionMasterForm, setPositionMasterForm] = useState<PositionMasterForm>(blankPositionMasterForm());
 
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: getEmployees, initialData: initialEmployees });
   const positionQuery = useQuery({ queryKey: ["compensation-profiles"], queryFn: getCompensationProfiles, initialData: initialCompensationProfiles });
+  const departmentQuery = useQuery({ queryKey: ["departments"], queryFn: getDepartments, initialData: initialDepartments });
   const componentQuery = useQuery({ queryKey: ["payroll-components"], queryFn: getPayrollComponents });
   const taxQuery = useQuery({ queryKey: ["tax-profiles"], queryFn: getTaxProfiles });
 
   const employees = employeesQuery.data ?? [];
   const positions = positionQuery.data ?? [];
+  const departments = departmentQuery.data ?? [];
   const components = componentQuery.data ?? [];
   const taxProfiles = taxQuery.data ?? [];
 
@@ -220,6 +267,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: ["employees"] });
     await qc.invalidateQueries({ queryKey: ["compensation-profiles"] });
+    await qc.invalidateQueries({ queryKey: ["departments"] });
     await qc.invalidateQueries({ queryKey: ["payroll-components"] });
     await qc.invalidateQueries({ queryKey: ["tax-profiles"] });
   };
@@ -232,12 +280,66 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     setQueuedDocuments([]);
   };
 
-  const applyPosition = (id: string) => {
-    const position = positions.find((item) => item.id === id);
+  const departmentChoices = departments
+    .filter((entry) => entry.active || entry.name === form.department)
+    .map((entry) => entry.name.trim())
+    .filter((entry) => entry.length > 0)
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => [value, value] as [string, string]);
+
+  const positionChoices = positions
+    .filter((entry) => entry.active || entry.position === form.position)
+    .map((entry) => entry.position.trim())
+    .filter((entry) => entry.length > 0)
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => [value, value] as [string, string]);
+
+  const managerChoices = employees
+    .filter((entry) => entry.role === "manager" && entry.status === "active" && entry.department === form.department)
+    .map((entry) => entry.name);
+
+  const managerOptions: [string, string][] = [
+    ["", form.department ? "Select Manager" : "Select Department First"],
+    ...Array.from(new Set(managerChoices)).sort((a, b) => a.localeCompare(b)).map((name) => [name, name] as [string, string])
+  ];
+  const departmentOptions: [string, string][] = [
+    ["", "Select Department"],
+    ...departmentChoices,
+    ...(readOnly ? [] : [[MANAGE_DEPARTMENTS_OPTION, "+ Manage Departments"] as [string, string]])
+  ];
+  const positionOptions: [string, string][] = [
+    ["", "Select Position"],
+    ...positionChoices,
+    ...(readOnly ? [] : [[MANAGE_POSITIONS_OPTION, "+ Manage Positions"] as [string, string]])
+  ];
+
+  const applyDepartment = (value: string) => {
+    if (value === MANAGE_DEPARTMENTS_OPTION) {
+      setMasterModalMode("department");
+      setDepartmentMasterForm(blankDepartmentMasterForm());
+      return;
+    }
+    const availableManagers = employees
+      .filter((entry) => entry.role === "manager" && entry.status === "active" && entry.department === value)
+      .map((entry) => entry.name);
     setForm((prev) => ({
       ...prev,
-      positionSalaryId: id,
-      position: position?.position ?? prev.position
+      department: value,
+      managerName: prev.managerName && availableManagers.includes(prev.managerName) ? prev.managerName : ""
+    }));
+  };
+
+  const applyPositionName = (value: string) => {
+    if (value === MANAGE_POSITIONS_OPTION) {
+      setMasterModalMode("position");
+      setPositionMasterForm(blankPositionMasterForm());
+      return;
+    }
+    const linkedProfile = positions.find((entry) => entry.position === value);
+    setForm((prev) => ({
+      ...prev,
+      position: value,
+      positionSalaryId: linkedProfile?.id ?? ""
     }));
   };
 
@@ -295,6 +397,14 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     loginPassword: form.appLoginEnabled ? form.loginPassword.trim() : null
   };
 
+  const updatePayload = (() => {
+    const payload = { ...savePayload };
+    if (payload.appLoginEnabled && !form.loginPassword.trim()) {
+      delete (payload as { loginPassword?: string | null }).loginPassword;
+    }
+    return payload;
+  })();
+
   const uploadQueuedDocuments = async (employeeId: string, docs: PendingDocument[]) => {
     const uploaded = await Promise.all(docs.map((doc) => uploadEmployeeDocument({
       employeeId,
@@ -314,30 +424,30 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
         setExistingDocuments(uploaded);
         setQueuedDocuments([]);
       }
-      setMessage("Employee record added successfully.");
+      setFeedback({ type: "success", text: "Employee record added successfully." });
       setMode(null);
       await refresh();
     },
-    onError: (error: Error) => setMessage(error.message)
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to add employee." })
   });
 
   const updateMutation = useMutation({
-    mutationFn: () => updateEmployee(form.id ?? "", savePayload),
+    mutationFn: () => updateEmployee(form.id ?? "", updatePayload),
     onSuccess: async () => {
-      setMessage("Employee record updated successfully.");
+      setFeedback({ type: "success", text: "Employee record updated successfully." });
       setMode(null);
       await refresh();
     },
-    onError: (error: Error) => setMessage(error.message)
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to update employee." })
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteEmployee(id),
     onSuccess: async () => {
-      setMessage("Employee record deleted successfully.");
+      setFeedback({ type: "success", text: "Employee record deleted successfully." });
       await refresh();
     },
-    onError: (error: Error) => setMessage(error.message)
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to delete employee." })
   });
 
   const uploadDocumentMutation = useMutation({
@@ -345,21 +455,84 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     onSuccess: (uploaded) => {
       setExistingDocuments((prev) => [...uploaded, ...prev]);
       setQueuedDocuments([]);
-      setMessage("Employee documents uploaded successfully.");
+      setFeedback({ type: "success", text: "Employee documents uploaded successfully." });
     },
-    onError: (error: Error) => setMessage(error.message)
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to upload employee documents." })
   });
 
   const deleteDocumentMutation = useMutation({
     mutationFn: ({ employeeId, documentId }: { employeeId: string; documentId: string }) => deleteEmployeeDocument(employeeId, documentId),
     onSuccess: (_, payload) => {
       setExistingDocuments((prev) => prev.filter((item) => item.id !== payload.documentId));
-      setMessage("Employee document deleted successfully.");
+      setFeedback({ type: "success", text: "Employee document deleted successfully." });
     },
-    onError: (error: Error) => setMessage(error.message)
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to delete employee document." })
+  });
+  const saveDepartmentMasterMutation = useMutation({
+    mutationFn: async () => {
+      const name = departmentMasterForm.name.trim();
+      if (!name) {
+        throw new Error("Department name is required.");
+      }
+      if (departmentMasterForm.id) {
+        return updateDepartment(departmentMasterForm.id, { name, active: departmentMasterForm.active });
+      }
+      return createDepartment({ name, active: departmentMasterForm.active });
+    },
+    onSuccess: async () => {
+      setDepartmentMasterForm(blankDepartmentMasterForm());
+      setFeedback({ type: "success", text: "Department master updated successfully." });
+      await refresh();
+    },
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to save department master." })
+  });
+  const deleteDepartmentMasterMutation = useMutation({
+    mutationFn: (id: string) => deleteDepartment(id),
+    onSuccess: async () => {
+      setDepartmentMasterForm(blankDepartmentMasterForm());
+      setFeedback({ type: "success", text: "Department deleted successfully." });
+      await refresh();
+    },
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to delete department." })
+  });
+  const savePositionMasterMutation = useMutation({
+    mutationFn: async () => {
+      const position = positionMasterForm.position.trim();
+      const baseSalary = Number(positionMasterForm.baseSalary || "0");
+      if (!position) {
+        throw new Error("Position name is required.");
+      }
+      if (!Number.isFinite(baseSalary) || baseSalary < 0) {
+        throw new Error("Base salary must be a valid positive number.");
+      }
+      const payload = {
+        position,
+        baseSalary,
+        active: positionMasterForm.active,
+        notes: positionMasterForm.notes.trim()
+      };
+      if (positionMasterForm.id) {
+        return updateCompensationProfile(positionMasterForm.id, payload);
+      }
+      return createCompensationProfile(payload);
+    },
+    onSuccess: async () => {
+      setPositionMasterForm(blankPositionMasterForm());
+      setFeedback({ type: "success", text: "Position master updated successfully." });
+      await refresh();
+    },
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to save position master." })
+  });
+  const deletePositionMasterMutation = useMutation({
+    mutationFn: (id: string) => deleteCompensationProfile(id),
+    onSuccess: async () => {
+      setPositionMasterForm(blankPositionMasterForm());
+      setFeedback({ type: "success", text: "Position deleted successfully." });
+      await refresh();
+    },
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to delete position." })
   });
 
-  const readOnly = mode === "view";
   const busy = createMutation.isPending || updateMutation.isPending || uploadDocumentMutation.isPending || deleteDocumentMutation.isPending;
 
   const updateEducation = (index: number, key: keyof EducationForm, value: string) => {
@@ -418,7 +591,6 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
       </section>
 
       <EmployeesTable employees={employees} onView={(employee) => openModal("view", employee)} onEdit={(employee) => openModal("edit", employee)} onDelete={(employee) => deleteMutation.mutate(employee.id)} />
-      {message ? <div className="page-card p-4 text-[14px] text-[var(--text-muted)]">{message}</div> : null}
 
       {mode ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-3 sm:p-4">
@@ -440,17 +612,17 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
               {tab === "personal" ? <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Full Name" value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} disabled={readOnly} />
-                <Field label="NIK" value={form.nik} onChange={(value) => setForm((prev) => ({ ...prev, nik: value, loginUsername: prev.loginUsername || value }))} disabled={readOnly} />
-                <Field label="Email" value={form.email} onChange={(value) => setForm((prev) => ({ ...prev, email: value }))} disabled={readOnly} />
-                <Field label="Phone" value={form.phone} onChange={(value) => setForm((prev) => ({ ...prev, phone: value }))} disabled={readOnly} />
-                <Field label="Place of Birth" value={form.birthPlace} onChange={(value) => setForm((prev) => ({ ...prev, birthPlace: value }))} disabled={readOnly} />
-                <Field label="Date of Birth" type="date" value={form.birthDate} onChange={(value) => setForm((prev) => ({ ...prev, birthDate: value }))} disabled={readOnly} />
-                <Pick label="Gender" value={form.gender} onChange={(value) => setForm((prev) => ({ ...prev, gender: value as FormState["gender"] }))} options={[["male", "Male"], ["female", "Female"]]} disabled={readOnly} />
-                <Pick label="Marital Status" value={form.maritalStatus} onChange={(value) => setForm((prev) => ({ ...prev, maritalStatus: value as FormState["maritalStatus"] }))} options={[["single", "Single"], ["married", "Married"], ["divorced", "Divorced"], ["widowed", "Widowed"]]} disabled={readOnly} />
+                <Field label="Full Name" required value={form.name} onChange={(value) => setForm((prev) => ({ ...prev, name: value }))} disabled={readOnly} />
+                <Field label="NIK" required value={form.nik} onChange={(value) => setForm((prev) => ({ ...prev, nik: value, loginUsername: prev.loginUsername || value }))} disabled={readOnly} />
+                <Field label="Email" required value={form.email} onChange={(value) => setForm((prev) => ({ ...prev, email: value }))} disabled={readOnly} />
+                <Field label="Phone" required value={form.phone} onChange={(value) => setForm((prev) => ({ ...prev, phone: value }))} disabled={readOnly} />
+                <Field label="Place of Birth" required value={form.birthPlace} onChange={(value) => setForm((prev) => ({ ...prev, birthPlace: value }))} disabled={readOnly} />
+                <Field label="Date of Birth" required type="date" value={form.birthDate} onChange={(value) => setForm((prev) => ({ ...prev, birthDate: value }))} disabled={readOnly} />
+                <Pick label="Gender" required value={form.gender} onChange={(value) => setForm((prev) => ({ ...prev, gender: value as FormState["gender"] }))} options={[["male", "Male"], ["female", "Female"]]} disabled={readOnly} />
+                <Pick label="Marital Status" required value={form.maritalStatus} onChange={(value) => setForm((prev) => ({ ...prev, maritalStatus: value as FormState["maritalStatus"] }))} options={[["single", "Single"], ["married", "Married"], ["divorced", "Divorced"], ["widowed", "Widowed"]]} disabled={readOnly} />
                 <Field label="Date of Marriage" type="date" value={form.marriageDate} onChange={(value) => setForm((prev) => ({ ...prev, marriageDate: value }))} disabled={readOnly || form.maritalStatus !== "married"} />
-                <Field label="ID Card Number" value={form.idCardNumber} onChange={(value) => setForm((prev) => ({ ...prev, idCardNumber: value }))} disabled={readOnly} />
-                <Area label="Address" value={form.address} onChange={(value) => setForm((prev) => ({ ...prev, address: value }))} disabled={readOnly} className="md:col-span-2" />
+                <Field label="ID Card Number" required value={form.idCardNumber} onChange={(value) => setForm((prev) => ({ ...prev, idCardNumber: value }))} disabled={readOnly} />
+                <Area label="Address" required value={form.address} onChange={(value) => setForm((prev) => ({ ...prev, address: value }))} disabled={readOnly} className="md:col-span-2" />
                 <div className="page-card p-5 md:col-span-2">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
@@ -500,16 +672,30 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
               </div> : null}
 
               {tab === "job" ? <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Department" value={form.department} onChange={(value) => setForm((prev) => ({ ...prev, department: value }))} disabled={readOnly} />
-                <Pick label="Position" value={form.positionSalaryId} onChange={applyPosition} options={[["", "Select Position"], ...positions.map((item) => [item.id, item.position] as [string, string])]} disabled={readOnly} />
-                <Pick label="Role" value={form.role} onChange={(value) => setForm((prev) => ({ ...prev, role: value as FormState["role"] }))} options={[["employee", "Employee"], ["manager", "Manager"], ["hr", "HR"], ["admin", "Admin"]]} disabled={readOnly} />
-                <Pick label="Status" value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value as FormState["status"] }))} options={[["active", "Active"], ["inactive", "Inactive"]]} disabled={readOnly} />
-                <Pick label="Contract Status" value={form.contractStatus} onChange={(value) => setForm((prev) => ({ ...prev, contractStatus: value as FormState["contractStatus"], employmentType: value as FormState["employmentType"], contractEnd: value === "permanent" ? "" : prev.contractEnd }))} options={[["permanent", "Permanent"], ["contract", "Contract"], ["intern", "Intern"]]} disabled={readOnly} />
-                <Field label="Contract Start" type="date" value={form.contractStart} onChange={(value) => setForm((prev) => ({ ...prev, contractStart: value }))} disabled={readOnly} />
+                <div className="space-y-2">
+                  <Pick label="Department" required value={form.department} onChange={applyDepartment} options={departmentOptions} disabled={readOnly} />
+                  {!readOnly ? (
+                    <button className="secondary-button !min-h-9 !px-3 !text-[13px]" onClick={() => { setMasterModalMode("department"); setDepartmentMasterForm(blankDepartmentMasterForm()); }}>
+                      Manage Departments
+                    </button>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <Pick label="Position" required value={form.position} onChange={applyPositionName} options={positionOptions} disabled={readOnly} />
+                  {!readOnly ? (
+                    <button className="secondary-button !min-h-9 !px-3 !text-[13px]" onClick={() => { setMasterModalMode("position"); setPositionMasterForm(blankPositionMasterForm()); }}>
+                      Manage Positions
+                    </button>
+                  ) : null}
+                </div>
+                <Pick label="Role" required value={form.role} onChange={(value) => setForm((prev) => ({ ...prev, role: value as FormState["role"] }))} options={[["employee", "Employee"], ["manager", "Manager"], ["hr", "HR"], ["admin", "Admin"]]} disabled={readOnly} />
+                <Pick label="Status" required value={form.status} onChange={(value) => setForm((prev) => ({ ...prev, status: value as FormState["status"] }))} options={[["active", "Active"], ["inactive", "Inactive"]]} disabled={readOnly} />
+                <Pick label="Contract Status" required value={form.contractStatus} onChange={(value) => setForm((prev) => ({ ...prev, contractStatus: value as FormState["contractStatus"], employmentType: value as FormState["employmentType"], contractEnd: value === "permanent" ? "" : prev.contractEnd }))} options={[["permanent", "Permanent"], ["contract", "Contract"], ["intern", "Intern"]]} disabled={readOnly} />
+                <Field label="Contract Start" required type="date" value={form.contractStart} onChange={(value) => setForm((prev) => ({ ...prev, contractStart: value }))} disabled={readOnly} />
                 <Field label="Contract End" type="date" value={form.contractEnd} onChange={(value) => setForm((prev) => ({ ...prev, contractEnd: value }))} disabled={readOnly || form.contractStatus === "permanent"} />
-                <Field label="Manager" value={form.managerName} onChange={(value) => setForm((prev) => ({ ...prev, managerName: value }))} disabled={readOnly} />
-                <Field label="Work Location" value={form.workLocation} onChange={(value) => setForm((prev) => ({ ...prev, workLocation: value }))} disabled={readOnly} />
-                <Pick label="Work Type" value={form.workType} onChange={(value) => setForm((prev) => ({ ...prev, workType: value as FormState["workType"] }))} options={[["onsite", "Onsite"], ["hybrid", "Hybrid"], ["remote", "Remote"]]} disabled={readOnly} />
+                <Pick label="Manager" required value={form.managerName} onChange={(value) => setForm((prev) => ({ ...prev, managerName: value }))} options={managerOptions} disabled={readOnly || !form.department} />
+                <Field label="Work Location" required value={form.workLocation} onChange={(value) => setForm((prev) => ({ ...prev, workLocation: value }))} disabled={readOnly} />
+                <Pick label="Work Type" required value={form.workType} onChange={(value) => setForm((prev) => ({ ...prev, workType: value as FormState["workType"] }))} options={[["onsite", "Onsite"], ["hybrid", "Hybrid"], ["remote", "Remote"]]} disabled={readOnly} />
                 <div className="panel-muted p-4 md:col-span-2 text-[14px] text-[var(--text-muted)]">
                   {selectedPosition ? `Position ${selectedPosition.position} is linked to a base salary of ${money(selectedPosition.baseSalary)}.` : "Select a position to link the employee to a base salary profile."}
                 </div>
@@ -537,9 +723,9 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
               {tab === "financial" ? <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="Base Salary" value={selectedPosition ? money(selectedPosition.baseSalary) : "-"} onChange={() => undefined} disabled />
-                  <Pick label="Tax Profile" value={form.taxProfileId} onChange={(value) => setForm((prev) => ({ ...prev, taxProfileId: value, taxProfile: taxProfiles.find((item) => item.id === value)?.name ?? "" }))} options={[["", "Select Tax Profile"], ...taxProfiles.map((item) => [item.id, `${item.name} • ${item.rate}%`] as [string, string])]} disabled={readOnly} />
-                  <Field label="Bank" value={form.bankName} onChange={(value) => setForm((prev) => ({ ...prev, bankName: value }))} disabled={readOnly} />
-                  <Field label="Bank Account" value={form.bankAccountMasked} onChange={(value) => setForm((prev) => ({ ...prev, bankAccountMasked: value }))} disabled={readOnly} />
+                  <Pick label="Tax Profile" required value={form.taxProfileId} onChange={(value) => setForm((prev) => ({ ...prev, taxProfileId: value, taxProfile: taxProfiles.find((item) => item.id === value)?.name ?? "" }))} options={[["", "Select Tax Profile"], ...taxProfiles.map((item) => [item.id, `${item.name} • ${item.rate}%`] as [string, string])]} disabled={readOnly} />
+                  <Field label="Bank" required value={form.bankName} onChange={(value) => setForm((prev) => ({ ...prev, bankName: value }))} disabled={readOnly} />
+                  <Field label="Bank Account" required value={form.bankAccountMasked} onChange={(value) => setForm((prev) => ({ ...prev, bankAccountMasked: value }))} disabled={readOnly} />
                 </div>
 
                 <div className="grid gap-5 xl:grid-cols-2">
@@ -675,6 +861,111 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
           </div>
         </div>
       ) : null}
+
+      {masterModalMode === "department" ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4">
+          <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-[22px] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+              <p className="section-title text-[22px] font-semibold text-[var(--primary)]">Manage Departments</p>
+              <button className="secondary-button" onClick={() => { setMasterModalMode(null); setDepartmentMasterForm(blankDepartmentMasterForm()); }}>Close</button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+                <Field label="Department Name" value={departmentMasterForm.name} onChange={(value) => setDepartmentMasterForm((prev) => ({ ...prev, name: value }))} />
+                <label className="inline-flex items-center gap-2 text-[14px] font-medium text-[var(--text)]">
+                  <input type="checkbox" checked={departmentMasterForm.active} onChange={(event) => setDepartmentMasterForm((prev) => ({ ...prev, active: event.target.checked }))} />
+                  Active
+                </label>
+                <button className="primary-button" onClick={() => saveDepartmentMasterMutation.mutate()} disabled={saveDepartmentMasterMutation.isPending}>
+                  {saveDepartmentMasterMutation.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                  {departmentMasterForm.id ? "Update" : "Add"}
+                </button>
+              </div>
+              <div className="space-y-2">
+                {departments.map((entry) => (
+                  <div key={entry.id} className="panel-muted flex items-center justify-between gap-3 p-3">
+                    <div>
+                      <p className="text-[14px] font-semibold text-[var(--text)]">{entry.name}</p>
+                      <p className="text-[12px] text-[var(--text-muted)]">{entry.active ? "Active" : "Inactive"}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="secondary-button" onClick={() => setDepartmentMasterForm({ id: entry.id, name: entry.name, active: entry.active })}>Edit</button>
+                      <button className="secondary-button" onClick={() => deleteDepartmentMasterMutation.mutate(entry.id)} disabled={deleteDepartmentMasterMutation.isPending}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {masterModalMode === "position" ? (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4">
+          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[22px] bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+              <p className="section-title text-[22px] font-semibold text-[var(--primary)]">Manage Positions</p>
+              <button className="secondary-button" onClick={() => { setMasterModalMode(null); setPositionMasterForm(blankPositionMasterForm()); }}>Close</button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Position Name" value={positionMasterForm.position} onChange={(value) => setPositionMasterForm((prev) => ({ ...prev, position: value }))} />
+                <Field label="Base Salary" type="number" value={positionMasterForm.baseSalary} onChange={(value) => setPositionMasterForm((prev) => ({ ...prev, baseSalary: value }))} />
+                <Area label="Notes" value={positionMasterForm.notes} onChange={(value) => setPositionMasterForm((prev) => ({ ...prev, notes: value }))} className="md:col-span-2" />
+                <label className="inline-flex items-center gap-2 text-[14px] font-medium text-[var(--text)]">
+                  <input type="checkbox" checked={positionMasterForm.active} onChange={(event) => setPositionMasterForm((prev) => ({ ...prev, active: event.target.checked }))} />
+                  Active
+                </label>
+                <div className="flex justify-end">
+                  <button className="primary-button" onClick={() => savePositionMasterMutation.mutate()} disabled={savePositionMasterMutation.isPending}>
+                    {savePositionMasterMutation.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                    {positionMasterForm.id ? "Update Position" : "Add Position"}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {positions.map((entry) => (
+                  <div key={entry.id} className="panel-muted flex items-center justify-between gap-3 p-3">
+                    <div>
+                      <p className="text-[14px] font-semibold text-[var(--text)]">{entry.position}</p>
+                      <p className="text-[12px] text-[var(--text-muted)]">{money(entry.baseSalary)} • {entry.active ? "Active" : "Inactive"}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="secondary-button"
+                        onClick={() => setPositionMasterForm({
+                          id: entry.id,
+                          position: entry.position,
+                          baseSalary: String(entry.baseSalary),
+                          active: entry.active,
+                          notes: entry.notes
+                        })}
+                      >
+                        Edit
+                      </button>
+                      <button className="secondary-button" onClick={() => deletePositionMasterMutation.mutate(entry.id)} disabled={deletePositionMasterMutation.isPending}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {feedback ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4">
+          <div className="w-full max-w-lg rounded-[20px] bg-white p-5 shadow-2xl">
+            <p className={`text-[18px] font-semibold ${feedback.type === "error" ? "text-[#b42318]" : "text-[var(--primary)]"}`}>
+              {feedback.type === "error" ? "Failed" : "Success"}
+            </p>
+            <p className="mt-3 text-[14px] text-[var(--text-muted)]">{feedback.text}</p>
+            <div className="mt-5 flex justify-end">
+              <button className="primary-button" onClick={() => setFeedback(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -718,16 +1009,16 @@ function DocumentPreview({ document }: { document: EmployeeDocumentRecord }) {
   );
 }
 
-function Field({ label, value, onChange, type = "text", disabled = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean }) {
-  return <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]"><span>{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="filter-control w-full disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]" /></label>;
+function Field({ label, value, onChange, type = "text", disabled = false, required = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled?: boolean; required?: boolean }) {
+  return <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]"><span>{label}{required ? <span className="ml-1 text-[#dc2626]">*</span> : null}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="filter-control w-full disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]" /></label>;
 }
 
-function Area({ label, value, onChange, disabled = false, className = "" }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; className?: string }) {
-  return <label className={`block space-y-2 text-[14px] font-medium text-[var(--text)] ${className}`}><span>{label}</span><textarea value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} rows={4} className="filter-control min-h-[120px] w-full resize-y disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]" /></label>;
+function Area({ label, value, onChange, disabled = false, className = "", required = false }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; className?: string; required?: boolean }) {
+  return <label className={`block space-y-2 text-[14px] font-medium text-[var(--text)] ${className}`}><span>{label}{required ? <span className="ml-1 text-[#dc2626]">*</span> : null}</span><textarea value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} rows={4} className="filter-control min-h-[120px] w-full resize-y disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]" /></label>;
 }
 
-function Pick({ label, value, options, onChange, disabled = false }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void; disabled?: boolean }) {
-  return <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]"><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="filter-control w-full disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]">{options.map(([id, text]) => <option key={id} value={id}>{text}</option>)}</select></label>;
+function Pick({ label, value, options, onChange, disabled = false, required = false }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void; disabled?: boolean; required?: boolean }) {
+  return <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]"><span>{label}{required ? <span className="ml-1 text-[#dc2626]">*</span> : null}</span><select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="filter-control w-full disabled:cursor-not-allowed disabled:bg-[var(--surface-muted)]">{options.map(([id, text]) => <option key={id} value={id}>{text}</option>)}</select></label>;
 }
 
 function MiniCard({ label, value, note }: { label: string; value: string; note: string }) {

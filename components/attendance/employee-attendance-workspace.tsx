@@ -174,6 +174,10 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     () => allLeaveRequests.filter((item) => item.userId === currentUser?.id),
     [allLeaveRequests, currentUser?.id]
   );
+  const employeeById = useMemo(
+    () => new Map((employeesQuery.data ?? []).map((employee) => [employee.id, employee])),
+    [employeesQuery.data]
+  );
   const overtimeItems = useMemo(
     () => allOvertimeItems.filter((item) => item.userId === currentUser?.id),
     [allOvertimeItems, currentUser?.id]
@@ -260,7 +264,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
 
   const approveLeaveMutation = useMutation({
     mutationFn: async (payload: { leaveId: string; status: "approved" | "rejected" }) =>
-      approveLeaveRequest({ ...payload, actor: "Manager/Leader" }),
+      approveLeaveRequest({ ...payload, actor: currentUser?.name ?? "Manager/Leader" }),
     onSuccess: async () => {
       setMessage("Leave request updated successfully.");
       await queryClient.invalidateQueries({ queryKey: ["leave-history"] });
@@ -270,7 +274,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
 
   const approveOvertimeMutation = useMutation({
     mutationFn: async (payload: { overtimeId: string; status: "approved" | "rejected" }) =>
-      approveOvertimeRequest({ ...payload, actor: "Manager/Leader" }),
+      approveOvertimeRequest({ ...payload, actor: currentUser?.name ?? "Manager/Leader" }),
     onSuccess: async () => {
       setMessage("Overtime request updated successfully.");
       await queryClient.invalidateQueries({ queryKey: ["attendance-overtime"] });
@@ -352,16 +356,45 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   }, [activeAction, annualLeaveRequests, halfDayRequests, onDutyRequests, sickRequests]);
 
   const leaveApprovalQueue = useMemo(() => {
-    if (activeAction === "overtime") {
+    if (activeAction === "overtime" || !canApprove || !currentUser) {
       return [];
     }
     const typeSet = new Set<string>(leaveTypesForAction(activeAction as Exclude<ActionKey, "overtime">));
-    return allLeaveRequests.filter((item) => typeSet.has(item.type) && item.status === "pending-manager");
-  }, [activeAction, allLeaveRequests]);
+    return allLeaveRequests.filter((item) => {
+      if (!typeSet.has(item.type) || item.status !== "pending-manager") {
+        return false;
+      }
+      const employee = employeeById.get(item.userId);
+      if (!employee) {
+        return false;
+      }
+      return (
+        employee.department.trim().toLowerCase() === currentUser.department.trim().toLowerCase() &&
+        employee.managerName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
+      );
+    });
+  }, [activeAction, allLeaveRequests, canApprove, currentUser, employeeById]);
 
   const overtimeApprovalQueue = useMemo(
-    () => allOvertimeItems.filter((item) => item.status === "pending"),
-    [allOvertimeItems]
+    () => {
+      if (!canApprove || !currentUser) {
+        return [];
+      }
+      return allOvertimeItems.filter((item) => {
+        if (item.status !== "pending") {
+          return false;
+        }
+        const employee = employeeById.get(item.userId);
+        if (!employee) {
+          return false;
+        }
+        return (
+          employee.department.trim().toLowerCase() === currentUser.department.trim().toLowerCase() &&
+          employee.managerName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
+        );
+      });
+    },
+    [allOvertimeItems, canApprove, currentUser, employeeById]
   );
 
   const leaveCategoryOptions = useMemo(() => {

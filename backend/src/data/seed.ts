@@ -1,6 +1,36 @@
 import { DatabaseShape } from "../common/types";
 
 export const seedData: DatabaseShape = {
+  departments: [
+    {
+      id: "dept-001",
+      name: "Brand Identity & Strategy",
+      active: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    },
+    {
+      id: "dept-002",
+      name: "Operations",
+      active: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    },
+    {
+      id: "dept-003",
+      name: "People & Culture",
+      active: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    },
+    {
+      id: "dept-004",
+      name: "Consumer Insights",
+      active: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z"
+    }
+  ],
   employees: [
     {
       id: "emp-001",

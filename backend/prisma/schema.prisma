@@ -14,10 +14,10 @@ model Employee {
   name                 String
   email                String   @unique
   birthPlace           String
-  birthDate            String
+  birthDate            DateTime
   gender               String
   maritalStatus        String
-  marriageDate         String?
+  marriageDate         DateTime?
   address              String
   idCardNumber         String   @unique
   education            String
@@ -29,14 +29,14 @@ model Employee {
   role                 String
   status               String
   phone                String
-  joinDate             String
+  joinDate             DateTime
   workLocation         String
   workType             String
   managerName          String
   employmentType       String
   contractStatus       String
-  contractStart        String
-  contractEnd          String?
+  contractStart        DateTime
+  contractEnd          DateTime?
   baseSalary           Decimal  @db.Decimal(18, 2)
   allowance            Decimal  @db.Decimal(18, 2)
   positionSalaryId     String?
@@ -65,12 +65,20 @@ model Employee {
   @@index([status])
 }
 
+model Department {
+  id        String   @id
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model AttendanceLog {
   id                String   @id
   userId            String
   employeeName      String
   department        String
-  timestamp         String
+  timestamp         DateTime
   checkIn           String
   checkOut          String?
   location          String
@@ -99,7 +107,7 @@ model OvertimeRequest {
   userId       String
   employeeName String
   department   String
-  date         String
+  date         DateTime
   minutes      Int
   reason       String
   status       String
@@ -118,13 +126,13 @@ model LeaveRequest {
   userId        String
   employeeName  String
   type          String
-  startDate     String
-  endDate       String
+  startDate     DateTime
+  endDate       DateTime
   reason        String
   status        String
   approverFlow  String[]
   balanceLabel  String
-  requestedAt   String
+  requestedAt   DateTime
   daysRequested Decimal  @db.Decimal(10, 2)
   autoApproved  Boolean  @default(false)
   createdAt     DateTime @default(now())
@@ -181,9 +189,9 @@ model TaxProfile {
 model PayRun {
   id            String   @id
   periodLabel   String
-  periodStart   String
-  periodEnd     String
-  payDate       String
+  periodStart   DateTime
+  periodEnd     DateTime
+  payDate       DateTime
   status        String
   totalGross    Decimal  @db.Decimal(18, 2)
   totalNet      Decimal  @db.Decimal(18, 2)
@@ -209,9 +217,9 @@ model Payslip {
   department        String
   position          String
   periodLabel       String
-  periodStart       String
-  periodEnd         String
-  payDate           String
+  periodStart       DateTime
+  periodEnd         DateTime
+  payDate           DateTime
   status            String
   baseSalary        Decimal  @db.Decimal(18, 2)
   allowance         Decimal  @db.Decimal(18, 2)
@@ -279,7 +287,7 @@ model ReimbursementRequest {
   category        String
   currency        String
   amount          Decimal  @db.Decimal(18, 2)
-  receiptDate     String
+  receiptDate     DateTime
   remarks         String
   receiptFileName String?
   receiptFileUrl  String?
