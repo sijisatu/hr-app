@@ -30,8 +30,7 @@ import {
   type EmployeeRecord,
   type WorkExperienceRecord
 } from "@/lib/api";
-
-const documentAssetBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+import { resolveAssetUrl } from "@/lib/asset-url";
 const MANAGE_DEPARTMENTS_OPTION = "__manage_departments__";
 const MANAGE_POSITIONS_OPTION = "__manage_positions__";
 type Props = {
@@ -606,7 +605,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     setQueuedDocuments((prev) => prev.map((item) => item.id === id ? { ...item, [key]: value } : item));
   };
 
-  const resolveDocumentUrl = (fileUrl: string) => fileUrl.startsWith("http") ? fileUrl : `${documentAssetBase}${fileUrl}`;
+  const resolveDocumentUrl = (fileUrl: string) => resolveAssetUrl(fileUrl) ?? "";
 
   return (
     <div className="space-y-6">
@@ -1045,7 +1044,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
 }
 
 function DocumentPreview({ document }: { document: EmployeeDocumentRecord }) {
-  const resolvedUrl = document.fileUrl.startsWith("http") ? document.fileUrl : `${documentAssetBase}${document.fileUrl}`;
+  const resolvedUrl = resolveAssetUrl(document.fileUrl) ?? "";
   const normalized = document.fileName.toLowerCase();
   const isImage = [".jpg", ".jpeg", ".png", ".webp", ".gif"].some((extension) => normalized.endsWith(extension));
   const isPdf = normalized.endsWith(".pdf");

@@ -393,6 +393,10 @@ export class LeaveRequestDto {
 
   @IsString()
   reason!: string;
+
+  @IsOptional()
+  @IsString()
+  supportingDocumentName?: string | null;
 }
 
 export class LeaveApproveDto {

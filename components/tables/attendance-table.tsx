@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Camera, Clock3, Eye, MapPinned, Search, X } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import type { AttendanceOverview, AttendanceRecord } from "@/lib/api";
+import { resolveAssetUrl } from "@/lib/asset-url";
 
 const toneMap = {
   "on-time": "success",
@@ -20,8 +21,6 @@ const labelMap = {
 } as const;
 
 const pageSizeOptions = [10, 30, 50, 100] as const;
-const selfieAssetBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
-
 function getMonthKey(timestamp: string) {
   return timestamp.slice(0, 7);
 }
@@ -77,12 +76,6 @@ export function AttendanceTable({
   }, [department, logs, month, search, status]);
 
   const visibleLogs = filteredLogs.slice(0, pageSize);
-  const resolveSelfieUrl = (photoUrl: string | null) => {
-    if (!photoUrl) {
-      return null;
-    }
-    return photoUrl.startsWith("http") ? photoUrl : `${selfieAssetBase}${photoUrl}`;
-  };
 
   return (
     <div className="space-y-6">
@@ -209,18 +202,18 @@ export function AttendanceTable({
                     {log.overtimeMinutes > 0 ? `${log.overtimeMinutes} min` : "-"}
                   </td>
                   <td className="rounded-r-[12px] px-4 py-4 align-top">
-                    {resolveSelfieUrl(log.photoUrl) ? (
+                    {resolveAssetUrl(log.photoUrl) ? (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setPreviewSelfie({ url: resolveSelfieUrl(log.photoUrl) ?? "", name: log.employeeName })}
+                          onClick={() => setPreviewSelfie({ url: resolveAssetUrl(log.photoUrl) ?? "", name: log.employeeName })}
                           className="block h-10 w-10 overflow-hidden rounded-[10px] border border-[var(--border)] bg-white"
                         >
-                          <img src={resolveSelfieUrl(log.photoUrl) ?? ""} alt={`${log.employeeName} selfie`} className="h-full w-full object-cover" />
+                          <img src={resolveAssetUrl(log.photoUrl) ?? ""} alt={`${log.employeeName} selfie`} className="h-full w-full object-cover" />
                         </button>
                         <button
                           type="button"
-                          onClick={() => setPreviewSelfie({ url: resolveSelfieUrl(log.photoUrl) ?? "", name: log.employeeName })}
+                          onClick={() => setPreviewSelfie({ url: resolveAssetUrl(log.photoUrl) ?? "", name: log.employeeName })}
                           className="secondary-button !min-h-9 !px-3 !py-2"
                         >
                           <Eye className="h-4 w-4" />

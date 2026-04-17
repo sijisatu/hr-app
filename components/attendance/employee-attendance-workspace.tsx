@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BriefcaseBusiness, Check, Clock3, LoaderCircle, MapPinned, NotebookPen, PlusCircle, Stethoscope, X } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, Check, Clock3, Eye, FileText, LoaderCircle, MapPinned, NotebookPen, Paperclip, PlusCircle, Stethoscope, X } from "lucide-react";
 import {
   approveLeaveRequest,
   approveOvertimeRequest,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useSession } from "@/components/providers/session-provider";
+import { resolveAssetUrl } from "@/lib/asset-url";
 
 export type ActionKey = "on-duty" | "sick" | "leave" | "half-day" | "overtime";
 
@@ -143,6 +144,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   const [leaveSearch, setLeaveSearch] = useState("");
   const [leaveDateFrom, setLeaveDateFrom] = useState("");
   const [leaveDateTo, setLeaveDateTo] = useState("");
+  const [supportingDocument, setSupportingDocument] = useState<File | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const shouldShowActionCards = showActionCards ?? !fixedAction;
@@ -222,11 +224,13 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
         type,
         startDate,
         endDate: activeAction === "half-day" ? startDate : endDate,
-        reason: normalizedReason
+        reason: normalizedReason,
+        supportingDocument: activeAction === "sick" || activeAction === "leave" ? supportingDocument : null
       });
     },
     onSuccess: async (result) => {
       setLeaveReason("");
+      setSupportingDocument(null);
       setMessage(`${formatLeaveType(result.type)} submitted successfully.`);
       await queryClient.invalidateQueries({ queryKey: ["leave-history"] });
     },
@@ -531,6 +535,24 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                 <p className="mt-1 text-[12px] text-[var(--text-muted)]">Each half-day request deducts 0.5 day from annual leave.</p>
               </div>
             ) : null}
+            {activeAction === "sick" || activeAction === "leave" ? (
+              <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
+                <span>{activeAction === "sick" ? "Doctor Letter" : "Supporting Document"}</span>
+                <div className="rounded-[12px] border border-dashed border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3">
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(event) => setSupportingDocument(event.target.files?.[0] ?? null)}
+                    className="block w-full text-[13px] text-[var(--text-muted)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-3 file:py-2 file:text-[12px] file:font-semibold file:text-white"
+                  />
+                  <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+                    {activeAction === "sick"
+                      ? "Upload JPG, PNG, WEBP, or PDF if a medical note is available."
+                      : "Upload JPG, PNG, WEBP, or PDF for any supporting leave document."}
+                  </p>
+                </div>
+              </label>
+            ) : null}
             <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
               <span>{activeAction === "on-duty" ? "Description" : "Reason"}</span>
               <input value={leaveReason} onChange={(event) => setLeaveReason(event.target.value)} placeholder={activeAction === "on-duty" ? "Describe the on-duty activity" : "Describe the request reason"} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]" />
@@ -660,7 +682,20 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                         </td>
                         <td className="px-4 py-4 align-top text-[14px] text-[var(--text)]">{request.startDate === request.endDate ? request.startDate : `${request.startDate} - ${request.endDate}`}</td>
                         <td className="px-4 py-4 align-top text-[14px] text-[var(--text)]">{request.daysRequested}</td>
-                        <td className="px-4 py-4 align-top text-[14px] text-[var(--text-muted)]">{request.reason}</td>
+                        <td className="px-4 py-4 align-top text-[14px] text-[var(--text-muted)]">
+                          <p>{request.reason}</p>
+                          {request.supportingDocumentUrl ? (
+                            <a
+                              href={resolveAssetUrl(request.supportingDocumentUrl) ?? "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-2 inline-flex items-center gap-2 text-[13px] font-semibold text-[var(--primary)]"
+                            >
+                              <Paperclip className="h-4 w-4" />
+                              Open document
+                            </a>
+                          ) : null}
+                        </td>
                         <td className="rounded-r-[12px] px-4 py-4 align-top"><StatusPill tone={leaveTone[label as keyof typeof leaveTone]}>{label}</StatusPill></td>
                       </tr>
                     );
@@ -686,6 +721,17 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                       <StatusPill tone={leaveTone[label as keyof typeof leaveTone]}>{label}</StatusPill>
                     </div>
                     <p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{request.reason}</p>
+                    {request.supportingDocumentUrl ? (
+                      <a
+                        href={resolveAssetUrl(request.supportingDocumentUrl) ?? "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex items-center gap-2 text-[13px] font-semibold text-[var(--primary)]"
+                      >
+                        <FileText className="h-4 w-4" />
+                        View doctor letter
+                      </a>
+                    ) : null}
                   </div>
                 );
               })}
@@ -735,6 +781,17 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                   <StatusPill tone="warning">Pending Manager</StatusPill>
                 </div>
                 <p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{request.reason}</p>
+                {request.supportingDocumentUrl ? (
+                  <a
+                    href={resolveAssetUrl(request.supportingDocumentUrl) ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-2 text-[13px] font-semibold text-[var(--primary)]"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Open supporting document
+                  </a>
+                ) : null}
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                   <button className="secondary-button !px-3 !py-2" onClick={() => approveLeaveMutation.mutate({ leaveId: request.id, status: "rejected" })} disabled={approveLeaveMutation.isPending}><X className="h-4 w-4" /> Reject</button>
                   <button className="primary-button !px-3 !py-2" onClick={() => approveLeaveMutation.mutate({ leaveId: request.id, status: "approved" })} disabled={approveLeaveMutation.isPending}><Check className="h-4 w-4" /> Approve</button>

@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import { Download, Eye, FileText, KeyRound, LoaderCircle, X } from "lucide-react";
 import type { EmployeeDocumentRecord, EmployeeRecord } from "@/lib/api";
-
-const documentAssetBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
+import { resolveAssetUrl } from "@/lib/asset-url";
 
 type TabKey = "personal" | "education" | "job" | "experience" | "financial" | "documents";
 
@@ -33,7 +32,7 @@ function money(value: number) {
 }
 
 function resolveDocumentUrl(fileUrl: string) {
-  return fileUrl.startsWith("http") ? fileUrl : `${documentAssetBase}${fileUrl}`;
+  return resolveAssetUrl(fileUrl) ?? "";
 }
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {

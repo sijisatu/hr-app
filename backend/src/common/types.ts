@@ -180,6 +180,8 @@ export type LeaveRecord = {
   requestedAt: string;
   daysRequested: number;
   autoApproved: boolean;
+  supportingDocumentName: string | null;
+  supportingDocumentUrl: string | null;
 };
 
 export type PayrollComponentRecord = {

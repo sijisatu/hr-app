@@ -77,6 +77,12 @@ const documentMimes = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/msword"
 ]);
+const leaveSupportingDocumentMimes = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp"
+]);
 
 function rejectInvalidFile(allowedMimes: Set<string>) {
   return (_: unknown, file: Express.Multer.File, callback: (error: Error | null, acceptFile: boolean) => void) => {
@@ -333,7 +339,7 @@ export class AppController {
     @Req() request: Request,
     @Res() res: Response
   ) {
-    const actor = (request as Request & { user?: AuthenticatedActor }).user;
+    const actor = await this.resolveActorFromRequest(request);
     const asset = await this.appService.getEmployeeDocumentAsset(employeeId, documentId, actor);
     return res.sendFile(asset.absolutePath);
   }
@@ -460,7 +466,7 @@ export class AppController {
   @Get("assets/attendance/:attendanceId/selfie")
   @Roles("admin", "hr", "manager", "employee")
   async attendanceSelfieAsset(@Param("attendanceId") attendanceId: string, @Req() request: Request, @Res() res: Response) {
-    const actor = (request as Request & { user?: AuthenticatedActor }).user;
+    const actor = await this.resolveActorFromRequest(request);
     const asset = await this.appService.getAttendanceSelfieAsset(attendanceId, actor);
     return res.sendFile(asset.absolutePath);
   }
@@ -495,8 +501,22 @@ export class AppController {
 
   @Post("leave/request")
   @Roles("admin", "hr", "manager", "employee")
-  async requestLeave(@Body() body: LeaveRequestDto) {
-    return this.wrap(await this.appService.requestLeave(body));
+  @UseInterceptors(
+    FileInterceptor("supportingDocument", {
+      limits: { fileSize: TEN_MB },
+      fileFilter: rejectInvalidFile(leaveSupportingDocumentMimes),
+      storage: diskStorage({
+        destination: path.resolve(process.cwd(), "storage", "leave", "supporting-documents"),
+        filename: (_, file, callback) => {
+          const extension = path.extname(file.originalname) || ".bin";
+          callback(null, `${Date.now()}-${randomUUID().slice(0, 6)}${extension}`);
+        }
+      })
+    })
+  )
+  async requestLeave(@Body() body: LeaveRequestDto, @UploadedFile() file?: Express.Multer.File) {
+    const supportingDocumentUrl = file ? `/storage/leave/supporting-documents/${file.filename}` : null;
+    return this.wrap(await this.appService.requestLeave(body, file, supportingDocumentUrl));
   }
 
   @Post("leave/approve")
@@ -600,8 +620,16 @@ export class AppController {
   @Get("assets/reimbursements/:reimbursementId/receipt")
   @Roles("admin", "hr", "manager", "employee")
   async reimbursementReceiptAsset(@Param("reimbursementId") reimbursementId: string, @Req() request: Request, @Res() res: Response) {
-    const actor = (request as Request & { user?: AuthenticatedActor }).user;
+    const actor = await this.resolveActorFromRequest(request);
     const asset = await this.appService.getReimbursementReceiptAsset(reimbursementId, actor);
+    return res.sendFile(asset.absolutePath);
+  }
+
+  @Get("assets/leave/:leaveId/supporting-document")
+  @Roles("admin", "hr", "manager", "employee")
+  async leaveSupportingDocumentAsset(@Param("leaveId") leaveId: string, @Req() request: Request, @Res() res: Response) {
+    const actor = await this.resolveActorFromRequest(request);
+    const asset = await this.appService.getLeaveSupportingDocumentAsset(leaveId, actor);
     return res.sendFile(asset.absolutePath);
   }
 

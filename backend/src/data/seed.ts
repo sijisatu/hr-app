@@ -470,7 +470,9 @@ export const seedData: DatabaseShape = {
       balanceLabel: "Annual leave 8 days, 3 requested",
       requestedAt: "2026-04-01T03:00:00.000Z",
       daysRequested: 3,
-      autoApproved: false
+      autoApproved: false,
+      supportingDocumentName: null,
+      supportingDocumentUrl: null
     },
     {
       id: "leave-002",
@@ -485,7 +487,9 @@ export const seedData: DatabaseShape = {
       balanceLabel: "Sick leave 10 days, 1 used",
       requestedAt: "2026-04-02T01:30:00.000Z",
       daysRequested: 1,
-      autoApproved: true
+      autoApproved: true,
+      supportingDocumentName: "doctor-note-april-02.pdf",
+      supportingDocumentUrl: "/storage/leave/supporting-documents/doctor-note-april-02.pdf"
     },
     {
       id: "leave-003",
@@ -500,7 +504,9 @@ export const seedData: DatabaseShape = {
       balanceLabel: "Policy-based workflow, 1 day request",
       requestedAt: "2026-04-01T09:00:00.000Z",
       daysRequested: 1,
-      autoApproved: false
+      autoApproved: false,
+      supportingDocumentName: null,
+      supportingDocumentUrl: null
     }
   ],
   reimbursementClaimTypes: [

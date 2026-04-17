@@ -224,6 +224,8 @@ export type LeaveRecord = {
   requestedAt: string;
   daysRequested: number;
   autoApproved: boolean;
+  supportingDocumentName: string | null;
+  supportingDocumentUrl: string | null;
 };
 
 export type ReimbursementStatus = "draft" | "pending-manager" | "awaiting-hr" | "approved" | "rejected" | "processed";
@@ -661,8 +663,19 @@ export async function createLeaveRequest(payload: {
   startDate: string;
   endDate: string;
   reason: string;
+  supportingDocument?: File | null;
 }) {
-  return apiPostJson<LeaveRecord>("/api/leave/request", payload);
+  const formData = new FormData();
+  formData.set("userId", payload.userId);
+  formData.set("employeeName", payload.employeeName);
+  formData.set("type", payload.type);
+  formData.set("startDate", payload.startDate);
+  formData.set("endDate", payload.endDate);
+  formData.set("reason", payload.reason);
+  if (payload.supportingDocument) {
+    formData.set("supportingDocument", payload.supportingDocument);
+  }
+  return apiPostForm<LeaveRecord>("/api/leave/request", formData);
 }
 
 export async function approveLeaveRequest(payload: {

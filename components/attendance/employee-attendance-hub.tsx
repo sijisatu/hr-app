@@ -22,6 +22,13 @@ export function EmployeeAttendanceHub({ showAttendanceReport = false }: { showAt
           description: "View attendance coverage and request activity across the organization.",
           icon: ChartNoAxesColumn,
           href: "/attendance/team-report"
+        },
+        {
+          key: "leave-report",
+          label: "Leave Report",
+          description: "Review leave history, statuses, and supporting documents across the organization.",
+          icon: WalletCards,
+          href: "/attendance/leave-report"
         }
       ]
       : [])

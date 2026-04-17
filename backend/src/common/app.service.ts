@@ -137,6 +137,8 @@ export class AppService {
       mkdir(path.join(this.storageRoot, "documents"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "documents", "employee-files"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "exports"), { recursive: true }),
+      mkdir(path.join(this.storageRoot, "leave"), { recursive: true }),
+      mkdir(path.join(this.storageRoot, "leave", "supporting-documents"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "reimbursements"), { recursive: true }),
       mkdir(path.join(this.storageRoot, "reimbursements", "receipts"), { recursive: true })
     ]);
@@ -372,7 +374,9 @@ export class AppService {
       balanceLabel: String(record.balanceLabel ?? this.describeBalance(employee, type, daysRequested)),
       requestedAt: String(record.requestedAt ?? new Date().toISOString()),
       daysRequested,
-      autoApproved: Boolean(record.autoApproved ?? false)
+      autoApproved: Boolean(record.autoApproved ?? false),
+      supportingDocumentName: record.supportingDocumentName == null ? null : String(record.supportingDocumentName),
+      supportingDocumentUrl: record.supportingDocumentUrl == null ? null : String(record.supportingDocumentUrl)
     };
   }
 
@@ -589,7 +593,9 @@ export class AppService {
           startDate: this.toDateString(record.startDate),
           endDate: this.toDateString(record.endDate),
           requestedAt: this.toIsoString(record.requestedAt),
-          daysRequested: Number(record.daysRequested)
+          daysRequested: Number(record.daysRequested),
+          supportingDocumentName: record.supportingDocumentName ?? null,
+          supportingDocumentUrl: record.supportingDocumentUrl ?? null
         })),
         reimbursementClaimTypes: reimbursementClaimTypes.map((record: any) => ({
           ...record,
@@ -774,6 +780,13 @@ export class AppService {
     };
   }
 
+  private toSafeLeaveRecord(record: LeaveRecord): LeaveRecord {
+    return {
+      ...record,
+      supportingDocumentUrl: record.supportingDocumentUrl ? this.buildLeaveSupportingDocumentAssetUrl(record.id) : null
+    };
+  }
+
   private buildEmployeeDocumentAssetUrl(employeeId: string, documentId: string) {
     return `/api/assets/employees/${employeeId}/documents/${documentId}`;
   }
@@ -784,6 +797,10 @@ export class AppService {
 
   private buildReimbursementReceiptAssetUrl(reimbursementId: string) {
     return `/api/assets/reimbursements/${reimbursementId}/receipt`;
+  }
+
+  private buildLeaveSupportingDocumentAssetUrl(leaveId: string) {
+    return `/api/assets/leave/${leaveId}/supporting-document`;
   }
 
   private resolveStoragePath(fileUrl: string) {
@@ -877,6 +894,28 @@ export class AppService {
     return {
       absolutePath,
       fileName: request.receiptFileName ?? path.basename(absolutePath)
+    };
+  }
+
+  async getLeaveSupportingDocumentAsset(leaveId: string, actor?: AuthenticatedActor) {
+    const db = await this.readDb();
+    const leave = db.leaveRequests.find((entry) => entry.id === leaveId);
+    if (!leave) {
+      throw new NotFoundException("Leave request not found");
+    }
+    if (!leave.supportingDocumentUrl) {
+      throw new NotFoundException("Supporting document not found");
+    }
+    const employee = db.employees.find((entry) => entry.id === leave.userId);
+    this.assertSensitiveDocumentAccess(actor, employee, "leave supporting documents");
+
+    const absolutePath = this.resolveStoragePath(leave.supportingDocumentUrl);
+    if (!existsSync(absolutePath)) {
+      throw new NotFoundException("Stored leave supporting document not found");
+    }
+    return {
+      absolutePath,
+      fileName: leave.supportingDocumentName ?? path.basename(absolutePath)
     };
   }
 
@@ -1305,7 +1344,9 @@ export class AppService {
       balanceLabel: record.balanceLabel,
       requestedAt: this.toDate(record.requestedAt) ?? new Date(),
       daysRequested: record.daysRequested,
-      autoApproved: record.autoApproved
+      autoApproved: record.autoApproved,
+      supportingDocumentName: record.supportingDocumentName,
+      supportingDocumentUrl: record.supportingDocumentUrl
     }));
 
     const payslipRows = next.payslips.map((slip) => ({
@@ -2635,8 +2676,8 @@ export class AppService {
 
   async getLeaveHistory() {
     const db = await this.readDb();
-    return db.leaveRequests;
-  }  async requestLeave(payload: LeaveRequestDto) {
+    return db.leaveRequests.map((record) => this.toSafeLeaveRecord(record));
+  }  async requestLeave(payload: LeaveRequestDto, file?: Express.Multer.File, supportingDocumentUrl?: string | null) {
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === payload.userId);
     const daysRequested = this.getRequestedDays(payload.type, payload.startDate, payload.endDate);
@@ -2648,12 +2689,20 @@ export class AppService {
       balanceLabel: this.describeBalance(employee, payload.type, daysRequested),
       daysRequested,
       autoApproved: false,
+      supportingDocumentName: file?.originalname ?? null,
+      supportingDocumentUrl: supportingDocumentUrl ?? null,
       ...payload
     };
 
     db.leaveRequests.unshift(leave);
     await this.writeDb(db);
-    return leave;
+    await this.writeAuditLog("leave.request", {
+      leaveId: leave.id,
+      userId: leave.userId,
+      type: leave.type,
+      hasSupportingDocument: Boolean(leave.supportingDocumentUrl)
+    });
+    return this.toSafeLeaveRecord(leave);
   }
   async approveLeave(payload: LeaveApproveDto, actor?: AuthenticatedActor) {
     const db = await this.readDb();
@@ -2681,7 +2730,7 @@ export class AppService {
 
     await this.writeDb(db);
     await this.writeAuditLog("leave.approve", { leaveId: leave.id, status: payload.status, actor: actor?.name ?? payload.actor });
-    return leave;
+    return this.toSafeLeaveRecord(leave);
   }
 
   async getReimbursementClaimTypes() {
