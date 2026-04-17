@@ -1,6 +1,7 @@
 import "dotenv/config";
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
 import compression from "compression";
@@ -13,10 +14,67 @@ import { randomUUID } from "node:crypto";
 import { AppModule } from "./app.module";
 import { AppService } from "./common/app.service";
 import { ApiExceptionFilter } from "./common/api-exception.filter";
+import { RolesGuard, SessionAuthGuard } from "./common/authz";
 import { DatabaseService } from "./common/database.service";
 import { MetricsService } from "./common/metrics.service";
+import { toLoggableError, writeSystemLog } from "./common/system-log";
+
+let backendErrorHandlersRegistered = false;
+
+function registerBackendProcessLogging() {
+  if (backendErrorHandlersRegistered) {
+    return;
+  }
+  backendErrorHandlersRegistered = true;
+
+  process.on("uncaughtException", (error) => {
+    void writeSystemLog({
+      source: "backend",
+      event: "process.uncaught-exception",
+      level: "error",
+      details: { error: toLoggableError(error) }
+    });
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    void writeSystemLog({
+      source: "backend",
+      event: "process.unhandled-rejection",
+      level: "error",
+      details: { reason: toLoggableError(reason) }
+    });
+  });
+
+  process.on("SIGINT", () => {
+    void writeSystemLog({
+      source: "backend",
+      event: "process.sigint",
+      level: "warn",
+      details: { pid: process.pid }
+    });
+  });
+
+  process.on("SIGTERM", () => {
+    void writeSystemLog({
+      source: "backend",
+      event: "process.sigterm",
+      level: "warn",
+      details: { pid: process.pid }
+    });
+  });
+}
 
 async function bootstrap() {
+  registerBackendProcessLogging();
+  await writeSystemLog({
+    source: "backend",
+    event: "bootstrap.start",
+    details: {
+      pid: process.pid,
+      nodeEnv: process.env.NODE_ENV ?? "development",
+      cwd: process.cwd()
+    }
+  });
   const allowOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000,http://127.0.0.1:3000")
     .split(",")
     .map((entry) => entry.trim())
@@ -88,6 +146,21 @@ async function bootstrap() {
         remoteIp: req.ip,
         timestamp: new Date().toISOString()
       }));
+
+      if (res.statusCode >= 500) {
+        void writeSystemLog({
+          source: "backend",
+          event: "http.server-error",
+          level: "error",
+          details: {
+            requestId,
+            method: req.method,
+            path: req.path,
+            statusCode: res.statusCode,
+            durationMs
+          }
+        });
+      }
     });
 
     nextFn();
@@ -132,11 +205,33 @@ async function bootstrap() {
   await databaseService.ensureReady();
 
   const appService = app.get(AppService);
+  const reflector = app.get(Reflector);
+  app.useGlobalGuards(new SessionAuthGuard(appService, reflector), new RolesGuard(reflector));
   await appService.onModuleInit();
 
   const port = Number(process.env.PORT ?? 4000);
   await app.listen(port, "0.0.0.0");
+  await writeSystemLog({
+    source: "backend",
+    event: "bootstrap.ready",
+    details: {
+      pid: process.pid,
+      port
+    }
+  });
   console.log(`PulsePresence API listening on http://127.0.0.1:${port}`);
 }
 
-bootstrap();
+bootstrap().catch(async (error) => {
+  await writeSystemLog({
+    source: "backend",
+    event: "bootstrap.failed",
+    level: "error",
+    details: {
+      pid: process.pid,
+      error: toLoggableError(error)
+    }
+  });
+  console.error(error);
+  process.exit(1);
+});

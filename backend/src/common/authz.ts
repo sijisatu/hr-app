@@ -23,13 +23,23 @@ const enforceBackendAuth =
 export const PublicRoute = () => SetMetadata(PUBLIC_ROUTE_KEY, true);
 export const Roles = (...roles: UserRole[]) => SetMetadata(ALLOWED_ROLES_KEY, roles);
 
+function requiresAuthenticatedRead(request: { method?: string; path?: string; originalUrl?: string } | undefined) {
+  if (request?.method !== "GET") {
+    return true;
+  }
+  const target = request?.path ?? request?.originalUrl ?? "";
+  return (
+    target.startsWith("/api/assets/") ||
+    target.includes("/documents/")
+  );
+}
+
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
-  private readonly reflector: Reflector;
-
-  constructor(private readonly appService: AppService, reflector?: Reflector) {
-    this.reflector = reflector ?? new Reflector();
-  }
+  constructor(
+    private readonly appService: AppService,
+    private readonly reflector: Reflector
+  ) {}
 
   async canActivate(context: ExecutionContext) {
     if (!enforceBackendAuth) {
@@ -44,7 +54,7 @@ export class SessionAuthGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    if (request?.method === "GET") {
+    if (!requiresAuthenticatedRead(request)) {
       return true;
     }
     const rawCookieSession = request?.cookies?.pp_session as string | undefined;
@@ -66,11 +76,7 @@ export class SessionAuthGuard implements CanActivate {
 
 @Injectable()
 export class RolesGuard implements CanActivate {
-  private readonly reflector: Reflector;
-
-  constructor(reflector?: Reflector) {
-    this.reflector = reflector ?? new Reflector();
-  }
+  constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext) {
     if (!enforceBackendAuth) {
@@ -84,7 +90,7 @@ export class RolesGuard implements CanActivate {
       return true;
     }
     const request = context.switchToHttp().getRequest();
-    if (request?.method === "GET") {
+    if (!requiresAuthenticatedRead(request)) {
       return true;
     }
 

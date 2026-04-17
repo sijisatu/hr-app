@@ -1,5 +1,6 @@
 ﻿import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
@@ -18,7 +19,7 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ??
   ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://localhost:4000");
 
-async function getEmployeeSessionById(employeeId: string): Promise<SessionUser | null> {
+const getEmployeeSessionById = cache(async (employeeId: string): Promise<SessionUser | null> => {
   const response = await fetch(`${API_BASE}/api/auth/employee-session/${employeeId}`, { cache: "no-store" });
   if (!response.ok) {
     return null;
@@ -26,9 +27,9 @@ async function getEmployeeSessionById(employeeId: string): Promise<SessionUser |
 
   const payload = (await response.json()) as { data: SessionUser };
   return payload.data ?? null;
-}
+});
 
-export async function getCurrentSession(): Promise<SessionUser | null> {
+export const getCurrentSession = cache(async (): Promise<SessionUser | null> => {
   const cookieStore = await cookies();
   const sessionKey = verifyAndExtractSessionKey(cookieStore.get(authCookieName)?.value);
   const cachedProfile = decodeSessionProfile(cookieStore.get(authProfileCookieName)?.value);
@@ -43,7 +44,7 @@ export async function getCurrentSession(): Promise<SessionUser | null> {
     return getEmployeeSessionById(sessionKey.replace("employee:", ""));
   }
   return null;
-}
+});
 
 export async function requireSession(allowedRoles?: UserRole[]) {
   const session = await getCurrentSession();

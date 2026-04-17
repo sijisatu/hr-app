@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsBoolean, IsEmail, IsIn, IsNumber, IsOptional, IsString, Min, MinLength } from "class-validator";
 
 export class CreateEmployeeDto {
   @IsString()
@@ -302,6 +302,24 @@ export class EmployeeLoginDto {
 
   @IsString()
   password!: string;
+}
+
+export class ChangePasswordDto {
+  @IsString()
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(8)
+  newPassword!: string;
+}
+
+export class ResetEmployeePasswordDto {
+  @IsString()
+  employeeId!: string;
+
+  @IsString()
+  @MinLength(8)
+  newPassword!: string;
 }
 
 export class CheckInDto {

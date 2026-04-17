@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Eye, FileText, X } from "lucide-react";
+import { Download, Eye, FileText, KeyRound, LoaderCircle, X } from "lucide-react";
 import type { EmployeeDocumentRecord, EmployeeRecord } from "@/lib/api";
 
 const documentAssetBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:4000";
@@ -112,11 +112,60 @@ export function EmployeeProfileWorkspace({
 }) {
   const [tab, setTab] = useState<TabKey>("personal");
   const [previewDocument, setPreviewDocument] = useState<EmployeeDocumentRecord | null>(null);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordPending, setPasswordPending] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: ""
+  });
 
   const selectedAllowances = useMemo(
     () => employee.financialComponentIds.length,
     [employee.financialComponentIds.length]
   );
+
+  const submitPasswordChange = async () => {
+    setPasswordError(null);
+    setPasswordMessage(null);
+
+    if (!passwordForm.currentPassword.trim() || !passwordForm.newPassword.trim() || !passwordForm.confirmPassword.trim()) {
+      setPasswordError("Semua field password wajib diisi.");
+      return;
+    }
+    if (passwordForm.newPassword.trim().length < 8) {
+      setPasswordError("Password baru minimal 8 karakter.");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError("Konfirmasi password baru belum sama.");
+      return;
+    }
+
+    setPasswordPending(true);
+    try {
+      const response = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword
+        })
+      });
+      const payload = await response.json().catch(() => null) as { error?: string; data?: { message?: string } } | null;
+      if (!response.ok) {
+        setPasswordError(payload?.error ?? "Gagal mengubah password.");
+        return;
+      }
+      setPasswordMessage(payload?.data?.message ?? "Password berhasil diperbarui.");
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setPasswordModalOpen(false);
+    } finally {
+      setPasswordPending(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -166,12 +215,20 @@ export function EmployeeProfileWorkspace({
               <ReadOnlyField label="No KTP" value={employee.idCardNumber} />
               <ReadOnlyArea label="Alamat" value={employee.address} className="md:col-span-2" />
               <div className="page-card p-4 sm:p-5 md:col-span-2">
-                <p className="section-title text-[18px] font-semibold text-[var(--primary)] sm:text-[20px]">Account Access</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Application account details used to sign in.</p>
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="section-title text-[18px] font-semibold text-[var(--primary)] sm:text-[20px]">Account Access</p>
+                    <p className="mt-2 text-[14px] text-[var(--text-muted)]">Kelola akses akun tanpa menampilkan password di layar.</p>
+                  </div>
+                  <button type="button" className="secondary-button" onClick={() => setPasswordModalOpen(true)}>
+                    <KeyRound className="h-4 w-4" />
+                    Change Password
+                  </button>
+                </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <ReadOnlyField label="Akun Aktif" value={employee.appLoginEnabled ? "Yes" : "No"} />
                   <ReadOnlyField label="Username" value={employee.loginUsername ?? "-"} />
-                  <ReadOnlyField label="Password" value={employee.loginPassword ?? "-"} />
+                  <ReadOnlyField label="Password" value={employee.appLoginEnabled ? "Disembunyikan demi keamanan" : "-"} />
                 </div>
               </div>
             </div>
@@ -301,6 +358,55 @@ export function EmployeeProfileWorkspace({
             <div className="min-h-0 flex-1 overflow-auto bg-[var(--surface-muted)] p-3 sm:p-5">
               <DocumentPreview document={previewDocument} />
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {passwordModalOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(15,23,42,0.58)] p-4">
+          <div className="w-full max-w-lg rounded-[24px] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+              <div>
+                <p className="section-title text-[22px] font-semibold text-[var(--primary)]">Change Password</p>
+                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Gunakan password minimal 8 karakter untuk keamanan akun.</p>
+              </div>
+              <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setPasswordModalOpen(false)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
+                <span>Password Saat Ini</span>
+                <input type="password" value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((prev) => ({ ...prev, currentPassword: event.target.value }))} className="filter-control w-full" />
+              </label>
+              <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
+                <span>Password Baru</span>
+                <input type="password" value={passwordForm.newPassword} onChange={(event) => setPasswordForm((prev) => ({ ...prev, newPassword: event.target.value }))} className="filter-control w-full" />
+              </label>
+              <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
+                <span>Konfirmasi Password Baru</span>
+                <input type="password" value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirmPassword: event.target.value }))} className="filter-control w-full" />
+              </label>
+              {passwordError ? <div className="rounded-[12px] border border-[var(--danger-soft)] bg-[var(--danger-soft)] px-4 py-3 text-[14px] text-[var(--danger)]">{passwordError}</div> : null}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-[var(--border)] px-6 py-4">
+              <button className="secondary-button" onClick={() => setPasswordModalOpen(false)}>Cancel</button>
+              <button className="primary-button" onClick={submitPasswordChange} disabled={passwordPending}>
+                {passwordPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                Save Password
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {passwordMessage ? (
+        <div className="fixed right-4 top-4 z-[80] w-full max-w-[460px] rounded-[14px] border border-[var(--border)] bg-white px-4 py-4 shadow-2xl">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[14px] text-[var(--text)]">{passwordMessage}</p>
+            <button type="button" className="secondary-button !min-h-8 !w-8 !rounded-full !p-0" onClick={() => setPasswordMessage(null)}>
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
       ) : null}

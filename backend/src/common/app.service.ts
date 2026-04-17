@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundEx
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
 import { DatabaseService } from "./database.service";
 import { EmployeeSessionPayload } from "./auth.types";
@@ -33,6 +33,7 @@ import {
   AttendanceHistoryQueryDto,
   CheckInDto,
   CheckOutDto,
+  ChangePasswordDto,
   CreateCompensationProfileDto,
   CreateDepartmentDto,
   CreateEmployeeDto,
@@ -53,6 +54,7 @@ import {
   PublishPayrollRunDto,
   ReimbursementApproveDto,
   ReimbursementProcessDto,
+  ResetEmployeePasswordDto,
   UploadEmployeeDocumentDto,
   UpdateCompensationProfileDto,
   UpdateDepartmentDto,
@@ -122,6 +124,7 @@ export class AppService {
     (!this.isProduction && (process.env.BOOTSTRAP_DEMO_DATA ?? "").toLowerCase() !== "false");
   private cache: DatabaseShape | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
+  private auditQueue: Promise<void> = Promise.resolve();
   private exportQueue: ExportJob[] = [];
   private activeExportJob = false;
 
@@ -745,7 +748,135 @@ export class AppService {
   private sanitizeEmployee(employee: EmployeeRecord) {
     return {
       ...employee,
+      documents: employee.documents.map((document) => this.toSafeEmployeeDocument(document)),
       loginPassword: null
+    };
+  }
+
+  private toSafeEmployeeDocument(document: EmployeeDocumentRecord): EmployeeDocumentRecord {
+    return {
+      ...document,
+      fileUrl: this.buildEmployeeDocumentAssetUrl(document.employeeId, document.id)
+    };
+  }
+
+  private toSafeAttendanceRecord(record: AttendanceRecord): AttendanceRecord {
+    return {
+      ...record,
+      photoUrl: record.photoUrl ? this.buildAttendanceSelfieAssetUrl(record.id) : null
+    };
+  }
+
+  private toSafeReimbursementRequest(record: ReimbursementRequestRecord): ReimbursementRequestRecord {
+    return {
+      ...record,
+      receiptFileUrl: record.receiptFileUrl ? this.buildReimbursementReceiptAssetUrl(record.id) : null
+    };
+  }
+
+  private buildEmployeeDocumentAssetUrl(employeeId: string, documentId: string) {
+    return `/api/assets/employees/${employeeId}/documents/${documentId}`;
+  }
+
+  private buildAttendanceSelfieAssetUrl(attendanceId: string) {
+    return `/api/assets/attendance/${attendanceId}/selfie`;
+  }
+
+  private buildReimbursementReceiptAssetUrl(reimbursementId: string) {
+    return `/api/assets/reimbursements/${reimbursementId}/receipt`;
+  }
+
+  private resolveStoragePath(fileUrl: string) {
+    return path.join(this.storageRoot, fileUrl.replace(/^\/storage\//, "").replace(/\//g, path.sep));
+  }
+
+  private assertSensitiveDocumentAccess(
+    actor: AuthenticatedActor | undefined,
+    employee: EmployeeRecord | undefined,
+    contextLabel: string
+  ) {
+    if (!actor) {
+      throw new ForbiddenException(`Session is required to access ${contextLabel}.`);
+    }
+    if (actor.role === "admin" || actor.role === "hr") {
+      return;
+    }
+    if (!employee) {
+      throw new NotFoundException("Employee not found for document access validation.");
+    }
+    if (actor.role === "employee" && actor.id === employee.id) {
+      return;
+    }
+    if (actor.role === "manager") {
+      this.assertManagerApprovalScope(actor, employee);
+      return;
+    }
+    throw new ForbiddenException(`You are not allowed to access ${contextLabel}.`);
+  }
+
+  async getEmployeeDocumentAsset(employeeId: string, documentId: string, actor?: AuthenticatedActor) {
+    const db = await this.readDb();
+    const employee = db.employees.find((entry) => entry.id === employeeId);
+    if (!employee) {
+      throw new NotFoundException("Employee not found");
+    }
+    this.assertSensitiveDocumentAccess(actor, employee, "employee documents");
+
+    const document = employee.documents.find((entry) => entry.id === documentId);
+    if (!document) {
+      throw new NotFoundException("Employee document not found");
+    }
+    const absolutePath = this.resolveStoragePath(document.fileUrl);
+    if (!existsSync(absolutePath)) {
+      throw new NotFoundException("Stored employee document file not found");
+    }
+    return {
+      absolutePath,
+      fileName: document.fileName
+    };
+  }
+
+  async getAttendanceSelfieAsset(attendanceId: string, actor?: AuthenticatedActor) {
+    const db = await this.readDb();
+    const attendance = db.attendanceLogs.find((entry) => entry.id === attendanceId);
+    if (!attendance) {
+      throw new NotFoundException("Attendance record not found");
+    }
+    if (!attendance.photoUrl) {
+      throw new NotFoundException("Attendance selfie not found");
+    }
+    const employee = db.employees.find((entry) => entry.id === attendance.userId);
+    this.assertSensitiveDocumentAccess(actor, employee, "attendance selfie");
+
+    const absolutePath = this.resolveStoragePath(attendance.photoUrl);
+    if (!existsSync(absolutePath)) {
+      throw new NotFoundException("Stored attendance selfie not found");
+    }
+    return {
+      absolutePath,
+      fileName: path.basename(absolutePath)
+    };
+  }
+
+  async getReimbursementReceiptAsset(reimbursementId: string, actor?: AuthenticatedActor) {
+    const db = await this.readDb();
+    const request = db.reimbursementRequests.find((entry) => entry.id === reimbursementId);
+    if (!request) {
+      throw new NotFoundException("Reimbursement request not found");
+    }
+    if (!request.receiptFileUrl) {
+      throw new NotFoundException("Reimbursement receipt not found");
+    }
+    const employee = db.employees.find((entry) => entry.id === request.userId);
+    this.assertSensitiveDocumentAccess(actor, employee, "reimbursement receipt");
+
+    const absolutePath = this.resolveStoragePath(request.receiptFileUrl);
+    if (!existsSync(absolutePath)) {
+      throw new NotFoundException("Stored reimbursement receipt not found");
+    }
+    return {
+      absolutePath,
+      fileName: request.receiptFileName ?? path.basename(absolutePath)
     };
   }
 
@@ -934,12 +1065,50 @@ export class AppService {
   }
 
   private async writeAuditLog(action: string, details: Record<string, unknown>) {
-    const entry = {
-      timestamp: new Date().toISOString(),
-      action,
-      ...details
-    };
-    await appendFile(this.auditLogPath, `${JSON.stringify(entry)}\n`, "utf8");
+    this.auditQueue = this.auditQueue.then(async () => {
+      let previousHash = "GENESIS";
+      let sequence = 1;
+
+      if (existsSync(this.auditLogPath)) {
+        const content = await readFile(this.auditLogPath, "utf8");
+        const lines = content
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const lastLine = lines.at(-1);
+        sequence = lines.length + 1;
+        if (lastLine) {
+          try {
+            const parsed = JSON.parse(lastLine) as { entryHash?: unknown };
+            if (typeof parsed.entryHash === "string" && parsed.entryHash.trim().length > 0) {
+              previousHash = parsed.entryHash;
+            }
+          } catch {
+            previousHash = "LEGACY";
+          }
+        }
+      }
+
+      const timestamp = new Date().toISOString();
+      const payload = {
+        sequence,
+        timestamp,
+        action,
+        details
+      };
+      const entryHash = createHash("sha256")
+        .update(JSON.stringify({ previousHash, ...payload }))
+        .digest("hex");
+      const entry = {
+        ...payload,
+        previousHash,
+        entryHash,
+        immutable: true,
+        hashAlgorithm: "sha256"
+      };
+      await appendFile(this.auditLogPath, `${JSON.stringify(entry)}\n`, "utf8");
+    });
+    await this.auditQueue;
   }
 
   private safeFileBaseName(input: string, fallback: string) {
@@ -1208,18 +1377,22 @@ export class AppService {
     );
 
     await prisma.$transaction(async (tx: any) => {
-      await tx.reimbursementRequest.deleteMany();
-      await tx.payslip.deleteMany();
-      await tx.leaveRequest.deleteMany();
-      await tx.overtimeRequest.deleteMany();
-      await tx.attendanceLog.deleteMany();
-      await tx.reimbursementClaimType.deleteMany();
-      await tx.payRun.deleteMany();
-      await tx.payrollComponent.deleteMany();
-      await tx.compensationProfile.deleteMany();
-      await tx.taxProfile.deleteMany();
-      await tx.employee.deleteMany();
-      await tx.department.deleteMany();
+      await tx.$executeRawUnsafe(`
+        TRUNCATE TABLE
+          "ReimbursementRequest",
+          "Payslip",
+          "LeaveRequest",
+          "OvertimeRequest",
+          "AttendanceLog",
+          "ReimbursementClaimType",
+          "PayRun",
+          "PayrollComponent",
+          "CompensationProfile",
+          "TaxProfile",
+          "Employee",
+          "Department"
+        CASCADE
+      `);
 
       if (departmentRows.length > 0) {
         await tx.department.createMany({ data: departmentRows });
@@ -1856,6 +2029,69 @@ export class AppService {
     return this.toEmployeeSessionPayload(employee);
   }
 
+  async changeOwnPassword(payload: ChangePasswordDto, actor?: AuthenticatedActor) {
+    if (!actor?.id || actor.sessionKey === "global-admin" || !actor.sessionKey.startsWith("employee:")) {
+      throw new ForbiddenException("Password hanya bisa diubah dari akun karyawan yang valid.");
+    }
+
+    const db = await this.readDb();
+    const employee = db.employees.find((entry) => entry.id === actor.id && entry.appLoginEnabled && entry.status === "active");
+    if (!employee || !employee.loginPassword) {
+      throw new NotFoundException("Akun employee tidak ditemukan atau belum aktif.");
+    }
+
+    const currentPassword = payload.currentPassword.trim();
+    const newPassword = payload.newPassword.trim();
+    if (newPassword.length < 8) {
+      throw new BadRequestException("Password baru minimal 8 karakter.");
+    }
+    if (currentPassword === newPassword) {
+      throw new BadRequestException("Password baru harus berbeda dari password saat ini.");
+    }
+
+    const passwordMatches = await verifyPassword(currentPassword, employee.loginPassword);
+    if (!passwordMatches) {
+      throw new BadRequestException("Password saat ini tidak valid.");
+    }
+
+    employee.loginPassword = await hashPassword(newPassword);
+    await this.writeDb(db);
+    await this.writeAuditLog("auth.change-password", { employeeId: employee.id, actor: actor.name });
+    return { success: true, message: "Password berhasil diperbarui." };
+  }
+
+  async resetEmployeePassword(payload: ResetEmployeePasswordDto, actor?: AuthenticatedActor) {
+    if (!actor || (actor.role !== "hr" && actor.role !== "admin")) {
+      throw new ForbiddenException("Hanya HR atau admin yang bisa reset password employee.");
+    }
+
+    const db = await this.readDb();
+    const employee = db.employees.find((entry) => entry.id === payload.employeeId);
+    if (!employee) {
+      throw new NotFoundException("Employee tidak ditemukan.");
+    }
+    if (!employee.appLoginEnabled) {
+      throw new BadRequestException("Akun aplikasi employee belum aktif.");
+    }
+
+    const newPassword = payload.newPassword.trim();
+    if (newPassword.length < 8) {
+      throw new BadRequestException("Password baru minimal 8 karakter.");
+    }
+
+    employee.loginPassword = await hashPassword(newPassword);
+    await this.writeDb(db);
+    await this.writeAuditLog("auth.reset-password", {
+      employeeId: employee.id,
+      actor: actor.name,
+      actorRole: actor.role
+    });
+    return {
+      success: true,
+      message: `Password akun ${employee.name} berhasil di-reset.`
+    };
+  }
+
   async createEmployee(payload: CreateEmployeeDto) {
     const db = await this.readDb();
     this.assertDepartmentExistsAndActive(db, payload.department);
@@ -1987,7 +2223,7 @@ export class AppService {
     if (!employee) {
       throw new NotFoundException("Employee not found");
     }
-    return employee.documents;
+    return employee.documents.map((document) => this.toSafeEmployeeDocument(document));
   }
 
   async uploadEmployeeDocument(
@@ -2034,7 +2270,7 @@ export class AppService {
     }
 
     employee.documents = employee.documents.filter((entry) => entry.id !== documentId);
-    const fullPath = path.join(this.storageRoot, document.fileUrl.replace(/^\/storage\//, "").replace(/\//g, path.sep));
+    const fullPath = this.resolveStoragePath(document.fileUrl);
     if (existsSync(fullPath)) {
       unlinkSync(fullPath);
     }
@@ -2240,7 +2476,7 @@ export class AppService {
         })
       ]);
 
-      const items = rows.map((record: any) => ({
+      const items = rows.map((record: any) => this.toSafeAttendanceRecord({
         ...record,
         latitude: Number(record.latitude),
         longitude: Number(record.longitude),
@@ -2276,15 +2512,21 @@ export class AppService {
       );
     }
     if (!shouldPaginate) {
-      return records;
+      return records.map((record) => this.toSafeAttendanceRecord(record));
     }
-    return this.paginateArray(records, query?.page, query?.pageSize);
+    const paginated = this.paginateArray(records, query?.page, query?.pageSize);
+    return {
+      ...paginated,
+      items: paginated.items.map((record) => this.toSafeAttendanceRecord(record))
+    };
   }
 
   async getAttendanceToday() {
     const db = await this.readDb();
     const today = new Date().toISOString().slice(0, 10);
-    return db.attendanceLogs.filter((entry) => entry.timestamp.slice(0, 10) === today);
+    return db.attendanceLogs
+      .filter((entry) => entry.timestamp.slice(0, 10) === today)
+      .map((entry) => this.toSafeAttendanceRecord(entry));
   }
 
   async getAttendanceOverview() {
@@ -2539,7 +2781,7 @@ export class AppService {
         })
       ]);
 
-      const items = rows.map((record: any) => ({
+      const items = rows.map((record: any) => this.toSafeReimbursementRequest({
         ...record,
         amount: Number(record.amount),
         balanceSnapshot: Number(record.balanceSnapshot),
@@ -2579,9 +2821,13 @@ export class AppService {
       );
     }
     if (!shouldPaginate) {
-      return records;
+      return records.map((record) => this.toSafeReimbursementRequest(record));
     }
-    return this.paginateArray(records, query?.page, query?.pageSize);
+    const paginated = this.paginateArray(records, query?.page, query?.pageSize);
+    return {
+      ...paginated,
+      items: paginated.items.map((record) => this.toSafeReimbursementRequest(record))
+    };
   }
 
   async createReimbursementRequest(
@@ -2636,7 +2882,7 @@ export class AppService {
 
     db.reimbursementRequests.unshift(request);
     await this.writeDb(db);
-    return request;
+    return this.toSafeReimbursementRequest(request);
   }
 
   async updateReimbursementRequest(
@@ -2691,7 +2937,7 @@ export class AppService {
     }
 
     await this.writeDb(db);
-    return request;
+    return this.toSafeReimbursementRequest(request);
   }
 
   async managerApproveReimbursement(payload: ReimbursementApproveDto) {
@@ -2717,7 +2963,7 @@ export class AppService {
       status: payload.status,
       actor: payload.actor
     });
-    return request;
+    return this.toSafeReimbursementRequest(request);
   }
 
   async hrProcessReimbursement(payload: ReimbursementProcessDto) {
@@ -2741,7 +2987,7 @@ export class AppService {
       request.approverFlow = [...request.approverFlow, `${payload.actor} rejected`];
       await this.writeDb(db);
       await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
-      return request;
+      return this.toSafeReimbursementRequest(request);
     }
 
     if (payload.status === "approved") {
@@ -2751,7 +2997,7 @@ export class AppService {
       request.approverFlow = [...request.approverFlow, `${payload.actor} approved for payout`];
       await this.writeDb(db);
       await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
-      return request;
+      return this.toSafeReimbursementRequest(request);
     }
 
     if (request.amount > claimType.remainingBalance) {
@@ -2767,7 +3013,7 @@ export class AppService {
     request.approverFlow = [...request.approverFlow, `${payload.actor} processed reimbursement`];
     await this.writeDb(db);
     await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
-    return request;
+    return this.toSafeReimbursementRequest(request);
   }
 
   async getPayrollOverview() {

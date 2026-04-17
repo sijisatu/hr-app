@@ -19,25 +19,6 @@ const overtimeTone = {
 
 export default async function AttendancePage() {
   const session = await requireSession(["admin", "hr", "manager", "employee"]);
-  const [logs, overview, overtime] = await Promise.all([
-    getAttendanceHistory(),
-    getAttendanceOverview(),
-    getAttendanceOvertime()
-  ]);
-
-  const scopedLogs = session.role === "employee" ? logs.filter((item) => item.userId === session.id) : logs;
-  const scopedOvertime = session.role === "employee" ? overtime.filter((item) => item.userId === session.id) : overtime;
-  const scopedOverview = session.role === "employee"
-    ? {
-        checkedInToday: scopedLogs.length,
-        openCheckIns: scopedLogs.filter((item) => !item.checkOut).length,
-        gpsValidated: scopedLogs.filter((item) => item.gpsValidated).length,
-        selfieCaptured: scopedLogs.filter((item) => Boolean(item.photoUrl)).length,
-        overtimeHours: Number((scopedOvertime.reduce((sum, item) => sum + item.minutes, 0) / 60).toFixed(1))
-      }
-    : overview;
-
-  const punctuality = scopedLogs.length === 0 ? 0 : (scopedLogs.filter((item) => item.status === "on-time").length / scopedLogs.length) * 100;
 
   if (session.role === "employee" || session.role === "manager" || session.role === "hr") {
     return (
@@ -51,6 +32,14 @@ export default async function AttendancePage() {
       </AppShell>
     );
   }
+
+  const [logs, overview, overtime] = await Promise.all([
+    getAttendanceHistory(),
+    getAttendanceOverview(),
+    getAttendanceOvertime()
+  ]);
+
+  const punctuality = logs.length === 0 ? 0 : (logs.filter((item) => item.status === "on-time").length / logs.length) * 100;
 
   return (
     <AppShell
@@ -70,7 +59,7 @@ export default async function AttendancePage() {
       )}
     >
       <div className="space-y-6">
-        <AttendanceTable logs={scopedLogs} punctuality={punctuality} overview={scopedOverview} />
+        <AttendanceTable logs={logs} punctuality={punctuality} overview={overview} />
 
         <section className="page-card p-6">
           <div className="mb-5">
@@ -79,7 +68,7 @@ export default async function AttendancePage() {
           </div>
 
           <div className="space-y-4">
-            {scopedOvertime.map((item) => (
+            {overtime.map((item) => (
               <div key={item.id} className="panel-muted p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

@@ -293,6 +293,10 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
               <div className="rounded-2xl border border-border bg-[var(--panel-alt)] px-4 py-3 text-sm text-muted">
                 {openRecord ? `Open session started at ${openRecord.checkIn} in ${openRecord.location}.` : geoStatus}
               </div>
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Selfie attendance disimpan sebagai data validasi kehadiran dengan retensi terbatas dan hanya bisa diakses oleh HR, owner data, atau manager yang berada dalam scope approval.
+              </div>
             </div>
 
             <div className="space-y-3 lg:max-w-[320px] lg:justify-self-center lg:w-full">

@@ -7,9 +7,24 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
     const request = context.getRequest<Request>();
+    const requestId = response.getHeader("X-Request-Id");
 
     const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const message = this.extractMessage(exception, status);
+
+    if (status >= 500) {
+      const error = exception instanceof Error ? exception : new Error(String(exception));
+      console.error(JSON.stringify({
+        event: "http.error",
+        requestId,
+        method: request.method,
+        path: request.originalUrl,
+        statusCode: status,
+        message: error.message,
+        stack: error.stack ?? null,
+        timestamp: new Date().toISOString()
+      }));
+    }
 
     response.status(status).json({
       success: false,
@@ -51,4 +66,3 @@ export class ApiExceptionFilter implements ExceptionFilter {
     return "Request failed.";
   }
 }
-

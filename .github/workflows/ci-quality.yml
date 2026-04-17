@@ -105,3 +105,21 @@ jobs:
       - name: Backend Smoke Test
         run: npm run test
         working-directory: backend
+
+      - name: Start Frontend
+        run: npm run start > frontend-start.log 2>&1 &
+
+      - name: Wait For Frontend
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/login > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Frontend failed to start in time"
+          cat frontend-start.log || true
+          exit 1
+
+      - name: Frontend Smoke Test
+        run: npm run test:frontend-smoke

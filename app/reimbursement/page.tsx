@@ -5,8 +5,9 @@ import { getEmployees, getReimbursementClaimTypes, getReimbursementRequests } fr
 
 export default async function ReimbursementPage() {
   const session = await requireSession(["admin", "hr", "manager", "employee"]);
+  const shouldLoadEmployees = session.role === "hr" || session.role === "admin";
   const [employees, claimTypes, requests] = await Promise.all([
-    getEmployees(),
+    shouldLoadEmployees ? getEmployees() : Promise.resolve([]),
     getReimbursementClaimTypes(),
     getReimbursementRequests()
   ]);

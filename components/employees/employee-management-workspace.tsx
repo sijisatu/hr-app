@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Eye, FileText, LoaderCircle, Plus, Trash2, Upload, WalletCards, X } from "lucide-react";
+import { Download, Eye, FileText, KeyRound, LoaderCircle, Plus, Trash2, Upload, WalletCards, X } from "lucide-react";
 import { EmployeesTable } from "@/components/tables/employees-table";
 import {
   createCompensationProfile,
@@ -248,6 +248,8 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
   const [masterModalMode, setMasterModalMode] = useState<MasterModalMode>(null);
   const [departmentMasterForm, setDepartmentMasterForm] = useState<DepartmentMasterForm>(blankDepartmentMasterForm());
   const [positionMasterForm, setPositionMasterForm] = useState<PositionMasterForm>(blankPositionMasterForm());
+  const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
+  const [resetPasswordValue, setResetPasswordValue] = useState("employee123");
 
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: getEmployees, initialData: initialEmployees });
   const positionQuery = useQuery({ queryKey: ["compensation-profiles"], queryFn: getCompensationProfiles, initialData: initialCompensationProfiles });
@@ -275,6 +277,8 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
   const openModal = (next: Mode, employee?: EmployeeRecord) => {
     setMode(next);
     setTab("personal");
+    setResetPasswordModalOpen(false);
+    setResetPasswordValue("employee123");
     setForm(employee ? mapEmployee(employee) : blankForm());
     setExistingDocuments(employee?.documents ?? []);
     setQueuedDocuments([]);
@@ -448,6 +452,35 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
       await refresh();
     },
     onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to delete employee." })
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.id) {
+        throw new Error("Employee belum dipilih.");
+      }
+      const nextPassword = resetPasswordValue.trim();
+      if (nextPassword.length < 8) {
+        throw new Error("Password baru minimal 8 karakter.");
+      }
+
+      const response = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: form.id, newPassword: nextPassword })
+      });
+      const payload = await response.json().catch(() => null) as { error?: string; data?: { message?: string } } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to reset employee password.");
+      }
+      return payload?.data?.message ?? "Password employee berhasil di-reset.";
+    },
+    onSuccess: (message) => {
+      setResetPasswordModalOpen(false);
+      setResetPasswordValue("employee123");
+      setFeedback({ type: "success", text: message });
+    },
+    onError: (error: Error) => setFeedback({ type: "error", text: error.message || "Failed to reset employee password." })
   });
 
   const uploadDocumentMutation = useMutation({
@@ -629,20 +662,28 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                       <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Account Access</p>
                       <p className="mt-2 text-[14px] text-[var(--text-muted)]">HR can create an employee login directly from this form.</p>
                     </div>
-                    <label className="inline-flex items-center gap-2 text-[14px] font-medium text-[var(--text)]">
-                      <input
-                        type="checkbox"
-                        checked={form.appLoginEnabled}
-                        onChange={(event) => setForm((prev) => ({
-                          ...prev,
-                          appLoginEnabled: event.target.checked,
-                          loginUsername: event.target.checked ? (prev.loginUsername || prev.nik) : "",
-                          loginPassword: event.target.checked ? (prev.loginPassword || "employee123") : ""
-                        }))}
-                        disabled={readOnly}
-                      />
-                      Create application account
-                    </label>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {form.id && form.appLoginEnabled ? (
+                        <button type="button" className="secondary-button" onClick={() => setResetPasswordModalOpen(true)}>
+                          <KeyRound className="h-4 w-4" />
+                          Reset Password
+                        </button>
+                      ) : null}
+                      <label className="inline-flex items-center gap-2 text-[14px] font-medium text-[var(--text)]">
+                        <input
+                          type="checkbox"
+                          checked={form.appLoginEnabled}
+                          onChange={(event) => setForm((prev) => ({
+                            ...prev,
+                            appLoginEnabled: event.target.checked,
+                            loginUsername: event.target.checked ? (prev.loginUsername || prev.nik) : "",
+                            loginPassword: event.target.checked ? (prev.loginPassword || "employee123") : ""
+                          }))}
+                          disabled={readOnly}
+                        />
+                        Create application account
+                      </label>
+                    </div>
                   </div>
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <Field label="Username" value={form.loginUsername} onChange={(value) => setForm((prev) => ({ ...prev, loginUsername: value }))} disabled={readOnly || !form.appLoginEnabled} />
@@ -770,6 +811,9 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                         Upload ID cards, diplomas, certificates, tax documents, insurance files, or other supporting documents.
                         {form.id ? " For existing employees, uploads can be completed directly from this tab." : " For new employees, queued documents will be uploaded after the employee record is saved."}
                       </p>
+                      <p className="mt-3 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-5 text-amber-800">
+                        Sensitive employee documents are stored for HR operations and compliance purposes. Access is limited to HR, the document owner, and managers within the approved reporting scope.
+                      </p>
                     </div>
                     {!readOnly ? <label className="secondary-button cursor-pointer"><Upload className="h-4 w-4" /> Select Files<input type="file" className="hidden" multiple onChange={(event) => queueFiles(event.target.files)} /></label> : null}
                   </div>
@@ -835,6 +879,36 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                   {mode === "edit" ? <button className="primary-button" onClick={() => updateMutation.mutate()} disabled={busy}>{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null} Update Employee</button> : null}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {resetPasswordModalOpen ? (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4">
+          <div className="w-full max-w-md rounded-[24px] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
+              <div>
+                <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Reset Password Employee</p>
+                <p className="mt-2 text-[14px] text-[var(--text-muted)]">{form.name || "Employee"} akan menerima password baru dari HR.</p>
+              </div>
+              <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setResetPasswordModalOpen(false)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
+                <span>Password Baru</span>
+                <input type="text" value={resetPasswordValue} onChange={(event) => setResetPasswordValue(event.target.value)} className="filter-control w-full" />
+              </label>
+              <p className="mt-3 text-[13px] text-[var(--text-muted)]">Gunakan minimal 8 karakter. Default yang disarankan: <span className="font-semibold text-[var(--primary)]">employee123</span></p>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-[var(--border)] px-6 py-4">
+              <button className="secondary-button" onClick={() => setResetPasswordModalOpen(false)}>Cancel</button>
+              <button className="primary-button" onClick={() => resetPasswordMutation.mutate()} disabled={resetPasswordMutation.isPending}>
+                {resetPasswordMutation.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                Reset Password
+              </button>
             </div>
           </div>
         </div>

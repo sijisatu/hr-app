@@ -26,6 +26,7 @@ import { MetricsService } from "./common/metrics.service";
 import { PublicRoute, Roles } from "./common/authz";
 import type { AuthenticatedActor } from "./common/authz";
 import { IdempotencyInterceptor } from "./common/idempotency.interceptor";
+import { verifyAndExtractSessionKey } from "./common/session-token";
 import {
   AttendanceHistoryQueryDto,
   CheckInDto,
@@ -44,6 +45,7 @@ import {
   CreateTaxProfileDto,
   OvertimeApproveDto,
   CreatePayrollComponentDto,
+  ChangePasswordDto,
   EmployeeLoginDto,
   ExportPayslipDto,
   GeneratePayrollRunDto,
@@ -52,6 +54,7 @@ import {
   PublishPayrollRunDto,
   ReimbursementApproveDto,
   ReimbursementProcessDto,
+  ResetEmployeePasswordDto,
   UploadEmployeeDocumentDto,
   UpdateEmployeeDto,
   UpdateCompensationProfileDto,
@@ -99,6 +102,31 @@ export class AppController {
 
   private setShortCache(res: Response, maxAgeSeconds = 30) {
     res.setHeader("Cache-Control", `private, max-age=${maxAgeSeconds}, stale-while-revalidate=${maxAgeSeconds * 2}`);
+  }
+
+  private async resolveActorFromRequest(request: Request) {
+    const req = request as Request & {
+      user?: AuthenticatedActor;
+      cookies?: Record<string, string | undefined>;
+      headers?: Record<string, string | string[] | undefined>;
+    };
+    if (req.user) {
+      return req.user;
+    }
+
+    const rawCookieSession = req.cookies?.pp_session;
+    const headerSession = req.headers?.["x-session-key"];
+    const tokenFromHeader = Array.isArray(headerSession) ? headerSession[0] : headerSession;
+    const sessionKey = verifyAndExtractSessionKey(rawCookieSession) ?? verifyAndExtractSessionKey(tokenFromHeader);
+    if (!sessionKey) {
+      return undefined;
+    }
+
+    const actor = await this.appService.resolveSessionActor(sessionKey);
+    if (actor) {
+      req.user = actor;
+    }
+    return actor ?? undefined;
   }
 
   @Get("health")
@@ -218,6 +246,26 @@ export class AppController {
     return this.wrap(await this.appService.getEmployeeSession(id));
   }
 
+  @Post("auth/change-password")
+  @Roles("admin", "hr", "manager", "employee")
+  async changePassword(
+    @Body() body: ChangePasswordDto,
+    @Req() request: Request
+  ) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.changeOwnPassword(body, actor));
+  }
+
+  @Post("auth/reset-password")
+  @Roles("admin", "hr")
+  async resetEmployeePassword(
+    @Body() body: ResetEmployeePasswordDto,
+    @Req() request: Request
+  ) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.resetEmployeePassword(body, actor));
+  }
+
   @Post("employees")
   @Roles("admin", "hr")
   async createEmployee(@Body() body: CreateEmployeeDto) {
@@ -275,6 +323,19 @@ export class AppController {
   @Roles("admin", "hr")
   async deleteEmployeeDocument(@Param("id") id: string, @Param("documentId") documentId: string) {
     return this.wrap(await this.appService.deleteEmployeeDocument(id, documentId));
+  }
+
+  @Get("assets/employees/:employeeId/documents/:documentId")
+  @Roles("admin", "hr", "manager", "employee")
+  async employeeDocumentAsset(
+    @Param("employeeId") employeeId: string,
+    @Param("documentId") documentId: string,
+    @Req() request: Request,
+    @Res() res: Response
+  ) {
+    const actor = (request as Request & { user?: AuthenticatedActor }).user;
+    const asset = await this.appService.getEmployeeDocumentAsset(employeeId, documentId, actor);
+    return res.sendFile(asset.absolutePath);
   }
 
   @Get("compensation-profiles")
@@ -394,6 +455,14 @@ export class AppController {
   async checkIn(@Body() body: CheckInDto, @UploadedFile() file?: Express.Multer.File) {
     const photoUrl = file ? `/storage/attendance-selfies/${file.filename}` : null;
     return this.wrap(await this.appService.checkIn(body, photoUrl));
+  }
+
+  @Get("assets/attendance/:attendanceId/selfie")
+  @Roles("admin", "hr", "manager", "employee")
+  async attendanceSelfieAsset(@Param("attendanceId") attendanceId: string, @Req() request: Request, @Res() res: Response) {
+    const actor = (request as Request & { user?: AuthenticatedActor }).user;
+    const asset = await this.appService.getAttendanceSelfieAsset(attendanceId, actor);
+    return res.sendFile(asset.absolutePath);
   }
 
   @Post("attendance/check-out")
@@ -526,6 +595,14 @@ export class AppController {
   @UseInterceptors(IdempotencyInterceptor)
   async hrProcessReimbursement(@Body() body: ReimbursementProcessDto, @Req() _request: Request) {
     return this.wrap(await this.appService.hrProcessReimbursement(body));
+  }
+
+  @Get("assets/reimbursements/:reimbursementId/receipt")
+  @Roles("admin", "hr", "manager", "employee")
+  async reimbursementReceiptAsset(@Param("reimbursementId") reimbursementId: string, @Req() request: Request, @Res() res: Response) {
+    const actor = (request as Request & { user?: AuthenticatedActor }).user;
+    const asset = await this.appService.getReimbursementReceiptAsset(reimbursementId, actor);
+    return res.sendFile(asset.absolutePath);
   }
 
   @Get("payroll/overview")

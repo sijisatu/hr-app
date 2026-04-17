@@ -19,15 +19,14 @@ import {
 
 export default async function DashboardPage() {
   const session = await requireSession(["admin", "hr", "manager", "employee"]);
-  const [summary, attendanceLogs, leaveRequests, employees] = await Promise.all([
-    getDashboardSummary(),
-    getAttendanceHistory(),
-    getLeaveHistory(),
-    getEmployees()
-  ]);
-
   const isEmployeeView = session.role === "employee" || session.role === "manager";
   const isHrView = session.role === "hr";
+  const [summary, attendanceLogs, leaveRequests, employees] = await Promise.all([
+    isEmployeeView ? Promise.resolve(null) : getDashboardSummary(),
+    getAttendanceHistory(),
+    getLeaveHistory(),
+    isHrView ? getEmployees() : Promise.resolve([])
+  ]);
   const scopedLogs = isEmployeeView ? attendanceLogs.filter((log) => log.userId === session.id) : attendanceLogs;
   const scopedLeaves = isEmployeeView ? leaveRequests.filter((leave) => leave.userId === session.id) : leaveRequests;
 
@@ -39,10 +38,10 @@ export default async function DashboardPage() {
         { label: "Open Sessions", value: scopedLogs.filter((item) => !item.checkOut).length.toLocaleString("en-US"), note: "Pending check-out", tone: "warning" }
       ] as const
     : [
-        { label: "Employees", value: summary.employees.toLocaleString("en-US"), note: "Total employees in Company", tone: "neutral" },
-        { label: "On-Time", value: summary.onTime.toLocaleString("en-US"), note: "Live attendance", tone: "success" },
-        { label: "Late", value: summary.late.toLocaleString("en-US"), note: "Review required", tone: "danger" },
-        { label: "Absent", value: summary.absent.toLocaleString("en-US"), note: `${summary.leavePending} leave pending`, tone: "warning" }
+        { label: "Employees", value: (summary?.employees ?? 0).toLocaleString("en-US"), note: "Total employees in Company", tone: "neutral" },
+        { label: "On-Time", value: (summary?.onTime ?? 0).toLocaleString("en-US"), note: "Live attendance", tone: "success" },
+        { label: "Late", value: (summary?.late ?? 0).toLocaleString("en-US"), note: "Review required", tone: "danger" },
+        { label: "Absent", value: (summary?.absent ?? 0).toLocaleString("en-US"), note: `${summary?.leavePending ?? 0} leave pending`, tone: "warning" }
       ] as const;
 
   const series = deriveAttendanceSeries(scopedLogs);
@@ -66,7 +65,7 @@ export default async function DashboardPage() {
         ) : isHrView ? (
           <div className="space-y-6">
             <HrWorkforcePanels employees={employees} leaves={leaveRequests} />
-            <HrDashboardInsights logs={scopedLogs} totalEmployees={summary.employees} />
+            <HrDashboardInsights logs={scopedLogs} totalEmployees={summary?.employees ?? 0} />
             <ActivityPanel
               entries={activity}
               title="Latest History Activity"

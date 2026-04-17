@@ -1,0 +1,51 @@
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { authCookieName } from "@/lib/auth-config";
+import { getCurrentSession } from "@/lib/auth";
+
+const isProduction = (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+const API_BASE =
+  process.env.API_BASE_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (isProduction ? "https://localhost:4000" : "http://localhost:4000");
+
+export async function POST(request: Request) {
+  const session = await getCurrentSession();
+  if (!session) {
+    return NextResponse.json({ success: false, error: "Session tidak ditemukan." }, { status: 401 });
+  }
+  if (session.role !== "hr" && session.role !== "admin") {
+    return NextResponse.json({ success: false, error: "Hanya HR atau admin yang bisa reset password employee." }, { status: 403 });
+  }
+
+  const body = (await request.json()) as { employeeId?: string; newPassword?: string };
+  const employeeId = body.employeeId?.trim();
+  const newPassword = body.newPassword?.trim();
+
+  if (!employeeId || !newPassword) {
+    return NextResponse.json({ success: false, error: "Employee dan password baru wajib diisi." }, { status: 400 });
+  }
+
+  const cookieStore = await cookies();
+  const signedSession = cookieStore.get(authCookieName)?.value;
+  if (!signedSession) {
+    return NextResponse.json({ success: false, error: "Session cookie tidak ditemukan." }, { status: 401 });
+  }
+
+  const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: `${authCookieName}=${signedSession}`
+    },
+    body: JSON.stringify({ employeeId, newPassword })
+  });
+
+  const payload = await response.json().catch(() => null) as { success?: boolean; error?: string; data?: unknown } | null;
+  if (!response.ok) {
+    return NextResponse.json({ success: false, error: payload?.error ?? "Gagal reset password employee." }, { status: response.status });
+  }
+
+  return NextResponse.json({ success: true, data: payload?.data ?? { success: true }, error: null });
+}

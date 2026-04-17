@@ -11,6 +11,7 @@ export function LoginPanel() {
   const { setCurrentUser } = useSession();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
@@ -95,7 +96,10 @@ export function LoginPanel() {
                 <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="filter-control w-full" placeholder="Password dari HR" />
               </label>
             </div>
-            <div className="mt-4 flex justify-end">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button type="button" className="text-left text-[13px] font-medium text-[var(--primary)] underline-offset-4 hover:underline" onClick={() => setForgotPasswordOpen(true)}>
+                Forgot password? Contact HR
+              </button>
               <button type="submit" disabled={pending || !username.trim() || !password.trim()} className="primary-button">
                 {pending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                 Sign In
@@ -132,6 +136,27 @@ export function LoginPanel() {
           {pending ? <div className="mt-4 flex items-center gap-2 text-[14px] text-[var(--text-muted)]"><LoaderCircle className="h-4 w-4 animate-spin" /> Preparing session...</div> : null}
         </section>
       </div>
+
+      {forgotPasswordOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(15,23,42,0.58)] p-4">
+          <div className="w-full max-w-md rounded-[24px] bg-white shadow-2xl">
+            <div className="border-b border-[var(--border)] px-6 py-5">
+              <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Lupa Password?</p>
+              <p className="mt-2 text-[14px] leading-6 text-[var(--text-muted)]">
+                Silakan hubungi tim HR untuk reset password akun karyawan Anda. Saat lapor ke HR, sertakan NIK atau username akun supaya proses reset lebih cepat.
+              </p>
+            </div>
+            <div className="px-6 py-5 text-[14px] text-[var(--text-muted)]">
+              Setelah HR reset password, Anda bisa login kembali memakai password baru yang diberikan HR.
+            </div>
+            <div className="flex justify-end border-t border-[var(--border)] px-6 py-4">
+              <button type="button" className="primary-button" onClick={() => setForgotPasswordOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

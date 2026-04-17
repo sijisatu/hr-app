@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "node -e \"console.log('No frontend automated tests yet')\""
+    "test": "node scripts/smoke-frontend.js",
+    "test:frontend-smoke": "node scripts/smoke-frontend.js"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.16",

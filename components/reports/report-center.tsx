@@ -182,8 +182,8 @@ export function ReportCenter({ overview }: ReportCenterProps) {
             </MetricListCard>
 
             <MetricListCard title="Department Headcount">
-              {overview.employees.departments.map((item) => (
-                <div key={item.name} className="flex items-center justify-between rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
+              {overview.employees.departments.map((item, index) => (
+                <div key={`${item.name}-${item.headcount}-${index}`} className="flex items-center justify-between rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
                   <span className="text-[14px] font-medium text-[var(--text)]">{item.name}</span>
                   <span className="text-[14px] font-semibold text-[var(--primary)]">{item.headcount}</span>
                 </div>
@@ -200,8 +200,8 @@ export function ReportCenter({ overview }: ReportCenterProps) {
         >
           <div className="grid gap-6 lg:grid-cols-2">
             <MetricListCard title="Pending Queue">
-              {overview.reimbursement.pendingQueue.map((item) => (
-                <div key={`${item.employeeName}-${item.claimType}`} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
+              {overview.reimbursement.pendingQueue.map((item, index) => (
+                <div key={`${item.employeeName}-${item.claimType}-${item.amount}-${item.status}-${index}`} className="border-b border-[var(--border)] pb-4 last:border-b-0 last:pb-0">
                   <p className="text-[15px] font-semibold text-[var(--text)]">{item.employeeName}</p>
                   <p className="mt-1 text-[13px] text-[var(--text-muted)]">
                     {item.claimType} | {formatReimbursementStatus(item.status)} | {money(item.amount)}
@@ -211,8 +211,8 @@ export function ReportCenter({ overview }: ReportCenterProps) {
             </MetricListCard>
 
             <MetricListCard title="Top Claim Amount">
-              {overview.reimbursement.topClaims.map((item) => (
-                <div key={item.employeeName} className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
+              {overview.reimbursement.topClaims.map((item, index) => (
+                <div key={`${item.employeeName}-${item.department}-${item.amount}-${index}`} className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border)] bg-white px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-[14px] font-semibold text-[var(--text)]">{item.employeeName}</p>
                     <p className="mt-1 text-[12px] text-[var(--text-muted)]">{item.department}</p>

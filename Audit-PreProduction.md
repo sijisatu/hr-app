@@ -98,16 +98,24 @@ Status saat ini: **Checklist only (belum fixing)**.
   Evidence: workflow [ci-quality.yml](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/.github/workflows/ci-quality.yml), script lint/test/typecheck di [package.json](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/package.json) dan [backend/package.json](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/package.json).
 
 ## F. Quality Assurance Checklist
-- [ ] `F1` `P0` Buat automated test minimal untuk alur kritis: auth login, check-in/out, payroll run, reimbursement submit-approve-process.
-- [ ] `F2` `P1` Tambahkan integration test API untuk validasi role access dan constraint bisnis.
-- [ ] `F3` `P1` Tambahkan E2E smoke test frontend (login per role, dashboard, flow utama).
-- [ ] `F4` `P2` Tetapkan performance baseline (p95 endpoint utama + target SLA).
+- [x] `F1` `P0` Buat automated test minimal untuk alur kritis: auth login, check-in/out, payroll run, reimbursement submit-approve-process.
+  Evidence: [backend/scripts/test-critical-flows.js](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/scripts/test-critical-flows.js), [backend/package.json](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/package.json).
+- [x] `F2` `P1` Tambahkan integration test API untuk validasi role access dan constraint bisnis.
+  Evidence: [backend/scripts/test-role-access.js](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/scripts/test-role-access.js), [backend/package.json](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/package.json).
+- [x] `F3` `P1` Tambahkan E2E smoke test frontend (login per role, dashboard, flow utama).
+  Evidence: [scripts/smoke-frontend.js](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/scripts/smoke-frontend.js), [package.json](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/package.json), [ci-quality.yml](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/.github/workflows/ci-quality.yml).
+- [x] `F4` `P2` Tetapkan performance baseline (p95 endpoint utama + target SLA).
+  Evidence: [docs/performance-baseline.md](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/docs/performance-baseline.md).
 
 ## G. Compliance & Privacy Checklist
-- [ ] `G1` `P1` Data classification & retention policy untuk PII/financial/biometric-like media (selfie, receipt).
-- [ ] `G2` `P1` Access control untuk dokumen sensitif per role dan per owner.
-- [ ] `G3` `P2` Audit trail immutable untuk approval chain (manager/HR/payroll).
-- [ ] `G4` `P2` Consent/notice policy untuk penyimpanan dokumen personal.
+- [x] `G1` `P1` Data classification & retention policy untuk PII/financial/biometric-like media (selfie, receipt).
+  Evidence: [docs/data-privacy-governance.md](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/docs/data-privacy-governance.md), [backend/.env.example](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/.env.example).
+- [x] `G2` `P1` Access control untuk dokumen sensitif per role dan per owner.
+  Evidence: [backend/src/common/app.service.ts](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/src/common/app.service.ts), [backend/src/app.controller.ts](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/src/app.controller.ts), [backend/src/common/authz.ts](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/src/common/authz.ts).
+- [x] `G3` `P2` Audit trail immutable untuk approval chain (manager/HR/payroll).
+  Evidence: [backend/src/common/app.service.ts](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/backend/src/common/app.service.ts), [docs/approval-audit-trail.md](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/docs/approval-audit-trail.md).
+- [x] `G4` `P2` Consent/notice policy untuk penyimpanan dokumen personal.
+  Evidence: [docs/data-privacy-governance.md](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/docs/data-privacy-governance.md), [components/providers/attendance-modal-provider.tsx](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/components/providers/attendance-modal-provider.tsx), [components/reimbursement/reimbursement-workspace.tsx](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/components/reimbursement/reimbursement-workspace.tsx), [components/employees/employee-management-workspace.tsx](/d:/Projek%20Sampingan/Praluxstd/Aplikasi%20Absensi/Project%20File%20Absensi/components/employees/employee-management-workspace.tsx).
 
 ---
 
