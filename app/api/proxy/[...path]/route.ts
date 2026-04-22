@@ -23,7 +23,9 @@ async function forwardRequest(request: Request, path: string[]) {
   const requestUrl = new URL(request.url);
   const normalizedPath = path[0] === "api" ? path.slice(1) : path;
   const targetPath = normalizedPath.map((segment) => encodeURIComponent(segment)).join("/");
-  const targetUrl = new URL(`/api/${targetPath}${requestUrl.search}`, getServerApiBase());
+  const targetUrl = normalizedPath[0] === "storage"
+    ? new URL(`/${targetPath}${requestUrl.search}`, getServerApiBase())
+    : new URL(`/api/${targetPath}${requestUrl.search}`, getServerApiBase());
   const incomingHeaders = new Headers(request.headers);
   const forwardedHeaders = new Headers();
 

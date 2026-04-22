@@ -1,5 +1,6 @@
 import { getApiBase } from "@/lib/api-base";
 import { getAttendanceHistory, getEmployees, getLeaveHistory, getReimbursementRequests, type ReimbursementStatus, withApiSession } from "@/lib/api";
+import { resolveAssetUrl } from "@/lib/asset-url";
 import { money } from "@/lib/payroll";
 
 export type ReportPeriodPreset = "current-month" | "last-month" | "last-3-months" | "year-to-date" | "all";
@@ -351,10 +352,7 @@ export async function exportReport(payload: {
 }
 
 export function toAssetUrl(fileUrl: string | null) {
-  if (!fileUrl) {
-    return null;
-  }
-  return `${getApiBase()}${fileUrl}`;
+  return resolveAssetUrl(fileUrl);
 }
 
 export function formatNetPay(value: number) {

@@ -1,5 +1,6 @@
 import { getApiBase } from "@/lib/api-base";
 import { withApiSession } from "@/lib/api";
+import { resolveAssetUrl } from "@/lib/asset-url";
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -227,8 +228,5 @@ export function money(value: number) {
 }
 
 export function toAssetUrl(fileUrl: string | null) {
-  if (!fileUrl) {
-    return null;
-  }
-  return `${getApiBase()}${fileUrl}`;
+  return resolveAssetUrl(fileUrl);
 }

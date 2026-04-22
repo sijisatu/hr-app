@@ -13,5 +13,9 @@ export function resolveAssetUrl(fileUrl: string | null | undefined) {
     return fileUrl;
   }
 
+  if (fileUrl.startsWith("/storage/")) {
+    return `/api/storage/${fileUrl.replace(/^\/storage\//, "")}`;
+  }
+
   return `${getApiBase()}${fileUrl}`;
 }
