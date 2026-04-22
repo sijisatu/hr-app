@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Download, Eye, FileText, KeyRound, LoaderCircle, X } from "lucide-react";
 import type { EmployeeDocumentRecord, EmployeeRecord } from "@/lib/api";
+import { findLeaveAllocation, getLeaveAllocationAvailable } from "@/lib/api";
 import { resolveAssetUrl } from "@/lib/asset-url";
 
 type TabKey = "personal" | "education" | "job" | "experience" | "financial" | "documents";
@@ -124,6 +125,14 @@ export function EmployeeProfileWorkspace({
   const selectedAllowances = useMemo(
     () => employee.financialComponentIds.length,
     [employee.financialComponentIds.length]
+  );
+  const annualAllocation = useMemo(
+    () => findLeaveAllocation(employee.leaveBalances, "Annual Leave"),
+    [employee.leaveBalances]
+  );
+  const permissionAllocation = useMemo(
+    () => findLeaveAllocation(employee.leaveBalances, "Permission"),
+    [employee.leaveBalances]
   );
 
   const submitPasswordChange = async () => {
@@ -299,9 +308,9 @@ export function EmployeeProfileWorkspace({
 
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <MiniCard label="Allowance" value={money(employee.allowance)} note={`${selectedAllowances} komponen terpilih`} />
-                <MiniCard label="Annual Leave" value={`${employee.leaveBalances.annual + employee.leaveBalances.annualCarryOver} days`} note="Current + carry over annual leave" />
+                <MiniCard label="Annual Leave" value={`${getLeaveAllocationAvailable(annualAllocation ?? { code: "", label: "", days: 0, carryOver: 0, carryOverExpiresAt: null })} days`} note="Current + carry over annual leave" />
                 <MiniCard label="Sick Leave Used" value={`${sickLeaveUsed} times`} note="Ditampilkan sebagai jumlah pemakaian" />
-                <MiniCard label="Permission" value={`${employee.leaveBalances.permission} days`} note="Sisa izin" />
+                <MiniCard label="Permission" value={`${getLeaveAllocationAvailable(permissionAllocation ?? { code: "", label: "", days: 0, carryOver: 0, carryOverExpiresAt: null })} days`} note="Remaining permission balance" />
               </div>
             </div>
           ) : null}

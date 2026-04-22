@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Inject,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -26,7 +27,7 @@ import { MetricsService } from "./common/metrics.service";
 import { PublicRoute, Roles } from "./common/authz";
 import type { AuthenticatedActor } from "./common/authz";
 import { IdempotencyInterceptor } from "./common/idempotency.interceptor";
-import { verifyAndExtractSessionKey } from "./common/session-token";
+import { verifyAndExtractSessionToken } from "./common/session-token";
 import {
   AttendanceHistoryQueryDto,
   CheckInDto,
@@ -121,14 +122,14 @@ export class AppController {
     }
 
     const rawCookieSession = req.cookies?.pp_session;
-    const headerSession = req.headers?.["x-session-key"];
+    const headerSession = req.headers?.["x-session-token"] ?? req.headers?.["x-session-key"];
     const tokenFromHeader = Array.isArray(headerSession) ? headerSession[0] : headerSession;
-    const sessionKey = verifyAndExtractSessionKey(rawCookieSession) ?? verifyAndExtractSessionKey(tokenFromHeader);
-    if (!sessionKey) {
+    const sessionSubject = verifyAndExtractSessionToken(rawCookieSession) ?? verifyAndExtractSessionToken(tokenFromHeader);
+    if (!sessionSubject) {
       return undefined;
     }
 
-    const actor = await this.appService.resolveSessionActor(sessionKey);
+    const actor = await this.appService.resolveSessionActor(sessionSubject);
     if (actor) {
       req.user = actor;
     }
@@ -234,22 +235,53 @@ export class AppController {
   }
 
   @Get("employees")
-  @Roles("admin", "hr", "manager")
-  async employees(@Query() query: EmployeeListQueryDto, @Res({ passthrough: true }) res: Response) {
+  @Roles("admin", "hr", "manager", "employee")
+  async employees(@Query() query: EmployeeListQueryDto, @Req() request: Request, @Res({ passthrough: true }) res: Response) {
     this.setNoStore(res);
-    return this.wrap(await this.appService.getEmployees(query));
+    const actor = (request as Request & { user?: AuthenticatedActor }).user;
+    return this.wrap(await this.appService.getEmployees(query, actor));
   }
 
   @Post("auth/employee-login")
   @PublicRoute()
-  async employeeLogin(@Body() body: EmployeeLoginDto) {
-    return this.wrap(await this.appService.authenticateEmployee(body.username, body.password));
+  async employeeLogin(@Body() body: EmployeeLoginDto, @Req() request: Request) {
+    return this.wrap(
+      await this.appService.authenticateEmployee(body.username, body.password, {
+        ipAddress: request.ip,
+        userAgent: typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : null
+      })
+    );
   }
 
   @Get("auth/employee-session/:id")
   @PublicRoute()
   async employeeSession(@Param("id") id: string) {
     return this.wrap(await this.appService.getEmployeeSession(id));
+  }
+
+  @Get("auth/session/current")
+  @PublicRoute()
+  async currentSession(@Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    if (!actor) {
+      throw new NotFoundException("Session not found");
+    }
+    return this.wrap(actor);
+  }
+
+  @Post("auth/logout")
+  @PublicRoute()
+  async logout(@Req() request: Request) {
+    const rawCookieSession = (request as Request & { cookies?: Record<string, string | undefined> }).cookies?.pp_session;
+    const headerSession =
+      ((request as Request & { headers?: Record<string, string | string[] | undefined> }).headers?.["x-session-token"] as string | undefined) ??
+      ((request as Request & { headers?: Record<string, string | string[] | undefined> }).headers?.["x-session-key"] as string | undefined);
+    const sessionSubject = verifyAndExtractSessionToken(rawCookieSession) ?? verifyAndExtractSessionToken(headerSession);
+    if (!sessionSubject) {
+      return this.wrap({ revoked: false });
+    }
+
+    return this.wrap(await this.appService.revokeEmployeeSession(sessionSubject));
   }
 
   @Post("auth/change-password")

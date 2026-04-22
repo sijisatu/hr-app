@@ -7,12 +7,12 @@ function toSignature(value: string) {
   return createHmac("sha256", SESSION_SECRET).update(value).digest("base64url");
 }
 
-export function signSessionToken(sessionKey: string) {
-  const signature = toSignature(sessionKey);
-  return `${sessionKey}.${signature}`;
+export function signSessionToken(sessionSubject: string) {
+  const signature = toSignature(sessionSubject);
+  return `${sessionSubject}.${signature}`;
 }
 
-export function verifyAndExtractSessionKey(token: string | undefined | null) {
+export function verifyAndExtractSessionToken(token: string | undefined | null) {
   if (!token) {
     return null;
   }
@@ -22,9 +22,9 @@ export function verifyAndExtractSessionKey(token: string | undefined | null) {
     return IS_PRODUCTION ? null : token;
   }
 
-  const sessionKey = token.slice(0, separatorIndex);
+  const sessionSubject = token.slice(0, separatorIndex);
   const signature = token.slice(separatorIndex + 1);
-  const expected = toSignature(sessionKey);
+  const expected = toSignature(sessionSubject);
 
   const signatureBuffer = Buffer.from(signature);
   const expectedBuffer = Buffer.from(expected);
@@ -36,5 +36,7 @@ export function verifyAndExtractSessionKey(token: string | undefined | null) {
     return null;
   }
 
-  return sessionKey;
+  return sessionSubject;
 }
+
+export const verifyAndExtractSessionKey = verifyAndExtractSessionToken;

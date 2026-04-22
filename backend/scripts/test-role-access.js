@@ -22,6 +22,19 @@ function unique(prefix) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1_000)}`;
 }
 
+async function loginAs(username, password = "employee123") {
+  const login = await api("/api/auth/employee-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+
+  assert(login.response.ok && login.json?.success === true, `Employee login flow failed. ${login.text}`);
+  const sessionId = login.json?.data?.sessionId;
+  assert(typeof sessionId === "string" && sessionId.length > 0, "Employee login did not return a valid session.");
+  return { "X-Session-Key": sessionId };
+}
+
 async function main() {
   const adminHeaders = { "X-Session-Key": "global-admin" };
   const employeesRes = await api("/api/employees", { headers: adminHeaders });
@@ -32,12 +45,17 @@ async function main() {
   const employee = employees.find((item) => item.role === "employee" && item.status === "active" && item.appLoginEnabled);
   assert(manager, "No active manager found.");
   assert(employee, "No active employee found.");
+  assert(manager.loginUsername, "Manager has no login username.");
+  assert(employee.loginUsername, "Employee has no login username.");
+
+  const managerHeaders = await loginAs(manager.loginUsername);
+  const employeeHeaders = await loginAs(employee.loginUsername);
 
   const employeeCreateDepartment = await api("/api/departments", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Session-Key": `employee:${employee.id}`
+      ...employeeHeaders
     },
     body: JSON.stringify({ name: `Invalid-${Date.now()}`, active: true })
   });
@@ -50,7 +68,7 @@ async function main() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Session-Key": `employee:${manager.id}`
+      ...managerHeaders
     },
     body: JSON.stringify({
       periodLabel: `RBAC-${Date.now()}`,

@@ -1,4 +1,5 @@
-import { getAttendanceHistory, getEmployees, getLeaveHistory, getReimbursementRequests, type ReimbursementStatus } from "@/lib/api";
+import { getApiBase } from "@/lib/api-base";
+import { getAttendanceHistory, getEmployees, getLeaveHistory, getReimbursementRequests, type ReimbursementStatus, withApiSession } from "@/lib/api";
 import { money } from "@/lib/payroll";
 
 export type ReportPeriodPreset = "current-month" | "last-month" | "last-3-months" | "year-to-date" | "all";
@@ -47,11 +48,6 @@ export type ReportCenterOverview = {
     list: { employee: string; department: string; claimType: string; receiptDate: string; amount: string; status: ReimbursementStatus }[];
   };
 };
-
-const API_BASE =
-  process.env.API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://localhost:4000");
 
 type PeriodRange = { preset: ReportPeriodPreset; label: string; start: Date | null; end: Date | null };
 
@@ -308,12 +304,13 @@ export async function exportReport(payload: {
   rows?: (string | number | null)[][];
   content?: string;
 }) {
-  const response = await fetch(`${API_BASE}/api/reports/export`, {
+  const apiBase = getApiBase();
+  const response = await fetch(`${apiBase}/api/reports/export`, await withApiSession({
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
-  });
+  }));
   if (!response.ok) {
     throw new Error(`API request failed with status ${response.status}`);
   }
@@ -322,9 +319,12 @@ export async function exportReport(payload: {
 
   while (Date.now() - startedAt < 90_000) {
     await new Promise((resolve) => setTimeout(resolve, 900));
-    const statusResponse = await fetch(`${API_BASE}/api/reports/export/status?jobId=${encodeURIComponent(json.data.jobId)}`, {
-      credentials: "include"
-    });
+    const statusResponse = await fetch(
+      `${apiBase}/api/reports/export/status?jobId=${encodeURIComponent(json.data.jobId)}`,
+      await withApiSession({
+        credentials: "include"
+      })
+    );
     if (!statusResponse.ok) {
       throw new Error(`API request failed with status ${statusResponse.status}`);
     }
@@ -354,7 +354,7 @@ export function toAssetUrl(fileUrl: string | null) {
   if (!fileUrl) {
     return null;
   }
-  return `${API_BASE}${fileUrl}`;
+  return `${getApiBase()}${fileUrl}`;
 }
 
 export function formatNetPay(value: number) {

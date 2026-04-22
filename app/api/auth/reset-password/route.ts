@@ -1,13 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getServerApiBase } from "@/lib/api-base";
 import { authCookieName } from "@/lib/auth-config";
 import { getCurrentSession } from "@/lib/auth";
-
-const isProduction = (process.env.NODE_ENV ?? "").toLowerCase() === "production";
-const API_BASE =
-  process.env.API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  (isProduction ? "https://localhost:4000" : "http://localhost:4000");
 
 export async function POST(request: Request) {
   const session = await getCurrentSession();
@@ -32,7 +27,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Session cookie tidak ditemukan." }, { status: 401 });
   }
 
-  const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+  const response = await fetch(`${getServerApiBase()}/api/auth/reset-password`, {
     method: "POST",
     cache: "no-store",
     headers: {

@@ -6,17 +6,29 @@ import { getEmployees, getReimbursementClaimTypes, getReimbursementRequests } fr
 export default async function ReimbursementPage() {
   const session = await requireSession(["admin", "hr", "manager", "employee"]);
   const shouldLoadEmployees = session.role === "hr" || session.role === "admin";
-  const [employees, claimTypes, requests] = await Promise.all([
+  const [employeesResult, claimTypesResult, requestsResult] = await Promise.allSettled([
     shouldLoadEmployees ? getEmployees() : Promise.resolve([]),
     getReimbursementClaimTypes(),
     getReimbursementRequests()
   ]);
+  const employees = employeesResult.status === "fulfilled" ? employeesResult.value : [];
+  const claimTypes = claimTypesResult.status === "fulfilled" ? claimTypesResult.value : [];
+  const requests = requestsResult.status === "fulfilled" ? requestsResult.value : [];
+  const dataUnavailable =
+    employeesResult.status === "rejected" ||
+    claimTypesResult.status === "rejected" ||
+    requestsResult.status === "rejected";
 
   return (
     <AppShell
       title="Reimbursement"
       subtitle={session.role === "hr" || session.role === "admin" ? "Review employee claims and manage claim type allocations in one workspace." : "Submit claims, check entitlements, and track approval progress."}
     >
+      {dataUnavailable ? (
+        <div className="page-card mb-6 border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
+          Some reimbursement data is temporarily unavailable. The page is still loaded with the latest safe data.
+        </div>
+      ) : null}
       <ReimbursementWorkspace
         role={session.role}
         userId={session.id}

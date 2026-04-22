@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-04-22
+- Stabilize local production-mode frontend auth, proxy routing, and POST forwarding so login/logout and form submissions work reliably again.
+- Fix employee self-service data loading for attendance, leave balances, employee lookup, and newly created employee leave allocations.
+- Restore asset and document lookup flow used by attendance evidence and employee document preview/download.
+- Improve attendance quick action and modal behavior so clock-in/clock-out status refreshes correctly after submission.
+- Replace legacy ESLint config with flat config to remove the circular configuration issue blocking lint/build workflows.
+- Continue pre-production hardening across dashboard, reports, and session handling after recent regression fixes.
+
 ## 2026-04-02
 - Initial HR app prototype.
 

@@ -33,11 +33,20 @@ export default async function AttendancePage() {
     );
   }
 
-  const [logs, overview, overtime] = await Promise.all([
+  const [logsResult, overviewResult, overtimeResult] = await Promise.allSettled([
     getAttendanceHistory(),
     getAttendanceOverview(),
     getAttendanceOvertime()
   ]);
+  const logs = logsResult.status === "fulfilled" ? logsResult.value : [];
+  const overview = overviewResult.status === "fulfilled"
+    ? overviewResult.value
+    : { checkedInToday: 0, openCheckIns: 0, gpsValidated: 0, selfieCaptured: 0, overtimeHours: 0 };
+  const overtime = overtimeResult.status === "fulfilled" ? overtimeResult.value : [];
+  const dataUnavailable =
+    logsResult.status === "rejected" ||
+    overviewResult.status === "rejected" ||
+    overtimeResult.status === "rejected";
 
   const punctuality = logs.length === 0 ? 0 : (logs.filter((item) => item.status === "on-time").length / logs.length) * 100;
 
@@ -59,6 +68,11 @@ export default async function AttendancePage() {
       )}
     >
       <div className="space-y-6">
+        {dataUnavailable ? (
+          <div className="page-card border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
+            Some attendance data is temporarily unavailable. The page is still loaded with the latest safe data.
+          </div>
+        ) : null}
         <AttendanceTable logs={logs} punctuality={punctuality} overview={overview} />
 
         <section className="page-card p-6">

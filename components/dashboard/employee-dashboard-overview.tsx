@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChartColumnBig, PieChart } from "lucide-react";
 import type { AttendanceRecord, LeaveRecord } from "@/lib/api";
+import { isOnDutyLeaveType, isSickLeaveType, isHalfDayLeaveType } from "@/lib/api";
 
 type EmployeeDashboardOverviewProps = {
   logs: AttendanceRecord[];
@@ -105,6 +106,15 @@ function buildLastThreeWeeks(logs: AttendanceRecord[]): ChartPoint[] {
   return points;
 }
 
+function safeInitials(name: string | null | undefined) {
+  return (name ?? "")
+    .split(" ")
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "NA";
+}
+
 function formatHours(value: number) {
   const totalMinutes = Math.round(value * 60);
   const hours = Math.floor(totalMinutes / 60);
@@ -165,13 +175,13 @@ export function EmployeeDashboardOverview({ logs, leaves }: EmployeeDashboardOve
   const attendanceCount = logs.length;
   const onTimeCount = logs.filter((item) => item.status === "on-time").length;
   const lateCount = logs.filter((item) => item.status === "late").length;
-  const approvedAnnualLeaveDays = leaves
-    .filter((item) => item.status === "approved" && (item.type === "Leave Request" || item.type === "Annual Leave"))
+  const approvedLeaveDays = leaves
+    .filter((item) => item.status === "approved" && !isOnDutyLeaveType(item.type) && !isSickLeaveType(item.type) && !isHalfDayLeaveType(item.type))
     .reduce((sum, item) => sum + item.daysRequested, 0);
-  const approvedSickLeaveCount = leaves.filter((item) => item.status === "approved" && (item.type === "Sick Submission" || item.type === "Sick Leave")).length;
-  const pieTotal = Math.max(attendanceCount + approvedAnnualLeaveDays + approvedSickLeaveCount, 1);
+  const approvedSickLeaveCount = leaves.filter((item) => item.status === "approved" && isSickLeaveType(item.type)).length;
+  const pieTotal = Math.max(attendanceCount + approvedLeaveDays + approvedSickLeaveCount, 1);
   const attendanceShare = (attendanceCount / pieTotal) * 360;
-  const annualShare = (approvedAnnualLeaveDays / pieTotal) * 360;
+  const annualShare = (approvedLeaveDays / pieTotal) * 360;
   const sickShare = Math.max(0, 360 - attendanceShare - annualShare);
   const pieStyle = {
     background: `conic-gradient(${chartPalette.attendance} 0deg ${attendanceShare}deg, ${chartPalette.leave} ${attendanceShare}deg ${attendanceShare + annualShare}deg, ${chartPalette.sick} ${attendanceShare + annualShare}deg ${attendanceShare + annualShare + sickShare}deg)`
@@ -180,12 +190,12 @@ export function EmployeeDashboardOverview({ logs, leaves }: EmployeeDashboardOve
   const pieSlices = useMemo(() => {
     const slices = [
       { label: "Attendance", value: attendanceCount, color: chartPalette.attendance, start: 0, end: attendanceShare },
-      { label: "On Leave", value: approvedAnnualLeaveDays, color: chartPalette.leave, start: attendanceShare, end: attendanceShare + annualShare },
+      { label: "On Leave", value: approvedLeaveDays, color: chartPalette.leave, start: attendanceShare, end: attendanceShare + annualShare },
       { label: "Sick Leave", value: approvedSickLeaveCount, color: chartPalette.sick, start: attendanceShare + annualShare, end: attendanceShare + annualShare + sickShare }
     ];
 
     return slices.filter((slice) => slice.value > 0);
-  }, [attendanceCount, approvedAnnualLeaveDays, approvedSickLeaveCount, attendanceShare, annualShare, sickShare]);
+  }, [attendanceCount, approvedLeaveDays, approvedSickLeaveCount, attendanceShare, annualShare, sickShare]);
 
   const points = buildLastThreeWeeks(logs);
   const weekSummaries = getWeekSummaries(points);
@@ -208,7 +218,7 @@ export function EmployeeDashboardOverview({ logs, leaves }: EmployeeDashboardOve
             <PieChart className="mt-1 h-7 w-7 shrink-0 text-[var(--text)]" />
             <div className="min-w-0">
               <p className="section-title text-[clamp(22px,2.2vw,32px)] font-semibold leading-[1.08] text-[var(--text)]">Attendance Demography</p>
-              <p className="mt-1.5 max-w-[28rem] text-[clamp(13px,1.1vw,15px)] leading-6 text-[var(--text-muted)]">Ringkasan attendance, annual leave, dan sick leave kamu.</p>
+              <p className="mt-1.5 max-w-[28rem] text-[clamp(13px,1.1vw,15px)] leading-6 text-[var(--text-muted)]">A quick snapshot of attendance, approved leave, and sick submissions.</p>
             </div>
           </div>
 
@@ -276,8 +286,8 @@ export function EmployeeDashboardOverview({ logs, leaves }: EmployeeDashboardOve
 
             <div className="grid min-w-0 gap-3.5 sm:gap-4">
               <SummaryBlock label="Attendance" value={String(attendanceCount)} note={`On Time: ${onTimeCount} | Late: ${lateCount} | FO Scan In/Scan Out: 0`} />
-              <SummaryBlock label="On Leave" value={String(approvedAnnualLeaveDays)} note={`Cuti Tahunan (Annual Leave): ${approvedAnnualLeaveDays}`} />
-              <SummaryBlock label="Sick Leave" value={String(approvedSickLeaveCount)} note="Ditampilkan sebagai jumlah pemakaian sick leave, bukan balance." />
+              <SummaryBlock label="On Leave" value={String(approvedLeaveDays)} note="Approved leave days across allocated leave types." />
+              <SummaryBlock label="Sick Leave" value={String(approvedSickLeaveCount)} note="Displayed as approved sick submissions, not remaining balance." />
             </div>
           </div>
         </div>
@@ -287,7 +297,7 @@ export function EmployeeDashboardOverview({ logs, leaves }: EmployeeDashboardOve
             <ChartColumnBig className="mt-1 h-7 w-7 shrink-0 text-[var(--text)]" />
             <div className="min-w-0">
               <p className="section-title text-[clamp(22px,2.2vw,32px)] font-semibold leading-[1.08] text-[var(--text)]">Attendance Info</p>
-              <p className="mt-1.5 text-[clamp(13px,1.1vw,15px)] leading-6 text-[var(--text-muted)]">Attendance overview untuk 3 minggu terakhir.</p>
+              <p className="mt-1.5 text-[clamp(13px,1.1vw,15px)] leading-6 text-[var(--text-muted)]">Attendance overview for the last 3 weeks.</p>
             </div>
           </div>
 

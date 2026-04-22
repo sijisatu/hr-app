@@ -22,6 +22,19 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+async function loginAs(username, password = "employee123") {
+  const login = await api("/api/auth/employee-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+
+  assert(login.response.ok && login.json?.success === true, `Employee login flow failed. ${login.text}`);
+  const sessionId = login.json?.data?.sessionId;
+  assert(typeof sessionId === "string" && sessionId.length > 0, "Employee login did not return a valid session.");
+  return { "X-Session-Key": sessionId };
+}
+
 async function main() {
   const adminHeaders = { "X-Session-Key": "global-admin" };
 
@@ -45,13 +58,10 @@ async function main() {
   );
   assert(targetEmployee, "No employee-manager pair found for reimbursement approval flow.");
   assert(targetEmployee.loginUsername, "Target employee has no login username.");
+  assert(manager.loginUsername, "Manager has no login username.");
 
-  const login = await api("/api/auth/employee-login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: targetEmployee.loginUsername, password: "employee123" })
-  });
-  assert(login.response.ok && login.json?.success === true, `Employee login flow failed. ${login.text}`);
+  const employeeHeaders = await loginAs(targetEmployee.loginUsername);
+  const managerHeaders = await loginAs(manager.loginUsername);
 
   const checkInForm = new FormData();
   checkInForm.set("userId", targetEmployee.id);
@@ -137,7 +147,7 @@ async function main() {
 
   const managerApprove = await api("/api/reimbursement/requests/manager-approve", {
     method: "POST",
-    headers: { "X-Session-Key": `employee:${manager.id}`, "Content-Type": "application/json" },
+    headers: { ...managerHeaders, "Content-Type": "application/json" },
     body: JSON.stringify({ reimbursementId, status: "approved", actor: manager.name })
   });
   assert(

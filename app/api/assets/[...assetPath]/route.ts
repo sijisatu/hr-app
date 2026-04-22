@@ -1,33 +1,28 @@
 import { NextResponse } from "next/server";
-import { getCurrentSession } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { getServerApiBase } from "@/lib/api-base";
 import { authCookieName } from "@/lib/auth-config";
-import { signSessionToken } from "@/lib/session-token";
-
-const isProduction = (process.env.NODE_ENV ?? "").toLowerCase() === "production";
-const API_BASE =
-  process.env.API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  (isProduction ? "https://localhost:4000" : "http://127.0.0.1:4000");
+import { verifyAndExtractSessionToken } from "@/lib/session-token";
 
 export async function GET(
   request: Request,
   context: { params: Promise<{ assetPath: string[] }> }
 ) {
   const { assetPath } = await context.params;
-  const session = await getCurrentSession();
-  const signedSession = session ? signSessionToken(session.sessionKey) : null;
+  const cookieStore = await cookies();
+  const signedSession = cookieStore.get(authCookieName)?.value ?? null;
 
-  if (!signedSession) {
+  if (!signedSession || !verifyAndExtractSessionToken(signedSession)) {
     return NextResponse.json({ success: false, error: "Session cookie not found." }, { status: 401 });
   }
 
-  const targetUrl = new URL(`/api/assets/${assetPath.join("/")}`, API_BASE);
+  const targetUrl = new URL(`/api/assets/${assetPath.join("/")}`, getServerApiBase());
   const upstream = await fetch(targetUrl, {
     method: "GET",
     cache: "no-store",
     headers: {
       Cookie: `${authCookieName}=${signedSession}`,
-      "X-Session-Key": signedSession
+      "X-Session-Token": signedSession
     }
   });
 

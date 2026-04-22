@@ -216,6 +216,21 @@ function money(value: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
 }
 
+function normalizeEmployeeRecord(employee: EmployeeRecord): EmployeeRecord {
+  return {
+    ...employee,
+    educationHistory: Array.isArray(employee.educationHistory) ? employee.educationHistory : [],
+    workExperiences: Array.isArray(employee.workExperiences) ? employee.workExperiences : [],
+    financialComponentIds: Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds : [],
+    documents: Array.isArray(employee.documents) ? employee.documents : [],
+    leaveBalances: employee.leaveBalances ?? {
+      allocations: [],
+      sickUsed: 0,
+      balanceYear: new Date().getFullYear()
+    }
+  };
+}
+
 function blankDepartmentMasterForm(): DepartmentMasterForm {
   return {
     id: null,
@@ -250,13 +265,17 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   const [resetPasswordValue, setResetPasswordValue] = useState("employee123");
 
-  const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: getEmployees, initialData: initialEmployees });
+  const employeesQuery = useQuery({
+    queryKey: ["employees"],
+    queryFn: async () => (await getEmployees()).map((employee) => normalizeEmployeeRecord(employee)),
+    initialData: initialEmployees.map((employee) => normalizeEmployeeRecord(employee))
+  });
   const positionQuery = useQuery({ queryKey: ["compensation-profiles"], queryFn: getCompensationProfiles, initialData: initialCompensationProfiles });
   const departmentQuery = useQuery({ queryKey: ["departments"], queryFn: getDepartments, initialData: initialDepartments });
   const componentQuery = useQuery({ queryKey: ["payroll-components"], queryFn: getPayrollComponents });
   const taxQuery = useQuery({ queryKey: ["tax-profiles"], queryFn: getTaxProfiles });
 
-  const employees = employeesQuery.data ?? [];
+  const employees = (employeesQuery.data ?? []).map((employee) => normalizeEmployeeRecord(employee));
   const positions = positionQuery.data ?? [];
   const departments = departmentQuery.data ?? [];
   const components = componentQuery.data ?? [];

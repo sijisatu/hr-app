@@ -1,3 +1,6 @@
+import { getApiBase, getLocalApiFallbackBase, shouldTryLocalApiFallback } from "@/lib/api-base";
+import { authCookieName } from "@/lib/auth-config";
+
 export type ApiResponse<T> = {
   success: boolean;
   data: T;
@@ -12,30 +15,17 @@ export type PaginatedList<T> = {
   hasNext: boolean;
 };
 
+export type LeaveBalanceAllocation = {
+  code: string;
+  label: string;
+  days: number;
+  carryOver: number;
+  carryOverExpiresAt: string | null;
+};
+
 export type LeaveBalance = {
-  annual: number;
-  annualCarryOver: number;
-  annualCarryOverExpiresAt: string | null;
-  religious: number;
-  religiousCarryOver: number;
-  religiousCarryOverExpiresAt: string | null;
-  maternity: number;
-  maternityCarryOver: number;
-  maternityCarryOverExpiresAt: string | null;
-  paternity: number;
-  paternityCarryOver: number;
-  paternityCarryOverExpiresAt: string | null;
-  marriage: number;
-  marriageCarryOver: number;
-  marriageCarryOverExpiresAt: string | null;
-  bereavement: number;
-  bereavementCarryOver: number;
-  bereavementCarryOverExpiresAt: string | null;
-  sick: number;
+  allocations: LeaveBalanceAllocation[];
   sickUsed: number;
-  permission: number;
-  permissionCarryOver: number;
-  permissionCarryOverExpiresAt: string | null;
   balanceYear: number;
 };
 
@@ -195,20 +185,7 @@ export type OvertimeRecord = {
   status: "pending" | "approved" | "rejected" | "paid";
 };
 
-export type LeaveType =
-  | "Leave Request"
-  | "Sick Submission"
-  | "On Duty Request"
-  | "Half Day Leave"
-  | "Annual Leave"
-  | "Religious Leave"
-  | "Maternity Leave"
-  | "Paternity Leave"
-  | "Marriage Leave"
-  | "Bereavement Leave"
-  | "Sick Leave"
-  | "Permission"
-  | "Remote Work";
+export type LeaveType = string;
 
 export type LeaveRecord = {
   id: string;
@@ -323,24 +300,108 @@ export type Anomaly = {
   subtitle: string;
 };
 
-const API_BASE =
-  process.env.API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://localhost:4000");
-const LOCAL_FALLBACK_API_BASE = "http://127.0.0.1:4000";
+const leaveTypeAliases: Record<string, string> = {
+  "Leave Request": "Annual Leave",
+  "Sick Leave": "Sick Submission",
+  Permission: "Half Day Leave",
+  "Remote Work": "On Duty Request"
+};
 
-function shouldTryLocalFallback() {
-  return API_BASE !== LOCAL_FALLBACK_API_BASE && (process.env.NODE_ENV ?? "").toLowerCase() !== "production";
+const specialLeaveTypes = {
+  onDuty: new Set(["On Duty Request", "Remote Work"]),
+  sick: new Set(["Sick Submission", "Sick Leave"]),
+  halfDay: new Set(["Half Day Leave", "Permission"])
+} as const;
+
+export function normalizeLeaveType(type: string) {
+  return leaveTypeAliases[type] ?? type;
+}
+
+export function toLeaveTypeCode(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "leave-type";
+}
+
+export function getLeaveAllocationAvailable(allocation: LeaveBalanceAllocation) {
+  return Number((allocation.days + allocation.carryOver).toFixed(1));
+}
+
+export function findLeaveAllocation(
+  balances: LeaveBalance | null | undefined,
+  type: string
+) {
+  const normalizedType = normalizeLeaveType(type);
+  const typeCode = toLeaveTypeCode(normalizedType);
+  return (balances?.allocations ?? []).find((allocation) => {
+    const allocationCode = toLeaveTypeCode(allocation.code || allocation.label);
+    const allocationLabelCode = toLeaveTypeCode(allocation.label);
+    return allocationCode === typeCode || allocationLabelCode === typeCode;
+  }) ?? null;
+}
+
+export function isOnDutyLeaveType(type: string) {
+  return specialLeaveTypes.onDuty.has(type);
+}
+
+export function isSickLeaveType(type: string) {
+  return specialLeaveTypes.sick.has(type);
+}
+
+export function isHalfDayLeaveType(type: string) {
+  return specialLeaveTypes.halfDay.has(type);
+}
+
+export function isStandardLeaveRequestType(type: string) {
+  return !isOnDutyLeaveType(type) && !isSickLeaveType(type) && !isHalfDayLeaveType(type);
+}
+
+export async function withApiSession(init: RequestInit = {}): Promise<RequestInit> {
+  const nextInit: RequestInit = {
+    ...init,
+    credentials: init.credentials ?? "include"
+  };
+
+  if (typeof window !== "undefined") {
+    return nextInit;
+  }
+
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const signedSession = cookieStore.get(authCookieName)?.value;
+    if (!signedSession) {
+      return nextInit;
+    }
+
+    const headers = new Headers(nextInit.headers ?? {});
+    if (!headers.has("X-Session-Token")) {
+      headers.set("X-Session-Token", signedSession);
+    }
+    if (!headers.has("Cookie")) {
+      headers.set("Cookie", `${authCookieName}=${signedSession}`);
+    }
+
+    nextInit.headers = headers;
+  } catch {
+    return nextInit;
+  }
+
+  return nextInit;
 }
 
 async function fetchWithFallback(pathname: string, init: RequestInit) {
+  const requestInit = await withApiSession(init);
+  const apiBase = getApiBase();
   try {
-    return await fetch(`${API_BASE}${pathname}`, init);
+    return await fetch(`${apiBase}${pathname}`, requestInit);
   } catch (error) {
-    if (!shouldTryLocalFallback()) {
+    if (!shouldTryLocalApiFallback(apiBase)) {
       throw error;
     }
-    return fetch(`${LOCAL_FALLBACK_API_BASE}${pathname}`, init);
+    return fetch(`${getLocalApiFallbackBase()}${pathname}`, requestInit);
   }
 }
 
@@ -923,30 +984,7 @@ export function formatLeaveStatus(status: LeaveRecord["status"]) {
 }
 
 export function formatLeaveType(type: LeaveType) {
-  switch (type) {
-    case "Leave Request":
-      return "Annual Leave";
-    case "Annual Leave":
-      return "Annual Leave";
-    case "Religious Leave":
-      return "Religious Leave";
-    case "Maternity Leave":
-      return "Maternity Leave";
-    case "Paternity Leave":
-      return "Paternity Leave";
-    case "Marriage Leave":
-      return "Marriage Leave";
-    case "Bereavement Leave":
-      return "Bereavement Leave";
-    case "Sick Leave":
-      return "Sick Submission";
-    case "Permission":
-      return "Half Day Leave";
-    case "Remote Work":
-      return "On Duty Request";
-    default:
-      return type;
-  }
+  return normalizeLeaveType(type);
 }
 
 export function formatOvertimeStatus(status: OvertimeRecord["status"]) {

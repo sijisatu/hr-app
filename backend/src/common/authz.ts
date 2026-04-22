@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, SetMetadata, UnauthorizedException, ForbiddenException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { AppService } from "./app.service";
-import { verifyAndExtractSessionKey } from "./session-token";
+import { verifyAndExtractSessionToken } from "./session-token";
 
 export type UserRole = "admin" | "hr" | "manager" | "employee";
 export type AuthenticatedActor = {
@@ -16,22 +16,27 @@ export type AuthenticatedActor = {
 
 const PUBLIC_ROUTE_KEY = "isPublicRoute";
 const ALLOWED_ROLES_KEY = "allowedRoles";
+const backendAuthMode = (process.env.ENFORCE_BACKEND_AUTH ?? "true").trim().toLowerCase();
 const enforceBackendAuth =
-  (process.env.ENFORCE_BACKEND_AUTH ?? "").toLowerCase() === "true" ||
-  (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  backendAuthMode !== "false";
 
 export const PublicRoute = () => SetMetadata(PUBLIC_ROUTE_KEY, true);
 export const Roles = (...roles: UserRole[]) => SetMetadata(ALLOWED_ROLES_KEY, roles);
 
 function requiresAuthenticatedRead(request: { method?: string; path?: string; originalUrl?: string } | undefined) {
-  if (request?.method !== "GET") {
-    return true;
-  }
-  const target = request?.path ?? request?.originalUrl ?? "";
-  return (
-    target.startsWith("/api/assets/") ||
-    target.includes("/documents/")
-  );
+  return Boolean(request?.method);
+}
+
+function readSessionTokenFromRequest(
+  request: {
+    cookies?: Record<string, string | undefined>;
+    headers?: Record<string, string | string[] | undefined>;
+  } | undefined
+) {
+  const rawCookieSession = request?.cookies?.pp_session;
+  const headerSession = request?.headers?.["x-session-token"] ?? request?.headers?.["x-session-key"];
+  const tokenFromHeader = Array.isArray(headerSession) ? headerSession[0] : headerSession;
+  return verifyAndExtractSessionToken(rawCookieSession) ?? verifyAndExtractSessionToken(tokenFromHeader);
 }
 
 @Injectable()
@@ -57,9 +62,7 @@ export class SessionAuthGuard implements CanActivate {
     if (!requiresAuthenticatedRead(request)) {
       return true;
     }
-    const rawCookieSession = request?.cookies?.pp_session as string | undefined;
-    const headerSession = request?.headers?.["x-session-key"] as string | undefined;
-    const extractedSession = verifyAndExtractSessionKey(rawCookieSession) ?? verifyAndExtractSessionKey(headerSession);
+    const extractedSession = readSessionTokenFromRequest(request);
     if (!extractedSession) {
       throw new UnauthorizedException("Session is required.");
     }

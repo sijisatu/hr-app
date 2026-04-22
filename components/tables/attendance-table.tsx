@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { Camera, Clock3, Eye, MapPinned, Search, X } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
-import type { AttendanceOverview, AttendanceRecord } from "@/lib/api";
+import { formatLeaveStatus, formatLeaveType } from "@/lib/api";
+import type { AttendanceOverview, AttendanceRecord, EmployeeRecord, LeaveRecord } from "@/lib/api";
 import { resolveAssetUrl } from "@/lib/asset-url";
 
 const toneMap = {
@@ -21,6 +22,26 @@ const labelMap = {
 } as const;
 
 const pageSizeOptions = [10, 30, 50, 100] as const;
+
+type AttendanceTableRow = {
+  id: string;
+  employeeName: string;
+  department: string;
+  timestamp: string;
+  title: string;
+  subtitle: string;
+  windowPrimary: string;
+  windowSecondary: string;
+  gpsPrimary: string;
+  gpsSecondary: string;
+  gpsTertiary: string;
+  statusLabel: string;
+  statusTone: "success" | "danger" | "warning" | "neutral";
+  statusFilterValue: string;
+  overtimeText: string;
+  photoUrl: string | null;
+};
+
 function getMonthKey(timestamp: string) {
   return timestamp.slice(0, 7);
 }
@@ -32,10 +53,14 @@ function formatMonthLabel(monthKey: string) {
 
 export function AttendanceTable({
   logs,
+  employees = [],
+  onDutyRequests = [],
   punctuality,
   overview
 }: {
   logs: AttendanceRecord[];
+  employees?: EmployeeRecord[];
+  onDutyRequests?: LeaveRecord[];
   punctuality: number;
   overview: AttendanceOverview;
 }) {
@@ -53,27 +78,87 @@ export function AttendanceTable({
     { label: "Overtime Hours", value: `${overview.overtimeHours}`, detail: "Accumulated from attendance check-out." }
   ];
 
+  const departmentByEmployeeId = useMemo(
+    () => new Map(employees.map((item) => [item.id, item.department])),
+    [employees]
+  );
+
+  const tableRows = useMemo<AttendanceTableRow[]>(() => {
+    const attendanceRows = logs.map((log) => ({
+      id: log.id,
+      employeeName: log.employeeName,
+      department: log.department,
+      timestamp: log.timestamp,
+      title: log.description,
+      subtitle: log.location,
+      windowPrimary: `${log.checkIn} - ${log.checkOut ?? "Open"}`,
+      windowSecondary: log.location,
+      gpsPrimary: log.gpsValidated ? "Validated" : "Outside Radius",
+      gpsSecondary: `${log.gpsDistanceMeters}m from anchor`,
+      gpsTertiary: log.photoUrl ? "Selfie captured" : "No selfie yet",
+      statusLabel: labelMap[log.status],
+      statusTone: toneMap[log.status],
+      statusFilterValue: log.status,
+      overtimeText: log.overtimeMinutes > 0 ? `${log.overtimeMinutes} min` : "-",
+      photoUrl: log.photoUrl
+    }));
+
+    const onDutyRows = onDutyRequests.map((request) => {
+      const statusLabel = formatLeaveStatus(request.status);
+      return {
+        id: request.id,
+        employeeName: request.employeeName,
+        department: departmentByEmployeeId.get(request.userId) ?? "-",
+        timestamp: request.requestedAt,
+        title: formatLeaveType(request.type),
+        subtitle: request.reason,
+        windowPrimary: "09:00 - 17:00",
+        windowSecondary: request.startDate === request.endDate ? request.startDate : `${request.startDate} - ${request.endDate}`,
+        gpsPrimary: "Not required",
+        gpsSecondary: "Generated from approved request",
+        gpsTertiary: "No selfie required",
+        statusLabel,
+        statusTone: request.status === "approved" ? "success" : request.status === "rejected" ? "danger" : "warning",
+        statusFilterValue: request.status,
+        overtimeText: "-",
+        photoUrl: null
+      } satisfies AttendanceTableRow;
+    });
+
+    return [...attendanceRows, ...onDutyRows].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }, [departmentByEmployeeId, logs, onDutyRequests]);
+
   const departments = useMemo(
-    () => [...new Set(logs.map((item) => item.department))].sort((a, b) => a.localeCompare(b)),
-    [logs]
+    () => [...new Set(tableRows.map((item) => item.department))].sort((a, b) => a.localeCompare(b)),
+    [tableRows]
   );
 
   const months = useMemo(
-    () => [...new Set(logs.map((item) => getMonthKey(item.timestamp)))].sort((a, b) => b.localeCompare(a)),
-    [logs]
+    () => [...new Set(tableRows.map((item) => getMonthKey(item.timestamp)))].sort((a, b) => b.localeCompare(a)),
+    [tableRows]
+  );
+
+  const statusOptions = useMemo(
+    () => [...new Set(tableRows.map((item) => item.statusFilterValue))].sort((a, b) => a.localeCompare(b)),
+    [tableRows]
   );
 
   const filteredLogs = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return logs.filter((log) => {
-      const matchesSearch = normalizedSearch.length === 0 || log.employeeName.toLowerCase().includes(normalizedSearch);
-      const matchesDepartment = department === "all" || log.department === department;
-      const matchesMonth = month === "all" || getMonthKey(log.timestamp) === month;
-      const matchesStatus = status === "all" || log.status === status;
+    return tableRows.filter((row) => {
+      const matchesSearch = normalizedSearch.length === 0 || [
+        row.employeeName,
+        row.title,
+        row.subtitle,
+        row.department
+      ].some((value) => value.toLowerCase().includes(normalizedSearch));
+      const matchesDepartment = department === "all" || row.department === department;
+      const matchesMonth = month === "all" || getMonthKey(row.timestamp) === month;
+      const matchesStatus = status === "all" || row.statusFilterValue === status;
       return matchesSearch && matchesDepartment && matchesMonth && matchesStatus;
     });
-  }, [department, logs, month, search, status]);
+  }, [department, month, search, status, tableRows]);
 
   const visibleLogs = filteredLogs.slice(0, pageSize);
 
@@ -107,7 +192,7 @@ export function AttendanceTable({
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
-                  placeholder="Search by employee name..."
+                  placeholder="Search employee, type, or reason..."
                 />
               </label>
 
@@ -127,8 +212,20 @@ export function AttendanceTable({
 
               <select value={status} onChange={(event) => setStatus(event.target.value)} className="filter-control text-[14px]">
                 <option value="all">All Statuses</option>
-                {Object.entries(labelMap).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                {statusOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value in labelMap
+                      ? labelMap[value as keyof typeof labelMap]
+                      : value === "pending-manager"
+                        ? "Pending Manager"
+                        : value === "awaiting-hr"
+                          ? "Awaiting HR"
+                          : value === "approved"
+                            ? "Approved"
+                            : value === "rejected"
+                              ? "Rejected"
+                              : value}
+                  </option>
                 ))}
               </select>
 
@@ -174,32 +271,32 @@ export function AttendanceTable({
                     </p>
                   </td>
                   <td className="px-4 py-4 align-top">
-                    <p className="text-[14px] font-semibold text-[var(--text)]">{log.description}</p>
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">{log.location}</p>
+                    <p className="text-[14px] font-semibold text-[var(--text)]">{log.title}</p>
+                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">{log.subtitle}</p>
                   </td>
                   <td className="px-4 py-4 align-top text-[13px] text-[var(--text-muted)]">
                     <div className="flex items-center gap-2 font-medium text-[var(--text)]">
                       <Clock3 className="h-4 w-4" />
-                      {log.checkIn} - {log.checkOut ?? "Open"}
+                      {log.windowPrimary}
                     </div>
-                    <p className="mt-2">{log.location}</p>
+                    <p className="mt-2">{log.windowSecondary}</p>
                   </td>
                   <td className="px-4 py-4 align-top text-[13px] text-[var(--text-muted)]">
                     <div className="flex items-center gap-2 font-medium text-[var(--text)]">
                       <MapPinned className="h-4 w-4" />
-                      {log.gpsValidated ? "Validated" : "Outside Radius"}
+                      {log.gpsPrimary}
                     </div>
-                    <p className="mt-2">{log.gpsDistanceMeters}m from anchor</p>
+                    <p className="mt-2">{log.gpsSecondary}</p>
                     <div className="mt-2 flex items-center gap-2">
                       <Camera className="h-4 w-4" />
-                      {log.photoUrl ? "Selfie captured" : "No selfie yet"}
+                      {log.gpsTertiary}
                     </div>
                   </td>
                   <td className="px-4 py-4 align-top">
-                    <StatusPill tone={toneMap[log.status]}>{labelMap[log.status]}</StatusPill>
+                    <StatusPill tone={log.statusTone}>{log.statusLabel}</StatusPill>
                   </td>
                   <td className="px-4 py-4 align-top text-[14px] font-medium text-[var(--text)]">
-                    {log.overtimeMinutes > 0 ? `${log.overtimeMinutes} min` : "-"}
+                    {log.overtimeText}
                   </td>
                   <td className="rounded-r-[12px] px-4 py-4 align-top">
                     {resolveAssetUrl(log.photoUrl) ? (

@@ -1,3 +1,6 @@
+import { getApiBase } from "@/lib/api-base";
+import { withApiSession } from "@/lib/api";
+
 export type ApiResponse<T> = {
   success: boolean;
   data: T;
@@ -92,11 +95,6 @@ export type PayrollOverview = {
   publishedPayslips: number;
 };
 
-const API_BASE =
-  process.env.API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://localhost:4000");
-
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(`API request failed with status ${response.status}`);
@@ -106,17 +104,17 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function apiFetch<T>(pathname: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, { cache: "no-store", credentials: "include" });
+  const response = await fetch(`${getApiBase()}${pathname}`, await withApiSession({ cache: "no-store", credentials: "include" }));
   return parseResponse<T>(response);
 }
 
 async function apiPostJson<T>(pathname: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, {
+  const response = await fetch(`${getApiBase()}${pathname}`, await withApiSession({
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
-  });
+  }));
   return parseResponse<T>(response);
 }
 
@@ -136,12 +134,12 @@ function toQueryString(params?: Record<string, string | number | boolean | undef
 }
 
 async function apiPatchJson<T>(pathname: string, body: unknown): Promise<T> {
-  const response = await fetch(`${API_BASE}${pathname}`, {
+  const response = await fetch(`${getApiBase()}${pathname}`, await withApiSession({
     method: "PATCH",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
-  });
+  }));
   return parseResponse<T>(response);
 }
 
@@ -232,5 +230,5 @@ export function toAssetUrl(fileUrl: string | null) {
   if (!fileUrl) {
     return null;
   }
-  return `${API_BASE}${fileUrl}`;
+  return `${getApiBase()}${fileUrl}`;
 }

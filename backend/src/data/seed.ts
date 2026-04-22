@@ -75,6 +75,7 @@ export const seedData: DatabaseShape = {
       loginPassword: "employee123",
       documents: [],
       leaveBalances: {
+        enabledTypes: ["annual", "religious", "maternity", "paternity", "marriage", "bereavement", "permission"],
         annual: 12,
         annualCarryOver: 0,
         annualCarryOverExpiresAt: null,
@@ -144,6 +145,7 @@ export const seedData: DatabaseShape = {
       loginPassword: null,
       documents: [],
       leaveBalances: {
+        enabledTypes: ["annual", "religious", "maternity", "paternity", "marriage", "bereavement", "permission"],
         annual: 9,
         annualCarryOver: 0,
         annualCarryOverExpiresAt: null,
@@ -213,6 +215,7 @@ export const seedData: DatabaseShape = {
       loginPassword: "employee123",
       documents: [],
       leaveBalances: {
+        enabledTypes: ["annual", "religious", "maternity", "paternity", "marriage", "bereavement", "permission"],
         annual: 14,
         annualCarryOver: 0,
         annualCarryOverExpiresAt: null,
@@ -288,6 +291,7 @@ export const seedData: DatabaseShape = {
       loginPassword: "employee123",
       documents: [],
       leaveBalances: {
+        enabledTypes: ["annual", "religious", "maternity", "paternity", "marriage", "bereavement", "permission"],
         annual: 8,
         annualCarryOver: 0,
         annualCarryOverExpiresAt: null,

@@ -20,6 +20,24 @@ import { MetricsService } from "./common/metrics.service";
 import { toLoggableError, writeSystemLog } from "./common/system-log";
 
 let backendErrorHandlersRegistered = false;
+let streamErrorHandlersRegistered = false;
+
+function registerStdIoGuards() {
+  if (streamErrorHandlersRegistered) {
+    return;
+  }
+  streamErrorHandlersRegistered = true;
+
+  const swallowBrokenPipe = (error: NodeJS.ErrnoException) => {
+    if (error?.code === "EPIPE") {
+      return;
+    }
+    throw error;
+  };
+
+  process.stdout.on("error", swallowBrokenPipe);
+  process.stderr.on("error", swallowBrokenPipe);
+}
 
 function registerBackendProcessLogging() {
   if (backendErrorHandlersRegistered) {
@@ -65,6 +83,7 @@ function registerBackendProcessLogging() {
 }
 
 async function bootstrap() {
+  registerStdIoGuards();
   registerBackendProcessLogging();
   await writeSystemLog({
     source: "backend",
@@ -85,7 +104,7 @@ async function bootstrap() {
       origin: allowOrigins,
       credentials: true,
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "X-Session-Key", "X-Request-Id"]
+      allowedHeaders: ["Content-Type", "X-Session-Key", "X-Session-Token", "X-Request-Id"]
     }
   });
   app.setGlobalPrefix("");

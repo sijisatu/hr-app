@@ -7,3 +7,12 @@ export type EmployeeSessionPayload = {
   department: string;
   position: string;
 };
+
+export type EmployeeLoginResult = {
+  sessionId: string;
+  expiresAt: string;
+  maxAgeSeconds: number;
+  idleTimeoutMinutes: number;
+  maxConcurrentSessions: number;
+  user: EmployeeSessionPayload;
+};

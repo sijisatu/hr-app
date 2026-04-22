@@ -21,12 +21,17 @@ export default async function DashboardPage() {
   const session = await requireSession(["admin", "hr", "manager", "employee"]);
   const isEmployeeView = session.role === "employee" || session.role === "manager";
   const isHrView = session.role === "hr";
-  const [summary, attendanceLogs, leaveRequests, employees] = await Promise.all([
+  const [summaryResult, attendanceResult, leaveResult, employeesResult] = await Promise.allSettled([
     isEmployeeView ? Promise.resolve(null) : getDashboardSummary(),
     getAttendanceHistory(),
     getLeaveHistory(),
     isHrView ? getEmployees() : Promise.resolve([])
   ]);
+  const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+  const attendanceLogs = attendanceResult.status === "fulfilled" ? attendanceResult.value : [];
+  const leaveRequests = leaveResult.status === "fulfilled" ? leaveResult.value : [];
+  const employees = employeesResult.status === "fulfilled" ? employeesResult.value : [];
+  const dataUnavailable = [summaryResult, attendanceResult, leaveResult, employeesResult].some((result) => result.status === "rejected");
   const scopedLogs = isEmployeeView ? attendanceLogs.filter((log) => log.userId === session.id) : attendanceLogs;
   const scopedLeaves = isEmployeeView ? leaveRequests.filter((leave) => leave.userId === session.id) : leaveRequests;
 
@@ -51,9 +56,15 @@ export default async function DashboardPage() {
     <AppShell
       title="Dashboard"
       subtitle={isEmployeeView ? "Track your attendance activity and current request summary." : "Monitor attendance activity and operational signals in one workspace."}
-      actions={<AttendanceQuickAction compact label="Clock In" />}
+      actions={<AttendanceQuickAction compact />}
     >
       <div className="space-y-6">
+        {dataUnavailable ? (
+          <div className="page-card border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
+            Some dashboard data is temporarily unavailable. The workspace is still loaded, but live API data may be delayed.
+          </div>
+        ) : null}
+
         <div className="kpi-grid">
           {metrics.map((metric) => (
             <MetricCard key={metric.label} {...metric} />

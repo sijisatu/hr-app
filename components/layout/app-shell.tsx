@@ -48,8 +48,12 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleNav = navItems.filter((item) => !item.roles || (currentUser ? item.roles.includes(currentUser.role) : false));
   const isEmployeeSurface = currentUser?.role === "employee" || currentUser?.role === "manager";
-  const currentUserInitials = currentUser?.name.split(" ").map((part) => part[0]).join("").slice(0, 2) ?? "AU";
-  const currentUserRoleLabel = currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase()}${currentUser.role.slice(1)}` : "Admin";
+  const currentUserInitials = currentUser?.name
+    ? currentUser.name.split(" ").map((part) => part[0]).join("").slice(0, 2)
+    : "AU";
+  const currentUserRoleLabel = currentUser?.role
+    ? `${currentUser.role.charAt(0).toUpperCase()}${currentUser.role.slice(1)}`
+    : "Admin";
   const mobileNavItems = useMemo(
     () => visibleNav.filter((item) => ["/dashboard", "/attendance", "/payroll", "/profile"].includes(item.href)).slice(0, 4),
     [visibleNav]
@@ -132,7 +136,7 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
           <div className="sidebar-section sidebar-section-main">
             <nav className="sidebar-nav sidebar-nav-main mt-6 space-y-2 lg:mt-0 lg:space-y-0">
               {visibleNav.map((item) => {
-                const Icon = iconMap[item.label as keyof typeof iconMap];
+                const Icon = iconMap[item.label as keyof typeof iconMap] ?? LayoutGrid;
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
                 return (
@@ -154,7 +158,7 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
             <div className="sidebar-divider sidebar-divider-bottom mt-4 hidden lg:mt-0 lg:block" />
 
             <div className="sidebar-nav sidebar-nav-utility space-y-2 pt-4 lg:pt-0 lg:space-y-0">
-              <AttendanceQuickAction label="Clock In" className="primary-button sidebar-action w-full" />
+              <AttendanceQuickAction className="primary-button sidebar-action w-full" />
 
               <button className="nav-item w-full">
                 <span className="nav-item-indicator" />
@@ -254,13 +258,13 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
       {isEmployeeSurface ? (
         <>
           <div className="fixed bottom-[74px] right-4 z-30 sm:hidden">
-            <AttendanceQuickAction className="primary-button min-w-[148px] shadow-2xl" compact label="Clock In" />
+            <AttendanceQuickAction className="primary-button min-w-[148px] shadow-2xl" compact />
           </div>
 
           <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-[rgba(255,255,255,0.96)] px-3 py-2 backdrop-blur sm:hidden">
             <div className="grid grid-cols-4 gap-2">
               {mobileNavItems.map((item) => {
-                const Icon = iconMap[item.label as keyof typeof iconMap];
+                const Icon = iconMap[item.label as keyof typeof iconMap] ?? LayoutGrid;
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
                 return (

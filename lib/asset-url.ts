@@ -1,7 +1,4 @@
-const API_BASE =
-  process.env.API_BASE_URL ??
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  ((process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "https://localhost:4000" : "http://127.0.0.1:4000");
+import { getApiBase } from "@/lib/api-base";
 
 export function resolveAssetUrl(fileUrl: string | null | undefined) {
   if (!fileUrl) {
@@ -16,5 +13,5 @@ export function resolveAssetUrl(fileUrl: string | null | undefined) {
     return fileUrl;
   }
 
-  return `${API_BASE}${fileUrl}`;
+  return `${getApiBase()}${fileUrl}`;
 }

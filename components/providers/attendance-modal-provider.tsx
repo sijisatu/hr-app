@@ -125,17 +125,30 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
 
   const employees = employeesQuery.data ?? [];
   const todayRecords = todayQuery.data ?? [];
-  const selectedEmployee = useMemo(
-    () => employees.find((employee) => employee.id === currentUser?.id) ?? null,
-    [currentUser?.id, employees]
-  );
+  const selectedEmployee = useMemo(() => {
+    const matchedEmployee = employees.find((employee) => employee.id === currentUser?.id);
+    if (matchedEmployee) {
+      return matchedEmployee;
+    }
+    if (!currentUser) {
+      return null;
+    }
+    return {
+      id: currentUser.id,
+      name: currentUser.name,
+      department: currentUser.department,
+      position: currentUser.position,
+      workLocation: locationName
+    };
+  }, [currentUser, employees, locationName]);
 
   useEffect(() => {
-    if (!selectedEmployee) {
+    const matchedEmployee = employees.find((employee) => employee.id === currentUser?.id);
+    if (!matchedEmployee?.workLocation) {
       return;
     }
-    setLocationName(selectedEmployee.workLocation);
-  }, [selectedEmployee]);
+    setLocationName((current) => (current === matchedEmployee.workLocation ? current : matchedEmployee.workLocation));
+  }, [currentUser?.id, employees]);
 
   const openRecord = selectedEmployee ? findOpenRecord(todayRecords, selectedEmployee.id) : null;
 
@@ -328,18 +341,18 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
 
         <div className="border-t border-slate-100 bg-white/95 px-5 py-3 backdrop-blur sm:px-6">
           <div className="grid gap-3 sm:grid-cols-2">
-            <button
+              <button
               type="button"
               onClick={() => checkInMutation.mutate()}
-              disabled={busy || !selectedEmployee || Boolean(openRecord) || employeesQuery.isLoading || todayQuery.isLoading}
+              disabled={busy || !selectedEmployee || Boolean(openRecord) || todayQuery.isLoading}
               className="rounded-2xl bg-[var(--primary)] px-4 py-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {checkInMutation.isPending ? <span className="flex items-center justify-center gap-2"><LoaderCircle className="h-4 w-4 animate-spin" /> Saving check-in...</span> : "Submit Check-in"}
             </button>
-            <button
+              <button
               type="button"
               onClick={() => checkOutMutation.mutate()}
-              disabled={busy || !openRecord || employeesQuery.isLoading || todayQuery.isLoading}
+              disabled={busy || !openRecord || todayQuery.isLoading}
               className="rounded-2xl border border-[var(--primary)]/15 bg-[var(--panel-alt)] px-4 py-4 text-sm font-semibold text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {checkOutMutation.isPending ? <span className="flex items-center justify-center gap-2"><LoaderCircle className="h-4 w-4 animate-spin" /> Closing session...</span> : "Submit Check-out"}

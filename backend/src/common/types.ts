@@ -1,19 +1,6 @@
 export type AttendanceStatus = "on-time" | "late" | "absent" | "early-leave";
 export type LeaveStatus = "pending-manager" | "awaiting-hr" | "approved" | "rejected";
-export type LeaveType =
-  | "Leave Request"
-  | "Sick Submission"
-  | "On Duty Request"
-  | "Half Day Leave"
-  | "Annual Leave"
-  | "Religious Leave"
-  | "Maternity Leave"
-  | "Paternity Leave"
-  | "Marriage Leave"
-  | "Bereavement Leave"
-  | "Sick Leave"
-  | "Permission"
-  | "Remote Work";
+export type LeaveType = string;
 export type EmploymentType = "permanent" | "contract" | "intern";
 export type ContractStatus = "permanent" | "contract" | "intern";
 export type OvertimeStatus = "pending" | "approved" | "rejected" | "paid";
@@ -26,30 +13,19 @@ export type ReimbursementCategory = "medical" | "glasses" | "maternity" | "trans
 export type Gender = "male" | "female";
 export type MaritalStatus = "single" | "married" | "divorced" | "widowed";
 
+export type LeaveBalanceAllocation = {
+  code: string;
+  label: string;
+  days: number;
+  carryOver: number;
+  carryOverExpiresAt: string | null;
+};
+
 export type LeaveBalance = {
-  annual: number;
-  annualCarryOver: number;
-  annualCarryOverExpiresAt: string | null;
-  religious: number;
-  religiousCarryOver: number;
-  religiousCarryOverExpiresAt: string | null;
-  maternity: number;
-  maternityCarryOver: number;
-  maternityCarryOverExpiresAt: string | null;
-  paternity: number;
-  paternityCarryOver: number;
-  paternityCarryOverExpiresAt: string | null;
-  marriage: number;
-  marriageCarryOver: number;
-  marriageCarryOverExpiresAt: string | null;
-  bereavement: number;
-  bereavementCarryOver: number;
-  bereavementCarryOverExpiresAt: string | null;
-  sick: number;
+  [legacyKey: string]: unknown;
+  enabledTypes?: string[];
+  allocations?: LeaveBalanceAllocation[];
   sickUsed: number;
-  permission: number;
-  permissionCarryOver: number;
-  permissionCarryOverExpiresAt: string | null;
   balanceYear: number;
 };
 

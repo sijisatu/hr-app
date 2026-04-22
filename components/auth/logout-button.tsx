@@ -1,39 +1,30 @@
-﻿"use client";
+"use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import clsx from "clsx";
-import { useSession } from "@/components/providers/session-provider";
 
 export function LogoutButton({ className, children }: { className?: string; children?: React.ReactNode }) {
-  const router = useRouter();
-  const { setCurrentUser } = useSession();
-  const [pending, startTransition] = useTransition();
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      window.location.assign("/api/auth/logout?redirect=/login");
+    }
+  };
 
   return (
     <button
       className={clsx(
-        "flex w-full items-center gap-3 rounded-2xl px-4 py-3 hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-60",
+        "relative z-[2] flex w-full items-center gap-3 rounded-2xl px-4 py-3 pointer-events-auto hover:bg-white/70",
         className
       )}
-      onClick={() =>
-        startTransition(async () => {
-          await fetch("/api/auth/logout", { method: "POST" });
-          setCurrentUser(null);
-          router.replace("/login");
-        })
-      }
-      disabled={pending}
+      onClick={handleLogout}
       type="button"
     >
       {children ?? (
         <>
           <LogOut className="h-4 w-4" />
-          {pending ? "Signing out..." : "Sign Out"}
+          Sign Out
         </>
       )}
     </button>
   );
 }
-

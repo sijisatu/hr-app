@@ -47,7 +47,40 @@ export default async function ReportsPage({
   await requireSession(["admin", "hr", "manager"]);
   const params = (await searchParams) ?? {};
   const period = normalizeReportPeriodPreset(params.period);
-  const overview = await getReportCenterOverview(period);
+  const overviewResult = await Promise.allSettled([getReportCenterOverview(period)]);
+  const overview = overviewResult[0].status === "fulfilled"
+    ? overviewResult[0].value
+    : {
+        period: {
+          preset: period,
+          label: "Unavailable",
+          startDate: null,
+          endDate: null
+        },
+        charts: {
+          attendance: [],
+          employeeCount: []
+        },
+        attendance: {
+          metrics: [],
+          topDepartments: [],
+          anomalies: [],
+          list: []
+        },
+        employees: {
+          metrics: [],
+          contractAlerts: [],
+          departments: [],
+          list: []
+        },
+        reimbursement: {
+          metrics: [],
+          pendingQueue: [],
+          topClaims: [],
+          list: []
+        }
+      };
+  const dataUnavailable = overviewResult[0].status === "rejected";
 
   return (
     <AppShell
@@ -55,6 +88,11 @@ export default async function ReportsPage({
       subtitle="Centralized attendance, employee, and reimbursement reporting with export-ready output."
       actions={<PeriodAction period={period} />}
     >
+      {dataUnavailable ? (
+        <div className="page-card mb-6 border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
+          Some report data is temporarily unavailable. The page is still loaded with the latest safe data.
+        </div>
+      ) : null}
       <ReportCenter overview={overview} />
     </AppShell>
   );

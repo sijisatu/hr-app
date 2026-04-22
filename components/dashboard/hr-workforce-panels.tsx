@@ -15,25 +15,38 @@ const departmentBarPalette = [
   "bg-slate-400"
 ];
 
-function initials(name: string) {
-  return name
+function initials(name: string | null | undefined) {
+  return (name ?? "")
     .split(" ")
     .map((part) => part[0] ?? "")
     .join("")
     .slice(0, 2)
-    .toUpperCase();
+    .toUpperCase() || "NA";
 }
 
-function formatJoinDate(value: string) {
-  return new Date(value).toLocaleDateString("en-GB", {
+function formatJoinDate(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return parsed.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short"
   });
 }
 
-function formatLeaveDateRange(startDate: string, endDate: string) {
+function formatLeaveDateRange(startDate: string | null | undefined, endDate: string | null | undefined) {
+  if (!startDate || !endDate) {
+    return "-";
+  }
   const start = new Date(startDate);
   const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return "-";
+  }
   const startLabel = start.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const endLabel = end.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   return startDate === endDate ? startLabel : `${startLabel} - ${endLabel}`;
@@ -94,7 +107,7 @@ export function HrWorkforcePanels({ employees, leaves }: { employees: EmployeeRe
   const activeLeaveRows = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     return leaves
-      .filter((leave) => leave.status !== "rejected" && leave.endDate >= today)
+      .filter((leave) => leave.status !== "rejected" && typeof leave.endDate === "string" && leave.endDate >= today)
       .sort((a, b) => a.startDate.localeCompare(b.startDate))
       .slice(0, 4);
   }, [leaves]);

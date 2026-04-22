@@ -59,10 +59,31 @@ model Employee {
   reimbursementClaimTypes ReimbursementClaimType[]
   reimbursementRequests   ReimbursementRequest[]
   payslips                Payslip[]
+  sessions                AppSession[]
 
   @@index([department])
   @@index([role])
   @@index([status])
+}
+
+model AppSession {
+  id               String    @id
+  userId           String
+  sessionKey       String
+  role             String
+  ipAddress        String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+  lastActivityAt   DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revocationReason String?
+
+  employee Employee @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, lastActivityAt])
+  @@index([expiresAt])
+  @@index([sessionKey])
 }
 
 model Department {

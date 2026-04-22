@@ -5,9 +5,10 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import ExcelJS from "exceljs";
 import { DatabaseService } from "./database.service";
-import { EmployeeSessionPayload } from "./auth.types";
+import { EmployeeLoginResult, EmployeeSessionPayload } from "./auth.types";
 import type { AuthenticatedActor } from "./authz";
 import { hashPassword, isPasswordHash, verifyPassword } from "./password.service";
+import { writeSystemLog } from "./system-log";
 import { seedData } from "../data/seed";
 import {
   AttendanceRecord,
@@ -17,6 +18,7 @@ import {
   EducationRecord,
   EmployeeDocumentRecord,
   EmployeeRecord,
+  LeaveBalanceAllocation,
   LeaveRecord,
   LeaveType,
   OvertimeRecord,
@@ -81,16 +83,15 @@ const siteDirectory: Record<string, SiteConfig> = {
 const NON_SHIFT_START = "09:00";
 const NON_SHIFT_END = "17:00";
 const currentBalanceYear = new Date().getFullYear();
-const carryOverTypes = ["annual", "religious", "maternity", "paternity", "marriage", "bereavement", "permission"] as const;
-const defaultLeaveAllocations = {
-  annual: 12,
-  religious: 2,
-  maternity: 90,
-  paternity: 2,
-  marriage: 3,
-  bereavement: 2,
-  permission: 4
-} as const;
+const legacyLeaveAllocationTemplates = [
+  { legacyKey: "annual", code: "annual-leave", label: "Annual Leave", defaultDays: 12 },
+  { legacyKey: "religious", code: "religious-leave", label: "Religious Leave", defaultDays: 2 },
+  { legacyKey: "maternity", code: "maternity-leave", label: "Maternity Leave", defaultDays: 90 },
+  { legacyKey: "paternity", code: "paternity-leave", label: "Paternity Leave", defaultDays: 2 },
+  { legacyKey: "marriage", code: "marriage-leave", label: "Marriage Leave", defaultDays: 3 },
+  { legacyKey: "bereavement", code: "bereavement-leave", label: "Bereavement Leave", defaultDays: 2 },
+  { legacyKey: "permission", code: "permission", label: "Permission", defaultDays: 4 }
+] as const;
 
 type PaginatedResult<T> = {
   items: T[];
@@ -113,6 +114,11 @@ type ExportJob = {
   error: string | null;
 };
 
+type SessionRequestMetadata = {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
 @Injectable()
 export class AppService {
   private readonly storageRoot = path.resolve(process.cwd(), "storage");
@@ -122,11 +128,16 @@ export class AppService {
   private readonly useDemoSeedData =
     (process.env.BOOTSTRAP_DEMO_DATA ?? "").toLowerCase() === "true" ||
     (!this.isProduction && (process.env.BOOTSTRAP_DEMO_DATA ?? "").toLowerCase() !== "false");
+  private readonly sessionIdleTimeoutMinutes = this.parsePositiveNumber(process.env.APP_SESSION_IDLE_TIMEOUT_MINUTES, 5);
+  private readonly sessionMaxLifetimeHours = this.parsePositiveNumber(process.env.APP_SESSION_MAX_LIFETIME_HOURS, 168);
+  private readonly sessionMaxConcurrentPerUser = Math.max(1, Math.floor(this.parsePositiveNumber(process.env.APP_SESSION_MAX_CONCURRENT_PER_USER, 3)));
+  private readonly sessionTouchIntervalMinutes = this.parsePositiveNumber(process.env.APP_SESSION_TOUCH_INTERVAL_MINUTES, 5);
   private cache: DatabaseShape | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
   private auditQueue: Promise<void> = Promise.resolve();
   private exportQueue: ExportJob[] = [];
   private activeExportJob = false;
+  private lastSessionCleanupAt = 0;
 
   constructor(@Inject(DatabaseService) private readonly databaseService: DatabaseService) {}
 
@@ -148,21 +159,23 @@ export class AppService {
       await writeFile(this.dbPath, JSON.stringify(initialSnapshot, null, 2), "utf8");
     }
 
-    const current = await this.readDb();
-    current.departments = this.normalizeDepartments(current.departments, current.employees);
-    current.employees = current.employees.map((employee, index) => this.normalizeEmployee(employee, index));
-    current.attendanceLogs = (current.attendanceLogs ?? []).map((attendance, index) => this.normalizeAttendance(attendance, current.employees, index));
-    current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : this.useDemoSeedData ? seedData.overtimeRequests : []).map((record, index) => this.normalizeOvertime(record, index));
-    current.leaveRequests = (current.leaveRequests ?? []).map((record, index) => this.normalizeLeave(record, current.employees, index));
-    current.reimbursementClaimTypes = (current.reimbursementClaimTypes?.length ? current.reimbursementClaimTypes : this.useDemoSeedData ? seedData.reimbursementClaimTypes : []).map((record, index) => this.normalizeReimbursementClaimType(record, current.employees, index));
-    current.reimbursementRequests = (current.reimbursementRequests?.length ? current.reimbursementRequests : this.useDemoSeedData ? seedData.reimbursementRequests : []).map((record, index) => this.normalizeReimbursementRequest(record, current.employees, current.reimbursementClaimTypes, index));
-    current.compensationProfiles = (current.compensationProfiles?.length ? current.compensationProfiles : this.useDemoSeedData ? seedData.compensationProfiles : []).map((profile, index) => this.normalizeCompensationProfile(profile, index));
-    current.taxProfiles = (current.taxProfiles?.length ? current.taxProfiles : this.useDemoSeedData ? seedData.taxProfiles : []).map((profile, index) => this.normalizeTaxProfile(profile, index));
-    current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : this.useDemoSeedData ? seedData.payrollComponents : []).map((component, index) => this.normalizePayrollComponent(component, index));
-    current.payRuns = (current.payRuns?.length ? current.payRuns : this.useDemoSeedData ? seedData.payRuns : []).map((run, index) => this.normalizePayRun(run, index));
-    current.payslips = (current.payslips?.length ? current.payslips : this.useDemoSeedData ? seedData.payslips : []).map((slip, index) => this.normalizePayslip(slip, current.employees, index));
-    await this.ensureEmployeePasswordsHashed(current);
-    await this.writeDb(current);
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employeeCount = await prisma.employee.count();
+      if (employeeCount === 0) {
+        const raw = await readFile(this.dbPath, "utf8");
+        const snapshot = this.normalizeSnapshot(JSON.parse(raw) as DatabaseShape);
+        await this.writeDb(snapshot, { allowPrismaSnapshotSync: true });
+        return;
+      }
+
+      await this.ensurePrismaEmployeePasswordsHashed();
+      return;
+    }
+
+    const raw = await readFile(this.dbPath, "utf8");
+    const snapshot = this.normalizeSnapshot(JSON.parse(raw) as DatabaseShape);
+    await this.writeDb(snapshot);
   }
 
   private createEmptyDatabaseSnapshot(): DatabaseShape {
@@ -180,6 +193,22 @@ export class AppService {
       payRuns: [],
       payslips: []
     };
+  }
+
+  private normalizeSnapshot(current: DatabaseShape): DatabaseShape {
+    current.departments = this.normalizeDepartments(current.departments, current.employees);
+    current.employees = current.employees.map((employee, index) => this.normalizeEmployee(employee, index));
+    current.attendanceLogs = (current.attendanceLogs ?? []).map((attendance, index) => this.normalizeAttendance(attendance, current.employees, index));
+    current.overtimeRequests = (current.overtimeRequests?.length ? current.overtimeRequests : this.useDemoSeedData ? seedData.overtimeRequests : []).map((record, index) => this.normalizeOvertime(record, index));
+    current.leaveRequests = (current.leaveRequests ?? []).map((record, index) => this.normalizeLeave(record, current.employees, index));
+    current.reimbursementClaimTypes = (current.reimbursementClaimTypes?.length ? current.reimbursementClaimTypes : this.useDemoSeedData ? seedData.reimbursementClaimTypes : []).map((record, index) => this.normalizeReimbursementClaimType(record, current.employees, index));
+    current.reimbursementRequests = (current.reimbursementRequests?.length ? current.reimbursementRequests : this.useDemoSeedData ? seedData.reimbursementRequests : []).map((record, index) => this.normalizeReimbursementRequest(record, current.employees, current.reimbursementClaimTypes, index));
+    current.compensationProfiles = (current.compensationProfiles?.length ? current.compensationProfiles : this.useDemoSeedData ? seedData.compensationProfiles : []).map((profile, index) => this.normalizeCompensationProfile(profile, index));
+    current.taxProfiles = (current.taxProfiles?.length ? current.taxProfiles : this.useDemoSeedData ? seedData.taxProfiles : []).map((profile, index) => this.normalizeTaxProfile(profile, index));
+    current.payrollComponents = (current.payrollComponents?.length ? current.payrollComponents : this.useDemoSeedData ? seedData.payrollComponents : []).map((component, index) => this.normalizePayrollComponent(component, index));
+    current.payRuns = (current.payRuns?.length ? current.payRuns : this.useDemoSeedData ? seedData.payRuns : []).map((run, index) => this.normalizePayRun(run, index));
+    current.payslips = (current.payslips?.length ? current.payslips : this.useDemoSeedData ? seedData.payslips : []).map((slip, index) => this.normalizePayslip(slip, current.employees, index));
+    return current;
   }
 
   private normalizeDepartment(
@@ -664,10 +693,13 @@ export class AppService {
     return this.cache;
   }
 
-  private async writeDb(next: DatabaseShape) {
+  private async writeDb(next: DatabaseShape, options?: { allowPrismaSnapshotSync?: boolean }) {
     this.cache = next;
     const prisma = this.getPrisma();
     if (prisma) {
+      if (!options?.allowPrismaSnapshotSync) {
+        throw new Error("Legacy snapshot sync is blocked in PostgreSQL runtime. Move this code path to direct Prisma reads/writes.");
+      }
       const run = this.writeQueue
         .catch(() => undefined)
         .then(() => this.persistSnapshotToDatabase(next));
@@ -681,6 +713,11 @@ export class AppService {
 
   private getPrisma() {
     return this.databaseService.getClient() as any;
+  }
+
+  private parsePositiveNumber(value: string | undefined, fallback: number) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
   private toDate(value: string | null | undefined) {
@@ -747,14 +784,167 @@ export class AppService {
   }
 
   private async getEmployeeRows() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employees = await prisma.employee.findMany({
+        orderBy: { name: "asc" }
+      });
+      return employees.map((employee: any) => this.sanitizeEmployee(this.mapPrismaEmployee(employee)));
+    }
+
     const db = await this.readDb();
     return db.employees.map((employee) => this.sanitizeEmployee(employee));
   }
 
-  private sanitizeEmployee(employee: EmployeeRecord) {
+  private mapPrismaEmployee(employee: any): EmployeeRecord {
     return {
       ...employee,
-      documents: employee.documents.map((document) => this.toSafeEmployeeDocument(document)),
+      birthDate: this.toDateString(employee.birthDate),
+      marriageDate: employee.marriageDate ? this.toDateString(employee.marriageDate) : null,
+      joinDate: this.toDateString(employee.joinDate),
+      contractStart: this.toDateString(employee.contractStart),
+      contractEnd: employee.contractEnd ? this.toDateString(employee.contractEnd) : null,
+      baseSalary: Number(employee.baseSalary),
+      allowance: Number(employee.allowance),
+      educationHistory: Array.isArray(employee.educationHistory) ? employee.educationHistory : [],
+      workExperiences: Array.isArray(employee.workExperiences) ? employee.workExperiences : [],
+      financialComponentIds: Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds : [],
+      documents: Array.isArray(employee.documents) ? employee.documents : [],
+      leaveBalances: employee.leaveBalances ?? this.normalizeLeaveBalances()
+    } as EmployeeRecord;
+  }
+
+  private mapPrismaAttendanceRecord(record: any): AttendanceRecord {
+    return {
+      ...record,
+      timestamp: this.toIsoString(record.timestamp),
+      latitude: Number(record.latitude),
+      longitude: Number(record.longitude),
+      gpsDistanceMeters: Number(record.gpsDistanceMeters)
+    } as AttendanceRecord;
+  }
+
+  private mapPrismaLeaveRecord(record: any): LeaveRecord {
+    return {
+      ...record,
+      startDate: this.toDateString(record.startDate),
+      endDate: this.toDateString(record.endDate),
+      requestedAt: this.toIsoString(record.requestedAt),
+      daysRequested: Number(record.daysRequested),
+      supportingDocumentName: record.supportingDocumentName ?? null,
+      supportingDocumentUrl: record.supportingDocumentUrl ?? null
+    } as LeaveRecord;
+  }
+
+  private mapPrismaOvertimeRecord(record: any): OvertimeRecord {
+    return {
+      ...record,
+      date: this.toDateString(record.date),
+      minutes: Number(record.minutes)
+    } as OvertimeRecord;
+  }
+
+  private mapPrismaDepartment(record: any): DepartmentRecord {
+    return {
+      ...record,
+      createdAt: this.toIsoString(record.createdAt),
+      updatedAt: this.toIsoString(record.updatedAt)
+    } as DepartmentRecord;
+  }
+
+  private mapPrismaCompensationProfile(record: any): CompensationProfileRecord {
+    return {
+      ...record,
+      baseSalary: Number(record.baseSalary)
+    } as CompensationProfileRecord;
+  }
+
+  private mapPrismaTaxProfile(record: any): TaxProfileRecord {
+    return {
+      ...record,
+      rate: Number(record.rate)
+    } as TaxProfileRecord;
+  }
+
+  private mapPrismaPayrollComponent(record: any): PayrollComponentRecord {
+    return {
+      ...record,
+      amount: Number(record.amount),
+      percentage: record.percentage == null ? null : Number(record.percentage),
+      employeeIds: Array.isArray(record.employeeIds) ? record.employeeIds : []
+    } as PayrollComponentRecord;
+  }
+
+  private mapPrismaPayRun(record: any): PayRunRecord {
+    return {
+      ...record,
+      periodStart: this.toDateString(record.periodStart),
+      periodEnd: this.toDateString(record.periodEnd),
+      payDate: this.toDateString(record.payDate),
+      totalGross: Number(record.totalGross),
+      totalNet: Number(record.totalNet),
+      totalTax: Number(record.totalTax),
+      createdAt: this.toIsoString(record.createdAt),
+      publishedAt: record.publishedAt ? this.toIsoString(record.publishedAt) : null
+    } as PayRunRecord;
+  }
+
+  private mapPrismaPayslip(record: any): PayslipRecord {
+    return {
+      ...record,
+      periodStart: this.toDateString(record.periodStart),
+      periodEnd: this.toDateString(record.periodEnd),
+      payDate: this.toDateString(record.payDate),
+      baseSalary: Number(record.baseSalary),
+      allowance: Number(record.allowance),
+      overtimePay: Number(record.overtimePay),
+      additionalEarnings: Number(record.additionalEarnings),
+      grossPay: Number(record.grossPay),
+      taxDeduction: Number(record.taxDeduction),
+      otherDeductions: Number(record.otherDeductions),
+      netPay: Number(record.netPay),
+      components: Array.isArray(record.components) ? record.components : [],
+      generatedFileUrl: record.generatedFileUrl ?? null
+    } as PayslipRecord;
+  }
+
+  private mapPrismaReimbursementClaimType(record: any): ReimbursementClaimTypeRecord {
+    return {
+      ...record,
+      annualLimit: Number(record.annualLimit),
+      remainingBalance: Number(record.remainingBalance),
+      createdAt: this.toIsoString(record.createdAt),
+      updatedAt: this.toIsoString(record.updatedAt)
+    } as ReimbursementClaimTypeRecord;
+  }
+
+  private mapPrismaReimbursementRequest(record: any): ReimbursementRequestRecord {
+    return {
+      ...record,
+      amount: Number(record.amount),
+      balanceSnapshot: Number(record.balanceSnapshot),
+      receiptDate: this.toDateString(record.receiptDate),
+      submittedAt: record.submittedAt ? this.toIsoString(record.submittedAt) : null,
+      approvedAt: record.approvedAt ? this.toIsoString(record.approvedAt) : null,
+      processedAt: record.processedAt ? this.toIsoString(record.processedAt) : null,
+      createdAt: this.toIsoString(record.createdAt),
+      updatedAt: this.toIsoString(record.updatedAt)
+    } as ReimbursementRequestRecord;
+  }
+
+  private sanitizeEmployee(employee: EmployeeRecord) {
+    const educationHistory = Array.isArray(employee.educationHistory) ? employee.educationHistory : [];
+    const workExperiences = Array.isArray(employee.workExperiences) ? employee.workExperiences : [];
+    const financialComponentIds = Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds : [];
+    const documents = Array.isArray(employee.documents) ? employee.documents : [];
+
+    return {
+      ...employee,
+      educationHistory,
+      workExperiences,
+      financialComponentIds,
+      documents: documents.map((document) => this.toSafeEmployeeDocument(document)),
+      leaveBalances: employee.leaveBalances ?? this.normalizeLeaveBalances(),
       loginPassword: null
     };
   }
@@ -832,6 +1022,75 @@ export class AppService {
   }
 
   async getEmployeeDocumentAsset(employeeId: string, documentId: string, actor?: AuthenticatedActor) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employeeRow = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: {
+          id: true,
+          employeeNumber: true,
+          nik: true,
+          name: true,
+          email: true,
+          birthPlace: true,
+          birthDate: true,
+          gender: true,
+          maritalStatus: true,
+          marriageDate: true,
+          address: true,
+          idCardNumber: true,
+          education: true,
+          workExperience: true,
+          educationHistory: true,
+          workExperiences: true,
+          department: true,
+          position: true,
+          role: true,
+          status: true,
+          phone: true,
+          joinDate: true,
+          workLocation: true,
+          workType: true,
+          managerName: true,
+          employmentType: true,
+          contractStatus: true,
+          contractStart: true,
+          contractEnd: true,
+          baseSalary: true,
+          allowance: true,
+          positionSalaryId: true,
+          financialComponentIds: true,
+          taxProfileId: true,
+          taxProfile: true,
+          bankName: true,
+          bankAccountMasked: true,
+          appLoginEnabled: true,
+          loginUsername: true,
+          loginPassword: true,
+          documents: true,
+          leaveBalances: true
+        }
+      });
+      const employee = employeeRow ? this.mapPrismaEmployee(employeeRow) : null;
+      if (!employee) {
+        throw new NotFoundException("Employee not found");
+      }
+      this.assertSensitiveDocumentAccess(actor, employee, "employee documents");
+
+      const document = employee.documents.find((entry) => entry.id === documentId);
+      if (!document) {
+        throw new NotFoundException("Employee document not found");
+      }
+      const absolutePath = this.resolveStoragePath(document.fileUrl);
+      if (!existsSync(absolutePath)) {
+        throw new NotFoundException("Stored employee document file not found");
+      }
+      return {
+        absolutePath,
+        fileName: document.fileName
+      };
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === employeeId);
     if (!employee) {
@@ -854,6 +1113,35 @@ export class AppService {
   }
 
   async getAttendanceSelfieAsset(attendanceId: string, actor?: AuthenticatedActor) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const attendanceRow = await prisma.attendanceLog.findUnique({
+        where: { id: attendanceId },
+        include: {
+          employee: true
+        }
+      });
+      if (!attendanceRow) {
+        throw new NotFoundException("Attendance record not found");
+      }
+
+      const attendance = this.mapPrismaAttendanceRecord(attendanceRow);
+      if (!attendance.photoUrl) {
+        throw new NotFoundException("Attendance selfie not found");
+      }
+      const employee = attendanceRow.employee ? this.mapPrismaEmployee(attendanceRow.employee) : undefined;
+      this.assertSensitiveDocumentAccess(actor, employee, "attendance selfie");
+
+      const absolutePath = this.resolveStoragePath(attendance.photoUrl);
+      if (!existsSync(absolutePath)) {
+        throw new NotFoundException("Stored attendance selfie not found");
+      }
+      return {
+        absolutePath,
+        fileName: path.basename(absolutePath)
+      };
+    }
+
     const db = await this.readDb();
     const attendance = db.attendanceLogs.find((entry) => entry.id === attendanceId);
     if (!attendance) {
@@ -876,6 +1164,35 @@ export class AppService {
   }
 
   async getReimbursementReceiptAsset(reimbursementId: string, actor?: AuthenticatedActor) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const requestRow = await prisma.reimbursementRequest.findUnique({
+        where: { id: reimbursementId },
+        include: {
+          employee: true
+        }
+      });
+      if (!requestRow) {
+        throw new NotFoundException("Reimbursement request not found");
+      }
+
+      const request = this.mapPrismaReimbursementRequest(requestRow);
+      if (!request.receiptFileUrl) {
+        throw new NotFoundException("Reimbursement receipt not found");
+      }
+      const employee = requestRow.employee ? this.mapPrismaEmployee(requestRow.employee) : undefined;
+      this.assertSensitiveDocumentAccess(actor, employee, "reimbursement receipt");
+
+      const absolutePath = this.resolveStoragePath(request.receiptFileUrl);
+      if (!existsSync(absolutePath)) {
+        throw new NotFoundException("Stored reimbursement receipt not found");
+      }
+      return {
+        absolutePath,
+        fileName: request.receiptFileName ?? path.basename(absolutePath)
+      };
+    }
+
     const db = await this.readDb();
     const request = db.reimbursementRequests.find((entry) => entry.id === reimbursementId);
     if (!request) {
@@ -898,6 +1215,35 @@ export class AppService {
   }
 
   async getLeaveSupportingDocumentAsset(leaveId: string, actor?: AuthenticatedActor) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const leaveRow = await prisma.leaveRequest.findUnique({
+        where: { id: leaveId },
+        include: {
+          employee: true
+        }
+      });
+      if (!leaveRow) {
+        throw new NotFoundException("Leave request not found");
+      }
+
+      const leave = this.mapPrismaLeaveRecord(leaveRow);
+      if (!leave.supportingDocumentUrl) {
+        throw new NotFoundException("Supporting document not found");
+      }
+      const employee = leaveRow.employee ? this.mapPrismaEmployee(leaveRow.employee) : undefined;
+      this.assertSensitiveDocumentAccess(actor, employee, "leave supporting documents");
+
+      const absolutePath = this.resolveStoragePath(leave.supportingDocumentUrl);
+      if (!existsSync(absolutePath)) {
+        throw new NotFoundException("Stored leave supporting document not found");
+      }
+      return {
+        absolutePath,
+        fileName: leave.supportingDocumentName ?? path.basename(absolutePath)
+      };
+    }
+
     const db = await this.readDb();
     const leave = db.leaveRequests.find((entry) => entry.id === leaveId);
     if (!leave) {
@@ -1037,7 +1383,182 @@ export class AppService {
     };
   }
 
-  async resolveSessionActor(sessionKey: string): Promise<AuthenticatedActor | null> {
+  private getSessionCookieMaxAgeSeconds() {
+    return Math.max(60, Math.floor(this.sessionMaxLifetimeHours * 60 * 60));
+  }
+
+  private getSessionIdleTimeoutMs() {
+    return this.sessionIdleTimeoutMinutes * 60 * 1000;
+  }
+
+  private getSessionTouchIntervalMs() {
+    return this.sessionTouchIntervalMinutes * 60 * 1000;
+  }
+
+  private getSessionCleanupIntervalMs() {
+    return 15 * 60 * 1000;
+  }
+
+  private createSessionExpiry(now: Date) {
+    return new Date(now.getTime() + this.sessionMaxLifetimeHours * 60 * 60 * 1000);
+  }
+
+  private normalizeSessionMetadata(metadata?: SessionRequestMetadata) {
+    return {
+      ipAddress: metadata?.ipAddress?.trim() || null,
+      userAgent: metadata?.userAgent?.trim() || null
+    };
+  }
+
+  private async cleanupStaleSessions(force = false) {
+    const prisma = this.getPrisma();
+    if (!prisma) {
+      return;
+    }
+
+    const now = Date.now();
+    if (!force && now - this.lastSessionCleanupAt < this.getSessionCleanupIntervalMs()) {
+      return;
+    }
+
+    this.lastSessionCleanupAt = now;
+    const cutoff = new Date(now - this.getSessionIdleTimeoutMs());
+    await prisma.appSession.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: new Date(now) } },
+          { lastActivityAt: { lt: cutoff } },
+          { revokedAt: { not: null } }
+        ]
+      }
+    });
+  }
+
+  private async revokeSession(sessionId: string, reason: string) {
+    const prisma = this.getPrisma();
+    if (!prisma) {
+      return false;
+    }
+
+    const now = new Date();
+    const result = await prisma.appSession.updateMany({
+      where: {
+        id: sessionId,
+        revokedAt: null
+      },
+      data: {
+        revokedAt: now,
+        revocationReason: reason
+      }
+    });
+
+    if (result.count > 0) {
+      await writeSystemLog({
+        source: "backend",
+        event: "auth.session.revoked",
+        level: reason === "logout" ? "info" : "warn",
+        details: {
+          sessionId,
+          reason
+        }
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  private async createEmployeeSession(employee: EmployeeRecord, metadata?: SessionRequestMetadata): Promise<EmployeeLoginResult> {
+    const prisma = this.getPrisma();
+    if (!prisma) {
+      throw new Error("Database-backed sessions require Prisma to be enabled.");
+    }
+
+    const now = new Date();
+    await this.cleanupStaleSessions(true);
+    const sessionId = randomUUID();
+    const sessionKey = `employee:${employee.id}`;
+    const normalizedMetadata = this.normalizeSessionMetadata(metadata);
+    const expiresAt = this.createSessionExpiry(now);
+
+    await prisma.appSession.create({
+      data: {
+        id: sessionId,
+        userId: employee.id,
+        sessionKey,
+        role: employee.role,
+        ipAddress: normalizedMetadata.ipAddress,
+        userAgent: normalizedMetadata.userAgent,
+        createdAt: now,
+        lastActivityAt: now,
+        expiresAt
+      }
+    });
+
+    const activeSessions = await prisma.appSession.findMany({
+      where: {
+        userId: employee.id,
+        revokedAt: null,
+        expiresAt: { gt: now },
+        lastActivityAt: { gte: new Date(now.getTime() - this.getSessionIdleTimeoutMs()) }
+      },
+      orderBy: [
+        { lastActivityAt: "desc" },
+        { createdAt: "desc" }
+      ],
+      select: {
+        id: true
+      }
+    });
+
+    const overflowSessions = activeSessions.slice(this.sessionMaxConcurrentPerUser).map((entry: { id: string }) => entry.id);
+    if (overflowSessions.length > 0) {
+      await prisma.appSession.updateMany({
+        where: {
+          id: { in: overflowSessions },
+          revokedAt: null
+        },
+        data: {
+          revokedAt: now,
+          revocationReason: "concurrent-limit"
+        }
+      });
+      await writeSystemLog({
+        source: "backend",
+        event: "auth.session.concurrent-limit",
+        level: "warn",
+        details: {
+          employeeId: employee.id,
+          sessionIds: overflowSessions,
+          limit: this.sessionMaxConcurrentPerUser
+        }
+      });
+    }
+
+    await this.cleanupStaleSessions();
+    await writeSystemLog({
+      source: "backend",
+      event: "auth.session.created",
+      details: {
+        employeeId: employee.id,
+        sessionId,
+        role: employee.role,
+        expiresAt: expiresAt.toISOString(),
+        maxConcurrentSessions: this.sessionMaxConcurrentPerUser
+      }
+    });
+
+    return {
+      sessionId,
+      expiresAt: expiresAt.toISOString(),
+      maxAgeSeconds: this.getSessionCookieMaxAgeSeconds(),
+      idleTimeoutMinutes: this.sessionIdleTimeoutMinutes,
+      maxConcurrentSessions: this.sessionMaxConcurrentPerUser,
+      user: this.toEmployeeSessionPayload(employee)
+    };
+  }
+
+  async resolveSessionActor(sessionSubject: string): Promise<AuthenticatedActor | null> {
     const demoUsers: AuthenticatedActor[] = [
       {
         sessionKey: "global-admin",
@@ -1077,29 +1598,94 @@ export class AppService {
       }
     ];
 
-    const demo = demoUsers.find((entry) => entry.sessionKey === sessionKey);
+    const demo = demoUsers.find((entry) => entry.sessionKey === sessionSubject);
     if (demo) {
       return demo;
     }
 
-    if (!sessionKey.startsWith("employee:")) {
-      return null;
+    const prisma = this.getPrisma();
+    if (!prisma) {
+      if (!sessionSubject.startsWith("employee:")) {
+        return null;
+      }
+
+      const employeeId = sessionSubject.replace("employee:", "");
+      let session: EmployeeSessionPayload | null = null;
+      try {
+        session = await this.getEmployeeSession(employeeId);
+      } catch {
+        session = null;
+      }
+      if (!session) {
+        return null;
+      }
+
+      return {
+        ...session,
+        role: session.role as AuthenticatedActor["role"]
+      };
     }
 
-    const employeeId = sessionKey.replace("employee:", "");
-    let session: EmployeeSessionPayload | null = null;
-    try {
-      session = await this.getEmployeeSession(employeeId);
-    } catch {
-      session = null;
-    }
+    await this.cleanupStaleSessions();
+    const now = new Date();
+    const session = await prisma.appSession.findUnique({
+      where: { id: sessionSubject },
+      include: {
+        employee: true
+      }
+    });
+
     if (!session) {
       return null;
     }
 
+    if (session.revokedAt) {
+      return null;
+    }
+
+    if (session.expiresAt.getTime() <= now.getTime()) {
+      await this.revokeSession(session.id, "absolute-timeout");
+      return null;
+    }
+
+    if (session.lastActivityAt.getTime() + this.getSessionIdleTimeoutMs() <= now.getTime()) {
+      await this.revokeSession(session.id, "idle-timeout");
+      return null;
+    }
+
+    if (!session.employee || !session.employee.appLoginEnabled || session.employee.status !== "active") {
+      await this.revokeSession(session.id, "employee-disabled");
+      return null;
+    }
+
+    if (now.getTime() - session.lastActivityAt.getTime() >= this.getSessionTouchIntervalMs()) {
+      await prisma.appSession.update({
+        where: { id: session.id },
+        data: {
+          lastActivityAt: now
+        }
+      });
+    }
+
+    const payload = this.toEmployeeSessionPayload({
+      ...session.employee,
+      birthDate: this.toIsoString(session.employee.birthDate),
+      marriageDate: session.employee.marriageDate ? this.toIsoString(session.employee.marriageDate) : null,
+      joinDate: this.toDateString(session.employee.joinDate),
+      contractStart: this.toDateString(session.employee.contractStart),
+      contractEnd: session.employee.contractEnd ? this.toDateString(session.employee.contractEnd) : null,
+      educationHistory: Array.isArray(session.employee.educationHistory) ? session.employee.educationHistory as any : [],
+      workExperiences: Array.isArray(session.employee.workExperiences) ? session.employee.workExperiences as any : [],
+      documents: Array.isArray(session.employee.documents) ? session.employee.documents as any : [],
+      leaveBalances: session.employee.leaveBalances as any,
+      baseSalary: Number(session.employee.baseSalary),
+      allowance: Number(session.employee.allowance),
+      financialComponentIds: Array.isArray(session.employee.financialComponentIds) ? session.employee.financialComponentIds : []
+    } as EmployeeRecord);
+
     return {
-      ...session,
-      role: session.role as AuthenticatedActor["role"]
+      ...payload,
+      role: payload.role as AuthenticatedActor["role"]
     };
   }
 
@@ -1178,11 +1764,64 @@ export class AppService {
     return changed;
   }
 
+  private async ensurePrismaEmployeePasswordsHashed() {
+    const prisma = this.getPrisma();
+    if (!prisma) {
+      return false;
+    }
+
+    const employees = await prisma.employee.findMany({
+      where: {
+        appLoginEnabled: true,
+        loginPassword: {
+          not: null
+        }
+      },
+      select: {
+        id: true,
+        loginPassword: true
+      }
+    });
+
+    let changed = false;
+    for (const employee of employees) {
+      if (!employee.loginPassword || isPasswordHash(employee.loginPassword)) {
+        continue;
+      }
+
+      await prisma.employee.update({
+        where: { id: employee.id },
+        data: {
+          loginPassword: await hashPassword(employee.loginPassword)
+        }
+      });
+      changed = true;
+    }
+
+    return changed;
+  }
+
   private async persistSnapshotToDatabase(next: DatabaseShape) {
     const prisma = this.getPrisma();
     if (!prisma) {
       return;
     }
+
+    const existingSessions = await prisma.appSession.findMany({
+      select: {
+        id: true,
+        userId: true,
+        sessionKey: true,
+        role: true,
+        ipAddress: true,
+        userAgent: true,
+        createdAt: true,
+        lastActivityAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        revocationReason: true
+      }
+    });
 
     const departmentRows = next.departments.map((department) => ({
       id: department.id,
@@ -1416,62 +2055,78 @@ export class AppService {
     const validReimbursementRequestRows = reimbursementRequestRows.filter(
       (row) => employeeIds.has(String(row.userId)) && claimTypeIds.has(String(row.claimTypeId))
     );
+    const validSessionRows = existingSessions.filter((session: {
+      userId: string;
+    }) => employeeIds.has(String(session.userId)));
 
     await prisma.$transaction(async (tx: any) => {
-      await tx.$executeRawUnsafe(`
-        TRUNCATE TABLE
-          "ReimbursementRequest",
-          "Payslip",
-          "LeaveRequest",
-          "OvertimeRequest",
-          "AttendanceLog",
-          "ReimbursementClaimType",
-          "PayRun",
-          "PayrollComponent",
-          "CompensationProfile",
-          "TaxProfile",
-          "Employee",
-          "Department"
-        CASCADE
-      `);
+      // Delete children first so parent removals never rely on broad cascade truncation.
+      await this.syncRowsById(tx, "reimbursementRequest", validReimbursementRequestRows, true);
+      await this.syncRowsById(tx, "payslip", validPayslipRows, true);
+      await this.syncRowsById(tx, "leaveRequest", validLeaveRows, true);
+      await this.syncRowsById(tx, "overtimeRequest", validOvertimeRows, true);
+      await this.syncRowsById(tx, "attendanceLog", validAttendanceRows, true);
+      await this.syncRowsById(tx, "appSession", validSessionRows, true);
+      await this.syncRowsById(tx, "reimbursementClaimType", validReimbursementClaimTypeRows, true);
+      await this.syncRowsById(tx, "payRun", payRunRows, true);
+      await this.syncRowsById(tx, "payrollComponent", payrollComponentRows, true);
+      await this.syncRowsById(tx, "compensationProfile", compensationProfileRows, true);
+      await this.syncRowsById(tx, "taxProfile", taxProfileRows, true);
+      await this.syncRowsById(tx, "employee", employeeRows, true);
+      await this.syncRowsById(tx, "department", departmentRows, true);
 
-      if (departmentRows.length > 0) {
-        await tx.department.createMany({ data: departmentRows });
-      }
-      if (employeeRows.length > 0) {
-        await tx.employee.createMany({ data: employeeRows });
-      }
-      if (taxProfileRows.length > 0) {
-        await tx.taxProfile.createMany({ data: taxProfileRows });
-      }
-      if (compensationProfileRows.length > 0) {
-        await tx.compensationProfile.createMany({ data: compensationProfileRows });
-      }
-      if (payrollComponentRows.length > 0) {
-        await tx.payrollComponent.createMany({ data: payrollComponentRows });
-      }
-      if (payRunRows.length > 0) {
-        await tx.payRun.createMany({ data: payRunRows });
-      }
-      if (validReimbursementClaimTypeRows.length > 0) {
-        await tx.reimbursementClaimType.createMany({ data: validReimbursementClaimTypeRows });
-      }
-      if (validAttendanceRows.length > 0) {
-        await tx.attendanceLog.createMany({ data: validAttendanceRows });
-      }
-      if (validOvertimeRows.length > 0) {
-        await tx.overtimeRequest.createMany({ data: validOvertimeRows });
-      }
-      if (validLeaveRows.length > 0) {
-        await tx.leaveRequest.createMany({ data: validLeaveRows });
-      }
-      if (validPayslipRows.length > 0) {
-        await tx.payslip.createMany({ data: validPayslipRows });
-      }
-      if (validReimbursementRequestRows.length > 0) {
-        await tx.reimbursementRequest.createMany({ data: validReimbursementRequestRows });
-      }
+      // Upsert parents first, then dependents.
+      await this.syncRowsById(tx, "department", departmentRows, false);
+      await this.syncRowsById(tx, "employee", employeeRows, false);
+      await this.syncRowsById(tx, "taxProfile", taxProfileRows, false);
+      await this.syncRowsById(tx, "compensationProfile", compensationProfileRows, false);
+      await this.syncRowsById(tx, "payrollComponent", payrollComponentRows, false);
+      await this.syncRowsById(tx, "payRun", payRunRows, false);
+      await this.syncRowsById(tx, "reimbursementClaimType", validReimbursementClaimTypeRows, false);
+      await this.syncRowsById(tx, "attendanceLog", validAttendanceRows, false);
+      await this.syncRowsById(tx, "overtimeRequest", validOvertimeRows, false);
+      await this.syncRowsById(tx, "leaveRequest", validLeaveRows, false);
+      await this.syncRowsById(tx, "payslip", validPayslipRows, false);
+      await this.syncRowsById(tx, "reimbursementRequest", validReimbursementRequestRows, false);
+      await this.syncRowsById(tx, "appSession", validSessionRows, false);
     });
+  }
+
+  private async syncRowsById(
+    tx: any,
+    delegateName: string,
+    rows: Array<Record<string, unknown>>,
+    deleteMissing: boolean
+  ) {
+    const delegate = tx[delegateName];
+    if (!delegate) {
+      return;
+    }
+
+    if (deleteMissing) {
+      const ids = rows.map((row) => String(row.id));
+      if (ids.length === 0) {
+        await delegate.deleteMany();
+        return;
+      }
+      await delegate.deleteMany({
+        where: {
+          id: {
+            notIn: ids
+          }
+        }
+      });
+      return;
+    }
+
+    for (const row of rows) {
+      const { id, ...data } = row;
+      await delegate.upsert({
+        where: { id },
+        update: data,
+        create: row
+      });
+    }
   }
 
   private getRadius(location: string) {
@@ -1563,127 +2218,167 @@ export class AppService {
 
   private normalizeLeaveBalances(raw?: Partial<EmployeeRecord["leaveBalances"]>) {
     const balanceYear = Number(raw?.balanceYear ?? currentBalanceYear);
+    const allocations = Array.isArray(raw?.allocations)
+      ? raw.allocations.map((allocation, index) => this.normalizeLeaveAllocation(allocation as Partial<LeaveBalanceAllocation>, index))
+      : this.normalizeLegacyLeaveAllocations(raw as Record<string, unknown> | undefined);
+
     const normalized: EmployeeRecord["leaveBalances"] = {
-      annual: Number(raw?.annual ?? defaultLeaveAllocations.annual),
-      annualCarryOver: Number(raw?.annualCarryOver ?? 0),
-      annualCarryOverExpiresAt: raw?.annualCarryOverExpiresAt ?? null,
-      religious: Number(raw?.religious ?? defaultLeaveAllocations.religious),
-      religiousCarryOver: Number(raw?.religiousCarryOver ?? 0),
-      religiousCarryOverExpiresAt: raw?.religiousCarryOverExpiresAt ?? null,
-      maternity: Number(raw?.maternity ?? defaultLeaveAllocations.maternity),
-      maternityCarryOver: Number(raw?.maternityCarryOver ?? 0),
-      maternityCarryOverExpiresAt: raw?.maternityCarryOverExpiresAt ?? null,
-      paternity: Number(raw?.paternity ?? defaultLeaveAllocations.paternity),
-      paternityCarryOver: Number(raw?.paternityCarryOver ?? 0),
-      paternityCarryOverExpiresAt: raw?.paternityCarryOverExpiresAt ?? null,
-      marriage: Number(raw?.marriage ?? defaultLeaveAllocations.marriage),
-      marriageCarryOver: Number(raw?.marriageCarryOver ?? 0),
-      marriageCarryOverExpiresAt: raw?.marriageCarryOverExpiresAt ?? null,
-      bereavement: Number(raw?.bereavement ?? defaultLeaveAllocations.bereavement),
-      bereavementCarryOver: Number(raw?.bereavementCarryOver ?? 0),
-      bereavementCarryOverExpiresAt: raw?.bereavementCarryOverExpiresAt ?? null,
-      sick: Number(raw?.sick ?? 0),
+      allocations,
       sickUsed: Number(raw?.sickUsed ?? 0),
-      permission: Number(raw?.permission ?? defaultLeaveAllocations.permission),
-      permissionCarryOver: Number(raw?.permissionCarryOver ?? 0),
-      permissionCarryOverExpiresAt: raw?.permissionCarryOverExpiresAt ?? null,
       balanceYear
     };
 
     if (normalized.balanceYear < currentBalanceYear) {
-      for (const leaveType of carryOverTypes) {
-        normalized[`${leaveType}CarryOver` as const] = normalized.balanceYear === currentBalanceYear - 1 ? Number(normalized[leaveType] ?? 0) : 0;
-        normalized[`${leaveType}CarryOverExpiresAt` as const] = normalized.balanceYear === currentBalanceYear - 1 ? `${currentBalanceYear}-12-31` : null;
-        normalized[leaveType] = 0;
-      }
+      normalized.allocations = (normalized.allocations ?? []).map((allocation) => ({
+        ...allocation,
+        carryOver: normalized.balanceYear === currentBalanceYear - 1 ? Number(allocation.days ?? 0) : 0,
+        carryOverExpiresAt: normalized.balanceYear === currentBalanceYear - 1 ? `${currentBalanceYear}-12-31` : null,
+        days: 0
+      }));
       normalized.balanceYear = currentBalanceYear;
     }
 
     return normalized;
   }
 
-  private leaveBalanceKeyForType(type: LeaveType): typeof carryOverTypes[number] | null {
+  private normalizeLegacyLeaveAllocations(raw?: Record<string, unknown>) {
+    const legacySource = raw ?? {};
+    const enabledTypes = Array.isArray(legacySource.enabledTypes)
+      ? legacySource.enabledTypes.map((value) => String(value))
+      : null;
+    const allocations = legacyLeaveAllocationTemplates
+      .map((template, index) => {
+        const days = Number(legacySource[template.legacyKey] ?? template.defaultDays);
+        const carryOver = Number(legacySource[`${template.legacyKey}CarryOver`] ?? 0);
+        const enabled = enabledTypes ? enabledTypes.includes(template.legacyKey) : days > 0 || carryOver > 0;
+        if (!enabled) {
+          return null;
+        }
+        return this.normalizeLeaveAllocation({
+          code: template.code,
+          label: template.label,
+          days,
+          carryOver,
+          carryOverExpiresAt: legacySource[`${template.legacyKey}CarryOverExpiresAt`] == null ? null : String(legacySource[`${template.legacyKey}CarryOverExpiresAt`])
+        }, index);
+      })
+      .filter((allocation): allocation is LeaveBalanceAllocation => allocation !== null);
+
+    if (allocations.length > 0) {
+      return allocations;
+    }
+
+    return [
+      this.normalizeLeaveAllocation({
+        code: "annual-leave",
+        label: "Annual Leave",
+        days: 12,
+        carryOver: 0,
+        carryOverExpiresAt: null
+      }, 0)
+    ];
+  }
+
+  private normalizeLeaveAllocation(raw: Partial<LeaveBalanceAllocation>, index: number): LeaveBalanceAllocation {
+    const label = String(raw.label ?? `Leave Type ${index + 1}`).trim() || `Leave Type ${index + 1}`;
+    return {
+      code: this.leaveTypeCode(String(raw.code ?? label)),
+      label,
+      days: Number(raw.days ?? 0),
+      carryOver: Number(raw.carryOver ?? 0),
+      carryOverExpiresAt: raw.carryOverExpiresAt == null ? null : String(raw.carryOverExpiresAt)
+    };
+  }
+
+  private leaveTypeCode(value: string) {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "leave-type";
+  }
+
+  private normalizeLeaveTypeLabel(type: LeaveType) {
     switch (type) {
       case "Leave Request":
-      case "Annual Leave":
-        return "annual";
-      case "Religious Leave":
-        return "religious";
-      case "Maternity Leave":
-        return "maternity";
-      case "Paternity Leave":
-        return "paternity";
-      case "Marriage Leave":
-        return "marriage";
-      case "Bereavement Leave":
-        return "bereavement";
-      case "Half Day Leave":
-        return "annual";
+        return "Annual Leave";
+      case "Sick Leave":
+        return "Sick Submission";
       case "Permission":
-        return "permission";
+        return "Half Day Leave";
+      case "Remote Work":
+        return "On Duty Request";
       default:
-        return null;
+        return type;
     }
   }
 
-  private availableLeaveBalance(
-    balances: EmployeeRecord["leaveBalances"],
-    key: typeof carryOverTypes[number]
-  ) {
-    return Number((balances[key] + balances[`${key}CarryOver` as const]).toFixed(1));
+  private isOnDutyLeaveType(type: LeaveType) {
+    return type === "On Duty Request" || type === "Remote Work";
   }
 
-  private consumeLeaveBalance(
-    balances: EmployeeRecord["leaveBalances"],
-    key: typeof carryOverTypes[number],
-    amount: number
-  ) {
-    const carryKey = `${key}CarryOver` as const;
-    const availableCarry = Number(balances[carryKey] ?? 0);
+  private isSickLeaveType(type: LeaveType) {
+    return type === "Sick Submission" || type === "Sick Leave";
+  }
+
+  private isHalfDayLeaveType(type: LeaveType) {
+    return type === "Half Day Leave" || type === "Permission";
+  }
+
+  private findLeaveAllocation(balances: EmployeeRecord["leaveBalances"], type: LeaveType) {
+    const normalizedLabel = this.normalizeLeaveTypeLabel(type);
+    const typeCode = this.leaveTypeCode(normalizedLabel);
+    return (balances.allocations ?? []).find((allocation) =>
+      this.leaveTypeCode(allocation.code) === typeCode || this.leaveTypeCode(allocation.label) === typeCode
+    ) ?? null;
+  }
+
+  private availableLeaveBalance(allocation: LeaveBalanceAllocation | null | undefined) {
+    if (!allocation) {
+      return 0;
+    }
+    return Number((allocation.days + allocation.carryOver).toFixed(1));
+  }
+
+  private consumeLeaveBalance(allocation: LeaveBalanceAllocation, amount: number) {
+    const availableCarry = Number(allocation.carryOver ?? 0);
     const remaining = Math.max(0, amount - availableCarry);
-    balances[carryKey] = Math.max(0, Number((availableCarry - amount).toFixed(1)));
-    balances[key] = Math.max(0, Number((balances[key] - remaining).toFixed(1)));
+    allocation.carryOver = Math.max(0, Number((availableCarry - amount).toFixed(1)));
+    allocation.days = Math.max(0, Number((allocation.days - remaining).toFixed(1)));
   }
 
   private describeBalance(employee: EmployeeRecord | undefined, type: LeaveType, daysRequested: number) {
     if (!employee) {
       return `${daysRequested} day request`;
     }
-    const leaveKey = this.leaveBalanceKeyForType(type);
-    const available = leaveKey ? this.availableLeaveBalance(employee.leaveBalances, leaveKey) : 0;
-    switch (type) {
-      case "Leave Request":
-      case "Annual Leave":
-        return `Annual leave ${available} days available, ${daysRequested} requested`;
-      case "Religious Leave":
-        return `Religious leave ${available} days available, ${daysRequested} requested`;
-      case "Maternity Leave":
-        return `Maternity leave ${available} days available, ${daysRequested} requested`;
-      case "Paternity Leave":
-        return `Paternity leave ${available} days available, ${daysRequested} requested`;
-      case "Marriage Leave":
-        return `Marriage leave ${available} days available, ${daysRequested} requested`;
-      case "Bereavement Leave":
-        return `Bereavement leave ${available} days available, ${daysRequested} requested`;
-      case "Sick Submission":
-      case "Sick Leave":
-        return `Sick submission recorded for ${daysRequested} day(s)`;
-      case "Half Day Leave":
-        return `Annual leave ${this.availableLeaveBalance(employee.leaveBalances, "annual")} days available, 0.5 requested`;
-      case "Permission":
-        return `Permission quota ${this.availableLeaveBalance(employee.leaveBalances, "permission")} days available, ${daysRequested} requested`;
-      default:
-        return `Policy-based workflow, ${daysRequested} day request`;
+    if (this.isSickLeaveType(type)) {
+      return `Sick submission recorded for ${daysRequested} day(s)`;
     }
+    if (this.isOnDutyLeaveType(type)) {
+      return `Policy-based workflow, ${daysRequested} day request`;
+    }
+
+    const allocation = this.findLeaveAllocation(employee.leaveBalances, this.isHalfDayLeaveType(type) ? "Annual Leave" : type);
+    if (!allocation) {
+      return `${this.normalizeLeaveTypeLabel(type)} requested for ${daysRequested} day(s)`;
+    }
+
+    const requestedText = this.isHalfDayLeaveType(type) ? "0.5" : String(daysRequested);
+    return `${allocation.label} ${this.availableLeaveBalance(allocation)} days available, ${requestedText} requested`;
   }
 
   private applyLeaveBalance(employee: EmployeeRecord, type: LeaveType, daysRequested: number) {
-    const leaveKey = this.leaveBalanceKeyForType(type);
-    if (leaveKey) {
-      this.consumeLeaveBalance(employee.leaveBalances, leaveKey, daysRequested);
-    }
-    if (type === "Sick Submission" || type === "Sick Leave") {
+    if (this.isSickLeaveType(type)) {
       employee.leaveBalances.sickUsed = Number((employee.leaveBalances.sickUsed + daysRequested).toFixed(1));
+      return;
+    }
+    if (this.isOnDutyLeaveType(type)) {
+      return;
+    }
+
+    const allocation = this.findLeaveAllocation(employee.leaveBalances, this.isHalfDayLeaveType(type) ? "Annual Leave" : type);
+    if (allocation) {
+      this.consumeLeaveBalance(allocation, daysRequested);
     }
   }
 
@@ -1691,31 +2386,18 @@ export class AppService {
     if (!employee) {
       return "Balance updated";
     }
-    const leaveKey = this.leaveBalanceKeyForType(type);
-    switch (type) {
-      case "Leave Request":
-      case "Annual Leave":
-        return `${this.availableLeaveBalance(employee.leaveBalances, "annual")} annual leave days remaining`;
-      case "Religious Leave":
-        return `${this.availableLeaveBalance(employee.leaveBalances, "religious")} religious leave days remaining`;
-      case "Maternity Leave":
-        return `${this.availableLeaveBalance(employee.leaveBalances, "maternity")} maternity leave days remaining`;
-      case "Paternity Leave":
-        return `${this.availableLeaveBalance(employee.leaveBalances, "paternity")} paternity leave days remaining`;
-      case "Marriage Leave":
-        return `${this.availableLeaveBalance(employee.leaveBalances, "marriage")} marriage leave days remaining`;
-      case "Bereavement Leave":
-        return `${this.availableLeaveBalance(employee.leaveBalances, "bereavement")} bereavement leave days remaining`;
-      case "Sick Submission":
-      case "Sick Leave":
-        return `${employee.leaveBalances.sickUsed} sick leave use(s) recorded`;
-      case "Half Day Leave":
-        return `${this.availableLeaveBalance(employee.leaveBalances, "annual")} annual leave days remaining after half-day request`;
-      case "Permission":
-        return `${this.availableLeaveBalance(employee.leaveBalances, "permission")} permission days remaining`;
-      default:
-        return leaveKey ? `${this.availableLeaveBalance(employee.leaveBalances, leaveKey)} days remaining` : "Policy-based confirmed";
+    if (this.isSickLeaveType(type)) {
+      return `${employee.leaveBalances.sickUsed} sick leave use(s) recorded`;
     }
+    if (this.isOnDutyLeaveType(type)) {
+      return "Policy-based confirmed";
+    }
+
+    const allocation = this.findLeaveAllocation(employee.leaveBalances, this.isHalfDayLeaveType(type) ? "Annual Leave" : type);
+    if (!allocation) {
+      return "Balance updated";
+    }
+    return `${this.availableLeaveBalance(allocation)} ${allocation.label.toLowerCase()} days remaining`;
   }
 
   private getTaxRate(profile: string, taxProfiles: TaxProfileRecord[], taxProfileId?: string | null) {
@@ -1971,14 +2653,16 @@ export class AppService {
     };
   }
 
-  async getEmployees(query?: EmployeeListQueryDto) {
+  async getEmployees(query?: EmployeeListQueryDto, actor?: AuthenticatedActor) {
     const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.department || query?.role || query?.status);
     const prisma = this.getPrisma();
+    const actorEmployeeFilter = actor?.role === "employee" ? { id: actor.id } : {};
 
     if (prisma && shouldPaginate) {
       const meta = this.toPageMeta(query?.page, query?.pageSize);
       const search = query?.search?.trim();
       const where: Record<string, unknown> = {
+        ...actorEmployeeFilter,
         ...(query?.department ? { department: query.department } : {}),
         ...(query?.role ? { role: query.role } : {}),
         ...(query?.status ? { status: query.status } : {})
@@ -2005,14 +2689,7 @@ export class AppService {
       ]);
 
       const employees = rows.map((employee: any) => this.sanitizeEmployee({
-        ...employee,
-        baseSalary: Number(employee.baseSalary),
-        allowance: Number(employee.allowance),
-        educationHistory: Array.isArray(employee.educationHistory) ? employee.educationHistory : [],
-        workExperiences: Array.isArray(employee.workExperiences) ? employee.workExperiences : [],
-        financialComponentIds: Array.isArray(employee.financialComponentIds) ? employee.financialComponentIds : [],
-        documents: Array.isArray(employee.documents) ? employee.documents : [],
-        leaveBalances: employee.leaveBalances ?? this.normalizeLeaveBalances()
+        ...this.mapPrismaEmployee(employee)
       } as EmployeeRecord));
 
       return {
@@ -2024,7 +2701,10 @@ export class AppService {
       } satisfies PaginatedResult<EmployeeRecord>;
     }
 
-    const employees = await this.getEmployeeRows();
+    let employees = await this.getEmployeeRows();
+    if (actor?.role === "employee") {
+      employees = employees.filter((employee: EmployeeRecord) => employee.id === actor.id);
+    }
     if (!shouldPaginate) {
       return employees;
     }
@@ -2032,16 +2712,32 @@ export class AppService {
     return this.paginateArray(employees, query?.page, query?.pageSize);
   }
 
-  async authenticateEmployee(username: string, password: string) {
-    const db = await this.readDb();
+  async authenticateEmployee(username: string, password: string, metadata?: SessionRequestMetadata): Promise<EmployeeLoginResult> {
     const normalizedUsername = username.trim();
     const normalizedPassword = password.trim();
+    const prisma = this.getPrisma();
 
-    const employee = db.employees.find((item) =>
-      item.status === "active" &&
-      item.appLoginEnabled &&
-      item.loginUsername === normalizedUsername
-    );
+    let employee: EmployeeRecord | null = null;
+    if (prisma) {
+      const record = await prisma.employee.findFirst({
+        where: {
+          status: "active",
+          appLoginEnabled: true,
+          loginUsername: normalizedUsername
+        }
+      });
+
+      if (record) {
+        employee = this.mapPrismaEmployee(record);
+      }
+    } else {
+      const db = await this.readDb();
+      employee = db.employees.find((item) =>
+        item.status === "active" &&
+        item.appLoginEnabled &&
+        item.loginUsername === normalizedUsername
+      ) ?? null;
+    }
 
     if (!employee) {
       throw new NotFoundException("Username atau password tidak valid.");
@@ -2053,14 +2749,45 @@ export class AppService {
     }
 
     if (employee.loginPassword && !isPasswordHash(employee.loginPassword)) {
-      employee.loginPassword = await hashPassword(normalizedPassword);
-      await this.writeDb(db);
+      const hashedPassword = await hashPassword(normalizedPassword);
+      employee.loginPassword = hashedPassword;
+      if (prisma) {
+        await prisma.employee.update({
+          where: { id: employee.id },
+          data: { loginPassword: hashedPassword }
+        });
+      } else {
+        const db = await this.readDb();
+        const target = db.employees.find((entry) => entry.id === employee?.id);
+        if (target) {
+          target.loginPassword = hashedPassword;
+          await this.writeDb(db);
+        }
+      }
     }
 
-    return this.toEmployeeSessionPayload(employee);
+    return this.createEmployeeSession(employee, metadata);
   }
 
   async getEmployeeSession(employeeId: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employee = await prisma.employee.findFirst({
+        where: {
+          id: employeeId,
+          appLoginEnabled: true,
+          status: "active"
+        }
+      });
+      if (!employee) {
+        throw new NotFoundException("Employee session not found");
+      }
+
+      return this.toEmployeeSessionPayload({
+        ...this.mapPrismaEmployee(employee)
+      } as EmployeeRecord);
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((item) => item.id === employeeId && item.appLoginEnabled && item.status === "active");
     if (!employee) {
@@ -2070,9 +2797,56 @@ export class AppService {
     return this.toEmployeeSessionPayload(employee);
   }
 
+  async revokeEmployeeSession(sessionSubject: string) {
+    const demoUsers = new Set(["global-admin", "elena-hr", "sarah-manager", "james-employee"]);
+    if (demoUsers.has(sessionSubject)) {
+      return { revoked: true, reason: "demo-session" };
+    }
+
+    const revoked = await this.revokeSession(sessionSubject, "logout");
+    return { revoked };
+  }
+
   async changeOwnPassword(payload: ChangePasswordDto, actor?: AuthenticatedActor) {
     if (!actor?.id || actor.sessionKey === "global-admin" || !actor.sessionKey.startsWith("employee:")) {
       throw new ForbiddenException("Password hanya bisa diubah dari akun karyawan yang valid.");
+    }
+
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employeeRow = await prisma.employee.findFirst({
+        where: {
+          id: actor.id,
+          appLoginEnabled: true,
+          status: "active"
+        }
+      });
+      const employee = employeeRow ? this.mapPrismaEmployee(employeeRow) : null;
+      if (!employee || !employee.loginPassword) {
+        throw new NotFoundException("Akun employee tidak ditemukan atau belum aktif.");
+      }
+
+      const currentPassword = payload.currentPassword.trim();
+      const newPassword = payload.newPassword.trim();
+      if (newPassword.length < 8) {
+        throw new BadRequestException("Password baru minimal 8 karakter.");
+      }
+      if (currentPassword === newPassword) {
+        throw new BadRequestException("Password baru harus berbeda dari password saat ini.");
+      }
+
+      const passwordMatches = await verifyPassword(currentPassword, employee.loginPassword);
+      if (!passwordMatches) {
+        throw new BadRequestException("Password saat ini tidak valid.");
+      }
+
+      const hashedPassword = await hashPassword(newPassword);
+      await prisma.employee.update({
+        where: { id: employee.id },
+        data: { loginPassword: hashedPassword }
+      });
+      await this.writeAuditLog("auth.change-password", { employeeId: employee.id, actor: actor.name });
+      return { success: true, message: "Password berhasil diperbarui." };
     }
 
     const db = await this.readDb();
@@ -2106,6 +2880,41 @@ export class AppService {
       throw new ForbiddenException("Hanya HR atau admin yang bisa reset password employee.");
     }
 
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employeeRow = await prisma.employee.findUnique({
+        where: { id: payload.employeeId }
+      });
+      const employee = employeeRow ? this.mapPrismaEmployee(employeeRow) : null;
+      if (!employee) {
+        throw new NotFoundException("Employee tidak ditemukan.");
+      }
+      if (!employee.appLoginEnabled) {
+        throw new BadRequestException("Akun aplikasi employee belum aktif.");
+      }
+
+      const newPassword = payload.newPassword.trim();
+      if (newPassword.length < 8) {
+        throw new BadRequestException("Password baru minimal 8 karakter.");
+      }
+
+      await prisma.employee.update({
+        where: { id: employee.id },
+        data: {
+          loginPassword: await hashPassword(newPassword)
+        }
+      });
+      await this.writeAuditLog("auth.reset-password", {
+        employeeId: employee.id,
+        actor: actor.name,
+        actorRole: actor.role
+      });
+      return {
+        success: true,
+        message: `Password akun ${employee.name} berhasil di-reset.`
+      };
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === payload.employeeId);
     if (!employee) {
@@ -2134,6 +2943,147 @@ export class AppService {
   }
 
   async createEmployee(payload: CreateEmployeeDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const department = await prisma.department.findFirst({
+        where: {
+          name: payload.department
+        }
+      });
+      if (!department) {
+        throw new BadRequestException("Department belum terdaftar di master.");
+      }
+      if (!department.active) {
+        throw new BadRequestException("Department tidak aktif.");
+      }
+
+      const managerName = payload.managerName.trim();
+      if (managerName) {
+        const manager = await prisma.employee.findFirst({
+          where: {
+            name: managerName,
+            role: "manager",
+            status: "active",
+            department: payload.department
+          }
+        });
+        if (!manager) {
+          throw new BadRequestException("Manager approval tidak ditemukan atau tidak aktif.");
+        }
+      }
+
+      const compensationProfile = payload.positionSalaryId
+        ? await prisma.compensationProfile.findUnique({ where: { id: payload.positionSalaryId } })
+        : null;
+      const selectedComponents = (payload.financialComponentIds?.length ?? 0) > 0
+        ? await prisma.payrollComponent.findMany({
+            where: {
+              id: { in: payload.financialComponentIds ?? [] }
+            }
+          })
+        : [];
+      const allowance = selectedComponents
+        .filter((entry: any) => entry.type === "earning")
+        .reduce((sum: number, entry: any) => sum + (entry.calculationType === "percentage"
+          ? Math.round((Number(compensationProfile?.baseSalary ?? payload.baseSalary)) * ((Number(entry.percentage ?? 0)) / 100))
+          : Number(entry.amount)), 0);
+      const selectedTaxProfile = payload.taxProfileId
+        ? await prisma.taxProfile.findUnique({ where: { id: payload.taxProfileId } })
+        : null;
+      const loginUsername = payload.appLoginEnabled === false ? null : (payload.loginUsername?.trim() || payload.nik);
+      const employeePassword = payload.appLoginEnabled === false ? null : (payload.loginPassword?.trim() || "employee123");
+
+      const conflicts = await prisma.employee.findMany({
+        where: {
+          OR: [
+            { nik: payload.nik },
+            { email: payload.email },
+            { idCardNumber: payload.idCardNumber },
+            ...(payload.appLoginEnabled === false || !loginUsername ? [] : [{ loginUsername }])
+          ]
+        },
+        select: {
+          id: true,
+          nik: true,
+          email: true,
+          idCardNumber: true,
+          appLoginEnabled: true,
+          loginUsername: true
+        }
+      });
+      for (const conflict of conflicts) {
+        if (conflict.nik.trim().toLowerCase() === payload.nik.trim().toLowerCase()) {
+          throw new BadRequestException("NIK sudah dipakai oleh karyawan lain.");
+        }
+        if (conflict.email.trim().toLowerCase() === payload.email.trim().toLowerCase()) {
+          throw new BadRequestException("Email sudah dipakai oleh karyawan lain.");
+        }
+        if (conflict.idCardNumber.trim() === payload.idCardNumber.trim()) {
+          throw new BadRequestException("Nomor KTP sudah dipakai oleh karyawan lain.");
+        }
+        if (
+          payload.appLoginEnabled !== false &&
+          loginUsername &&
+          conflict.appLoginEnabled &&
+          conflict.loginUsername &&
+          conflict.loginUsername.trim().toLowerCase() === loginUsername.trim().toLowerCase()
+        ) {
+          throw new BadRequestException("Username login sudah dipakai oleh karyawan lain.");
+        }
+      }
+
+      const employeeCount = await prisma.employee.count();
+      const created = await prisma.employee.create({
+        data: {
+          id: `emp-${randomUUID().slice(0, 8)}`,
+          employeeNumber: `EMP-2026-${String(employeeCount + 1).padStart(3, "0")}`,
+          nik: payload.nik,
+          name: payload.name,
+          email: payload.email,
+          birthPlace: payload.birthPlace,
+          birthDate: this.toDateOnly(payload.birthDate) ?? new Date(),
+          gender: payload.gender,
+          maritalStatus: payload.maritalStatus,
+          marriageDate: this.toDateOnly(payload.marriageDate),
+          address: payload.address,
+          idCardNumber: payload.idCardNumber,
+          education: payload.education,
+          workExperience: payload.workExperience,
+          educationHistory: Array.isArray(payload.educationHistory) ? payload.educationHistory as EducationRecord[] : [],
+          workExperiences: Array.isArray(payload.workExperiences) ? payload.workExperiences as WorkExperienceRecord[] : [],
+          department: payload.department,
+          position: compensationProfile?.position ?? payload.position,
+          role: payload.role,
+          status: payload.status,
+          phone: payload.phone,
+          joinDate: new Date(),
+          workLocation: payload.workLocation,
+          workType: payload.workType,
+          managerName: payload.managerName,
+          employmentType: payload.employmentType,
+          contractStatus: payload.contractStatus,
+          contractStart: this.toDateOnly(payload.contractStart) ?? new Date(),
+          contractEnd: this.toDateOnly(payload.contractEnd),
+          baseSalary: Number(compensationProfile?.baseSalary ?? payload.baseSalary),
+          allowance,
+          positionSalaryId: payload.positionSalaryId ?? null,
+          financialComponentIds: payload.financialComponentIds ?? [],
+          taxProfileId: payload.taxProfileId ?? null,
+          taxProfile: selectedTaxProfile?.name ?? payload.taxProfile,
+          bankName: payload.bankName,
+          bankAccountMasked: payload.bankAccountMasked,
+          appLoginEnabled: payload.appLoginEnabled ?? true,
+          loginUsername,
+          loginPassword: employeePassword ? await hashPassword(employeePassword) : null,
+          documents: [],
+          leaveBalances: this.normalizeLeaveBalances(payload.leaveBalances as Partial<EmployeeRecord["leaveBalances"]> | undefined)
+        }
+      });
+      const employee = this.sanitizeEmployee(this.mapPrismaEmployee(created));
+      await this.writeAuditLog("employee.create", { employeeId: employee.id, role: employee.role, department: employee.department });
+      return employee;
+    }
+
     const db = await this.readDb();
     this.assertDepartmentExistsAndActive(db, payload.department);
     this.assertManagerAssignment(db, { department: payload.department, managerName: payload.managerName });
@@ -2183,6 +3133,180 @@ export class AppService {
   }
 
   async updateEmployee(id: string, payload: UpdateEmployeeDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const currentRow = await prisma.employee.findUnique({
+        where: { id }
+      });
+      if (!currentRow) {
+        throw new NotFoundException("Employee not found");
+      }
+
+      const employee = this.mapPrismaEmployee(currentRow);
+      const next = {
+        ...employee,
+        ...payload,
+        positionSalaryId: payload.positionSalaryId === undefined ? employee.positionSalaryId : payload.positionSalaryId,
+        financialComponentIds: payload.financialComponentIds ?? employee.financialComponentIds,
+        leaveBalances: payload.leaveBalances !== undefined
+          ? this.normalizeLeaveBalances(payload.leaveBalances as Partial<EmployeeRecord["leaveBalances"]>)
+          : employee.leaveBalances
+      } as EmployeeRecord;
+
+      const compensationProfile = next.positionSalaryId
+        ? await prisma.compensationProfile.findUnique({ where: { id: next.positionSalaryId } })
+        : null;
+      if (compensationProfile) {
+        next.position = compensationProfile.position;
+        next.baseSalary = Number(compensationProfile.baseSalary);
+      }
+
+      const selectedComponents = next.financialComponentIds.length > 0
+        ? await prisma.payrollComponent.findMany({
+            where: { id: { in: next.financialComponentIds } }
+          })
+        : [];
+      next.allowance = selectedComponents
+        .filter((entry: any) => entry.type === "earning")
+        .reduce((sum: number, entry: any) => sum + (entry.calculationType === "percentage"
+          ? Math.round(next.baseSalary * ((Number(entry.percentage ?? 0)) / 100))
+          : Number(entry.amount)), 0);
+
+      if (payload.taxProfileId !== undefined) {
+        next.taxProfileId = payload.taxProfileId ?? null;
+        const selectedTaxProfile = next.taxProfileId ? await prisma.taxProfile.findUnique({ where: { id: next.taxProfileId } }) : null;
+        if (selectedTaxProfile) {
+          next.taxProfile = selectedTaxProfile.name;
+        } else if (payload.taxProfileId === null) {
+          next.taxProfile = payload.taxProfile ?? next.taxProfile;
+        }
+      }
+      if (payload.appLoginEnabled !== undefined && !payload.appLoginEnabled) {
+        next.loginUsername = null;
+        next.loginPassword = null;
+      }
+      if (payload.loginUsername !== undefined) {
+        next.loginUsername = payload.loginUsername?.trim() || null;
+      }
+      if (payload.loginPassword !== undefined) {
+        const nextPassword = payload.loginPassword?.trim() || null;
+        if (nextPassword) {
+          next.loginPassword = await hashPassword(nextPassword);
+        } else if (payload.appLoginEnabled === false) {
+          next.loginPassword = null;
+        }
+      }
+
+      const department = await prisma.department.findFirst({
+        where: { name: next.department }
+      });
+      if (!department) {
+        throw new BadRequestException("Department belum terdaftar di master.");
+      }
+      if (!department.active) {
+        throw new BadRequestException("Department tidak aktif.");
+      }
+      if (next.managerName.trim()) {
+        const manager = await prisma.employee.findFirst({
+          where: {
+            id: { not: id },
+            name: next.managerName,
+            role: "manager",
+            status: "active",
+            department: next.department
+          }
+        });
+        if (!manager) {
+          throw new BadRequestException("Manager approval tidak ditemukan atau tidak aktif.");
+        }
+      }
+
+      const conflicts = await prisma.employee.findMany({
+        where: {
+          id: { not: id },
+          OR: [
+            { nik: next.nik },
+            { email: next.email },
+            { idCardNumber: next.idCardNumber },
+            ...(next.appLoginEnabled && next.loginUsername ? [{ loginUsername: next.loginUsername }] : [])
+          ]
+        },
+        select: {
+          nik: true,
+          email: true,
+          idCardNumber: true,
+          appLoginEnabled: true,
+          loginUsername: true
+        }
+      });
+      for (const conflict of conflicts) {
+        if (conflict.nik.trim().toLowerCase() === next.nik.trim().toLowerCase()) {
+          throw new BadRequestException("NIK sudah dipakai oleh karyawan lain.");
+        }
+        if (conflict.email.trim().toLowerCase() === next.email.trim().toLowerCase()) {
+          throw new BadRequestException("Email sudah dipakai oleh karyawan lain.");
+        }
+        if (conflict.idCardNumber.trim() === next.idCardNumber.trim()) {
+          throw new BadRequestException("Nomor KTP sudah dipakai oleh karyawan lain.");
+        }
+        if (
+          next.appLoginEnabled &&
+          next.loginUsername &&
+          conflict.appLoginEnabled &&
+          conflict.loginUsername &&
+          conflict.loginUsername.trim().toLowerCase() === next.loginUsername.trim().toLowerCase()
+        ) {
+          throw new BadRequestException("Username login sudah dipakai oleh karyawan lain.");
+        }
+      }
+
+      const updated = await prisma.employee.update({
+        where: { id },
+        data: {
+          nik: next.nik,
+          name: next.name,
+          email: next.email,
+          birthPlace: next.birthPlace,
+          birthDate: this.toDateOnly(next.birthDate) ?? new Date(),
+          gender: next.gender,
+          maritalStatus: next.maritalStatus,
+          marriageDate: this.toDateOnly(next.marriageDate),
+          address: next.address,
+          idCardNumber: next.idCardNumber,
+          education: next.education,
+          workExperience: next.workExperience,
+          educationHistory: next.educationHistory,
+          workExperiences: next.workExperiences,
+          department: next.department,
+          position: next.position,
+          role: next.role,
+          status: next.status,
+          phone: next.phone,
+          workLocation: next.workLocation,
+          workType: next.workType,
+          managerName: next.managerName,
+          employmentType: next.employmentType,
+          contractStatus: next.contractStatus,
+          contractStart: this.toDateOnly(next.contractStart) ?? new Date(),
+          contractEnd: this.toDateOnly(next.contractEnd),
+          baseSalary: next.baseSalary,
+          allowance: next.allowance,
+          positionSalaryId: next.positionSalaryId ?? null,
+          financialComponentIds: next.financialComponentIds,
+          taxProfileId: next.taxProfileId ?? null,
+          taxProfile: next.taxProfile,
+          bankName: next.bankName,
+          bankAccountMasked: next.bankAccountMasked,
+          appLoginEnabled: next.appLoginEnabled,
+          loginUsername: next.loginUsername,
+          ...(payload.loginPassword !== undefined || payload.appLoginEnabled === false ? { loginPassword: next.loginPassword } : {}),
+          leaveBalances: next.leaveBalances
+        }
+      });
+      await this.writeAuditLog("employee.update", { employeeId: id, fields: Object.keys(payload) });
+      return this.sanitizeEmployee(this.mapPrismaEmployee(updated));
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === id);
     if (!employee) {
@@ -2247,6 +3371,21 @@ export class AppService {
   }
 
   async deleteEmployee(id: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const existing = await prisma.employee.findUnique({
+        where: { id }
+      });
+      if (!existing) {
+        throw new NotFoundException("Employee not found");
+      }
+      await prisma.employee.delete({
+        where: { id }
+      });
+      await this.writeAuditLog("employee.delete", { employeeId: id });
+      return { deleted: true, id };
+    }
+
     const db = await this.readDb();
     const nextEmployees = db.employees.filter((entry) => entry.id !== id);
     if (nextEmployees.length === db.employees.length) {
@@ -2259,6 +3398,21 @@ export class AppService {
   }
 
   async getEmployeeDocuments(employeeId: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employee = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: {
+          documents: true
+        }
+      });
+      if (!employee) {
+        throw new NotFoundException("Employee not found");
+      }
+      const documents = Array.isArray(employee.documents) ? employee.documents as EmployeeDocumentRecord[] : [];
+      return documents.map((document) => this.toSafeEmployeeDocument(document));
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === employeeId);
     if (!employee) {
@@ -2273,6 +3427,42 @@ export class AppService {
     file?: Express.Multer.File,
     fileUrl?: string | null
   ) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employeeRow = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: {
+          documents: true
+        }
+      });
+      if (!employeeRow) {
+        throw new NotFoundException("Employee not found");
+      }
+      if (!file || !fileUrl) {
+        throw new NotFoundException("Document file is required");
+      }
+
+      const documents = Array.isArray(employeeRow.documents) ? employeeRow.documents as EmployeeDocumentRecord[] : [];
+      const document: EmployeeDocumentRecord = {
+        id: `doc-${randomUUID().slice(0, 8)}`,
+        employeeId,
+        type: payload.type,
+        title: payload.title,
+        fileName: file.originalname,
+        fileUrl,
+        uploadedAt: new Date().toISOString(),
+        notes: payload.notes ?? ""
+      };
+
+      await prisma.employee.update({
+        where: { id: employeeId },
+        data: {
+          documents: [document, ...documents]
+        }
+      });
+      return document;
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === employeeId);
     if (!employee) {
@@ -2299,6 +3489,37 @@ export class AppService {
   }
 
   async deleteEmployeeDocument(employeeId: string, documentId: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employeeRow = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: {
+          documents: true
+        }
+      });
+      if (!employeeRow) {
+        throw new NotFoundException("Employee not found");
+      }
+
+      const documents = Array.isArray(employeeRow.documents) ? employeeRow.documents as EmployeeDocumentRecord[] : [];
+      const document = documents.find((entry) => entry.id === documentId);
+      if (!document) {
+        throw new NotFoundException("Employee document not found");
+      }
+
+      await prisma.employee.update({
+        where: { id: employeeId },
+        data: {
+          documents: documents.filter((entry) => entry.id !== documentId)
+        }
+      });
+      const fullPath = this.resolveStoragePath(document.fileUrl);
+      if (existsSync(fullPath)) {
+        unlinkSync(fullPath);
+      }
+      return { deleted: true, id: documentId };
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === employeeId);
     if (!employee) {
@@ -2320,16 +3541,62 @@ export class AppService {
   }
 
   async getCompensationProfiles() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const rows = await prisma.compensationProfile.findMany({
+        orderBy: { position: "asc" }
+      });
+      return rows.map((row: any) => this.mapPrismaCompensationProfile(row));
+    }
+
     const db = await this.readDb();
     return db.compensationProfiles;
   }
 
   async getDepartments() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const rows = await prisma.department.findMany({
+        orderBy: { name: "asc" }
+      });
+      return rows.map((row: any) => this.mapPrismaDepartment(row));
+    }
+
     const db = await this.readDb();
     return [...db.departments].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async createDepartment(payload: CreateDepartmentDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const name = payload.name.trim();
+      if (!name) {
+        throw new BadRequestException("Department name is required.");
+      }
+      const duplicate = await prisma.department.findFirst({
+        where: {
+          name: {
+            equals: name,
+            mode: "insensitive"
+          }
+        }
+      });
+      if (duplicate) {
+        throw new BadRequestException("Department sudah ada.");
+      }
+
+      const department = await prisma.department.create({
+        data: {
+          id: `dept-${randomUUID().slice(0, 8)}`,
+          name,
+          active: payload.active
+        }
+      });
+      const normalized = this.mapPrismaDepartment(department);
+      await this.writeAuditLog("department.create", { departmentId: normalized.id, name: normalized.name, active: normalized.active });
+      return normalized;
+    }
+
     const db = await this.readDb();
     const name = payload.name.trim();
     if (!name) {
@@ -2355,6 +3622,51 @@ export class AppService {
   }
 
   async updateDepartment(id: string, payload: UpdateDepartmentDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const department = await prisma.department.findUnique({
+        where: { id }
+      });
+      if (!department) {
+        throw new NotFoundException("Department not found");
+      }
+
+      const nextName = payload.name?.trim();
+      if (nextName && nextName.toLowerCase() !== department.name.trim().toLowerCase()) {
+        const duplicate = await prisma.department.findFirst({
+          where: {
+            id: { not: id },
+            name: {
+              equals: nextName,
+              mode: "insensitive"
+            }
+          }
+        });
+        if (duplicate) {
+          throw new BadRequestException("Department sudah ada.");
+        }
+      }
+
+      const updated = await prisma.$transaction(async (tx: any) => {
+        if (nextName && nextName.toLowerCase() !== department.name.trim().toLowerCase()) {
+          await tx.employee.updateMany({
+            where: { department: department.name },
+            data: { department: nextName }
+          });
+        }
+
+        return tx.department.update({
+          where: { id },
+          data: {
+            ...(nextName ? { name: nextName } : {}),
+            ...(payload.active !== undefined ? { active: payload.active } : {})
+          }
+        });
+      });
+      await this.writeAuditLog("department.update", { departmentId: id, fields: Object.keys(payload) });
+      return this.mapPrismaDepartment(updated);
+    }
+
     const db = await this.readDb();
     const department = db.departments.find((entry) => entry.id === id);
     if (!department) {
@@ -2386,6 +3698,28 @@ export class AppService {
   }
 
   async deleteDepartment(id: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const department = await prisma.department.findUnique({
+        where: { id }
+      });
+      if (!department) {
+        throw new NotFoundException("Department not found");
+      }
+      const isUsed = await prisma.employee.count({
+        where: { department: department.name }
+      });
+      if (isUsed > 0) {
+        throw new BadRequestException("Department masih dipakai employee aktif, tidak bisa dihapus.");
+      }
+
+      await prisma.department.delete({
+        where: { id }
+      });
+      await this.writeAuditLog("department.delete", { departmentId: id, name: department.name });
+      return { deleted: true, id };
+    }
+
     const db = await this.readDb();
     const department = db.departments.find((entry) => entry.id === id);
     if (!department) {
@@ -2402,6 +3736,20 @@ export class AppService {
   }
 
   async createCompensationProfile(payload: CreateCompensationProfileDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const profile = await prisma.compensationProfile.create({
+        data: {
+          id: `comp-${randomUUID().slice(0, 8)}`,
+          position: payload.position,
+          baseSalary: payload.baseSalary,
+          active: payload.active,
+          notes: payload.notes
+        }
+      });
+      return this.mapPrismaCompensationProfile(profile);
+    }
+
     const db = await this.readDb();
     const profile: CompensationProfileRecord = {
       id: `comp-${randomUUID().slice(0, 8)}`,
@@ -2413,6 +3761,33 @@ export class AppService {
   }
 
   async updateCompensationProfile(id: string, payload: UpdateCompensationProfileDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const profile = await prisma.compensationProfile.findUnique({
+        where: { id }
+      });
+      if (!profile) {
+        throw new NotFoundException("Compensation profile not found");
+      }
+
+      const previousPosition = profile.position;
+      const updated = await prisma.$transaction(async (tx: any) => {
+        const nextProfile = await tx.compensationProfile.update({
+          where: { id },
+          data: payload
+        });
+        await tx.employee.updateMany({
+          where: { positionSalaryId: id },
+          data: {
+            position: nextProfile.position || previousPosition,
+            baseSalary: nextProfile.baseSalary
+          }
+        });
+        return nextProfile;
+      });
+      return this.mapPrismaCompensationProfile(updated);
+    }
+
     const db = await this.readDb();
     const profile = db.compensationProfiles.find((entry) => entry.id === id);
     if (!profile) {
@@ -2436,6 +3811,27 @@ export class AppService {
   }
 
   async deleteCompensationProfile(id: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const exists = await prisma.compensationProfile.findUnique({
+        where: { id }
+      });
+      if (!exists) {
+        throw new NotFoundException("Compensation profile not found");
+      }
+
+      await prisma.$transaction(async (tx: any) => {
+        await tx.employee.updateMany({
+          where: { positionSalaryId: id },
+          data: { positionSalaryId: null }
+        });
+        await tx.compensationProfile.delete({
+          where: { id }
+        });
+      });
+      return { deleted: true, id };
+    }
+
     const db = await this.readDb();
     const exists = db.compensationProfiles.some((entry) => entry.id === id);
     if (!exists) {
@@ -2449,11 +3845,33 @@ export class AppService {
   }
 
   async getTaxProfiles() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const rows = await prisma.taxProfile.findMany({
+        orderBy: { name: "asc" }
+      });
+      return rows.map((row: any) => this.mapPrismaTaxProfile(row));
+    }
+
     const db = await this.readDb();
     return db.taxProfiles;
   }
 
   async createTaxProfile(payload: CreateTaxProfileDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const profile = await prisma.taxProfile.create({
+        data: {
+          id: `tax-${randomUUID().slice(0, 8)}`,
+          name: payload.name,
+          rate: payload.rate,
+          active: payload.active,
+          description: payload.description
+        }
+      });
+      return this.mapPrismaTaxProfile(profile);
+    }
+
     const db = await this.readDb();
     const profile: TaxProfileRecord = { id: `tax-${randomUUID().slice(0, 8)}`, ...payload };
     db.taxProfiles.unshift(profile);
@@ -2462,6 +3880,29 @@ export class AppService {
   }
 
   async updateTaxProfile(id: string, payload: UpdateTaxProfileDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const profile = await prisma.taxProfile.findUnique({
+        where: { id }
+      });
+      if (!profile) {
+        throw new NotFoundException("Tax profile not found");
+      }
+
+      const updated = await prisma.$transaction(async (tx: any) => {
+        const nextProfile = await tx.taxProfile.update({
+          where: { id },
+          data: payload
+        });
+        await tx.employee.updateMany({
+          where: { taxProfileId: id },
+          data: { taxProfile: nextProfile.name }
+        });
+        return nextProfile;
+      });
+      return this.mapPrismaTaxProfile(updated);
+    }
+
     const db = await this.readDb();
     const profile = db.taxProfiles.find((entry) => entry.id === id);
     if (!profile) {
@@ -2474,6 +3915,27 @@ export class AppService {
   }
 
   async deleteTaxProfile(id: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const exists = await prisma.taxProfile.findUnique({
+        where: { id }
+      });
+      if (!exists) {
+        throw new NotFoundException("Tax profile not found");
+      }
+
+      await prisma.$transaction(async (tx: any) => {
+        await tx.employee.updateMany({
+          where: { taxProfileId: id },
+          data: { taxProfileId: null }
+        });
+        await tx.taxProfile.delete({
+          where: { id }
+        });
+      });
+      return { deleted: true, id };
+    }
+
     const db = await this.readDb();
     const exists = db.taxProfiles.some((entry) => entry.id === id);
     if (!exists) {
@@ -2489,7 +3951,7 @@ export class AppService {
     const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.department || query?.status || query?.userId);
     const prisma = this.getPrisma();
 
-    if (prisma && shouldPaginate) {
+    if (prisma) {
       const meta = this.toPageMeta(query?.page, query?.pageSize);
       const search = query?.search?.trim();
       const where: Record<string, unknown> = {
@@ -2507,6 +3969,14 @@ export class AppService {
         ];
       }
 
+      if (!shouldPaginate) {
+        const rows = await prisma.attendanceLog.findMany({
+          where,
+          orderBy: { timestamp: "desc" }
+        });
+        return rows.map((record: any) => this.toSafeAttendanceRecord(this.mapPrismaAttendanceRecord(record)));
+      }
+
       const [total, rows] = await Promise.all([
         prisma.attendanceLog.count({ where }),
         prisma.attendanceLog.findMany({
@@ -2517,12 +3987,7 @@ export class AppService {
         })
       ]);
 
-      const items = rows.map((record: any) => this.toSafeAttendanceRecord({
-        ...record,
-        latitude: Number(record.latitude),
-        longitude: Number(record.longitude),
-        gpsDistanceMeters: Number(record.gpsDistanceMeters)
-      }));
+      const items = rows.map((record: any) => this.toSafeAttendanceRecord(this.mapPrismaAttendanceRecord(record)));
 
       return {
         items,
@@ -2563,6 +4028,21 @@ export class AppService {
   }
 
   async getAttendanceToday() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = await prisma.attendanceLog.findMany({
+        where: {
+          timestamp: {
+            gte: new Date(`${today}T00:00:00.000Z`),
+            lt: new Date(`${today}T23:59:59.999Z`)
+          }
+        },
+        orderBy: { timestamp: "desc" }
+      });
+      return rows.map((entry: any) => this.toSafeAttendanceRecord(this.mapPrismaAttendanceRecord(entry)));
+    }
+
     const db = await this.readDb();
     const today = new Date().toISOString().slice(0, 10);
     return db.attendanceLogs
@@ -2571,11 +4051,52 @@ export class AppService {
   }
 
   async getAttendanceOverview() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const today = new Date().toISOString().slice(0, 10);
+      const [todayRows, overtimeAggregate] = await Promise.all([
+        prisma.attendanceLog.findMany({
+          where: {
+            timestamp: {
+              gte: new Date(`${today}T00:00:00.000Z`),
+              lt: new Date(`${today}T23:59:59.999Z`)
+            }
+          },
+          select: {
+            id: true,
+            checkOut: true,
+            gpsValidated: true,
+            photoUrl: true
+          }
+        }),
+        prisma.overtimeRequest.aggregate({
+          where: {
+            status: { in: ["approved", "paid", "pending"] }
+          },
+          _sum: {
+            minutes: true
+          }
+        })
+      ]);
+
+      const openCheckIns = todayRows.filter((entry: any) => !entry.checkOut).length;
+      const gpsValidated = todayRows.filter((entry: any) => entry.gpsValidated).length;
+      const selfieCaptured = todayRows.filter((entry: any) => Boolean(entry.photoUrl)).length;
+      const overtimeMinutes = Number(overtimeAggregate._sum.minutes ?? 0);
+      return {
+        checkedInToday: todayRows.length,
+        openCheckIns,
+        gpsValidated,
+        selfieCaptured,
+        overtimeHours: Number((overtimeMinutes / 60).toFixed(1))
+      };
+    }
+
     const db = await this.readDb();
     const today = await this.getAttendanceToday();
-    const openCheckIns = today.filter((entry) => !entry.checkOut).length;
-    const gpsValidated = today.filter((entry) => entry.gpsValidated).length;
-    const selfieCaptured = today.filter((entry) => Boolean(entry.photoUrl)).length;
+    const openCheckIns = today.filter((entry: AttendanceRecord) => !entry.checkOut).length;
+    const gpsValidated = today.filter((entry: AttendanceRecord) => entry.gpsValidated).length;
+    const selfieCaptured = today.filter((entry: AttendanceRecord) => Boolean(entry.photoUrl)).length;
     const overtimeMinutes = db.overtimeRequests.filter((entry) => ["approved", "paid", "pending"].includes(entry.status)).reduce((total, entry) => total + entry.minutes, 0);
     return {
       checkedInToday: today.length,
@@ -2587,10 +4108,48 @@ export class AppService {
   }
 
   async getOvertimeRequests() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const rows = await prisma.overtimeRequest.findMany({
+        orderBy: { date: "desc" }
+      });
+      return rows.map((entry: any) => this.mapPrismaOvertimeRecord(entry));
+    }
+
     const db = await this.readDb();
     return db.overtimeRequests;
   }
   async checkIn(payload: CheckInDto, photoUrl: string | null) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const now = new Date();
+      const schedule = this.parseClock(NON_SHIFT_START);
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const scheduledMinutes = schedule.hour * 60 + schedule.minute;
+      const gpsDistanceMeters = this.measureDistanceMeters(payload.location, payload.latitude, payload.longitude);
+      const created = await prisma.attendanceLog.create({
+        data: {
+          id: `att-${randomUUID().slice(0, 8)}`,
+          userId: payload.userId,
+          employeeName: payload.employeeName,
+          department: payload.department,
+          timestamp: now,
+          checkIn: this.formatClock(now),
+          checkOut: null,
+          location: payload.location,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          description: "Regular attendance check-in",
+          gpsValidated: gpsDistanceMeters <= this.getRadius(payload.location),
+          gpsDistanceMeters,
+          photoUrl,
+          status: currentMinutes > scheduledMinutes ? "late" : "on-time",
+          overtimeMinutes: 0
+        }
+      });
+      return this.mapPrismaAttendanceRecord(created);
+    }
+
     const db = await this.readDb();
     const now = new Date();
     const schedule = this.parseClock(NON_SHIFT_START);
@@ -2621,6 +4180,53 @@ export class AppService {
   }
 
   async checkOut(payload: CheckOutDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const existing = await prisma.attendanceLog.findUnique({
+        where: { id: payload.attendanceId }
+      });
+      if (!existing) {
+        throw new NotFoundException("Attendance record not found");
+      }
+
+      const now = new Date();
+      const checkOutTime = payload.checkOut ?? this.formatClock(now);
+      const scheduled = this.parseClock(NON_SHIFT_END);
+      const actual = payload.checkOut
+        ? this.parseClock(payload.checkOut.replace(/\s?(AM|PM)$/i, "").trim())
+        : { hour: now.getHours(), minute: now.getMinutes() };
+      const overtimeMinutes = Math.max(0, actual.hour * 60 + actual.minute - (scheduled.hour * 60 + scheduled.minute));
+
+      const updated = await prisma.$transaction(async (tx: any) => {
+        const attendance = await tx.attendanceLog.update({
+          where: { id: payload.attendanceId },
+          data: {
+            checkOut: checkOutTime,
+            overtimeMinutes
+          }
+        });
+
+        if (overtimeMinutes > 0) {
+          await tx.overtimeRequest.create({
+            data: {
+              id: `ot-${randomUUID().slice(0, 8)}`,
+              userId: existing.userId,
+              employeeName: existing.employeeName,
+              department: existing.department,
+              date: existing.timestamp,
+              minutes: overtimeMinutes,
+              reason: "Auto captured from attendance check-out",
+              status: "pending"
+            }
+          });
+        }
+
+        return attendance;
+      });
+
+      return this.mapPrismaAttendanceRecord(updated);
+    }
+
     const db = await this.readDb();
     const record = db.attendanceLogs.find((entry) => entry.id === payload.attendanceId);
     if (!record) {
@@ -2653,6 +4259,23 @@ export class AppService {
   }
 
   async createOvertimeRequest(payload: CreateOvertimeDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const record = await prisma.overtimeRequest.create({
+        data: {
+          id: `ot-${randomUUID().slice(0, 8)}`,
+          userId: payload.userId,
+          employeeName: payload.employeeName,
+          department: payload.department,
+          date: this.toDateOnly(payload.date) ?? new Date(),
+          minutes: payload.minutes,
+          reason: payload.reason,
+          status: "pending"
+        }
+      });
+      return this.mapPrismaOvertimeRecord(record);
+    }
+
     const db = await this.readDb();
     const record: OvertimeRecord = { id: `ot-${randomUUID().slice(0, 8)}`, ...payload, status: "pending" };
     db.overtimeRequests.unshift(record);
@@ -2661,6 +4284,30 @@ export class AppService {
   }
 
   async approveOvertimeRequest(payload: OvertimeApproveDto, actor?: AuthenticatedActor) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const overtime = await prisma.overtimeRequest.findUnique({
+        where: { id: payload.overtimeId },
+        include: {
+          employee: true
+        }
+      });
+      if (!overtime) {
+        throw new NotFoundException("Overtime request not found");
+      }
+
+      const employee = overtime.employee ? this.mapPrismaEmployee(overtime.employee) : undefined;
+      this.assertManagerApprovalScope(actor, employee);
+      const updated = await prisma.overtimeRequest.update({
+        where: { id: payload.overtimeId },
+        data: {
+          status: payload.status
+        }
+      });
+      await this.writeAuditLog("overtime.approve", { overtimeId: updated.id, status: payload.status, actor: actor?.name ?? payload.actor });
+      return this.mapPrismaOvertimeRecord(updated);
+    }
+
     const db = await this.readDb();
     const overtime = db.overtimeRequests.find((entry) => entry.id === payload.overtimeId);
     if (!overtime) {
@@ -2675,12 +4322,84 @@ export class AppService {
   }
 
   async getLeaveHistory() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const rows = await prisma.leaveRequest.findMany({
+        orderBy: { requestedAt: "desc" }
+      });
+      return rows.map((record: any) => this.toSafeLeaveRecord(this.mapPrismaLeaveRecord(record)));
+    }
+
     const db = await this.readDb();
     return db.leaveRequests.map((record) => this.toSafeLeaveRecord(record));
-  }  async requestLeave(payload: LeaveRequestDto, file?: Express.Multer.File, supportingDocumentUrl?: string | null) {
+  }
+
+  async requestLeave(payload: LeaveRequestDto, file?: Express.Multer.File, supportingDocumentUrl?: string | null) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employeeRow = await prisma.employee.findUnique({
+        where: { id: payload.userId }
+      });
+      if (!employeeRow) {
+        throw new NotFoundException("Employee not found");
+      }
+
+      const employee = this.mapPrismaEmployee(employeeRow);
+      const daysRequested = this.getRequestedDays(payload.type, payload.startDate, payload.endDate);
+      if (!this.isOnDutyLeaveType(payload.type) && !this.isSickLeaveType(payload.type)) {
+        const allocation = this.findLeaveAllocation(employee.leaveBalances, this.isHalfDayLeaveType(payload.type) ? "Annual Leave" : payload.type);
+        if (!allocation) {
+          throw new BadRequestException("This leave type has not been allocated for the selected employee.");
+        }
+        if (this.availableLeaveBalance(allocation) < daysRequested) {
+          throw new BadRequestException("Insufficient leave balance for this request.");
+        }
+      }
+
+      const leave = await prisma.leaveRequest.create({
+        data: {
+          id: `leave-${randomUUID().slice(0, 8)}`,
+          userId: payload.userId,
+          employeeName: payload.employeeName,
+          type: payload.type,
+          startDate: this.toDateOnly(payload.startDate) ?? new Date(),
+          endDate: this.toDateOnly(payload.endDate) ?? new Date(),
+          reason: payload.reason,
+          status: "pending-manager",
+          approverFlow: ["Manager Pending"],
+          balanceLabel: this.describeBalance(employee, payload.type, daysRequested),
+          requestedAt: new Date(),
+          daysRequested,
+          autoApproved: false,
+          supportingDocumentName: file?.originalname ?? null,
+          supportingDocumentUrl: supportingDocumentUrl ?? null
+        }
+      });
+      const normalized = this.mapPrismaLeaveRecord(leave);
+      await this.writeAuditLog("leave.request", {
+        leaveId: normalized.id,
+        userId: normalized.userId,
+        type: normalized.type,
+        hasSupportingDocument: Boolean(normalized.supportingDocumentUrl)
+      });
+      return this.toSafeLeaveRecord(normalized);
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === payload.userId);
+    if (!employee) {
+      throw new NotFoundException("Employee not found");
+    }
     const daysRequested = this.getRequestedDays(payload.type, payload.startDate, payload.endDate);
+    if (!this.isOnDutyLeaveType(payload.type) && !this.isSickLeaveType(payload.type)) {
+      const allocation = this.findLeaveAllocation(employee.leaveBalances, this.isHalfDayLeaveType(payload.type) ? "Annual Leave" : payload.type);
+      if (!allocation) {
+        throw new BadRequestException("This leave type has not been allocated for the selected employee.");
+      }
+      if (this.availableLeaveBalance(allocation) < daysRequested) {
+        throw new BadRequestException("Insufficient leave balance for this request.");
+      }
+    }
     const leave: LeaveRecord = {
       id: `leave-${randomUUID().slice(0, 8)}`,
       requestedAt: new Date().toISOString(),
@@ -2705,6 +4424,93 @@ export class AppService {
     return this.toSafeLeaveRecord(leave);
   }
   async approveLeave(payload: LeaveApproveDto, actor?: AuthenticatedActor) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const leaveRow = await prisma.leaveRequest.findUnique({
+        where: { id: payload.leaveId },
+        include: {
+          employee: true
+        }
+      });
+      if (!leaveRow) {
+        throw new NotFoundException("Leave request not found");
+      }
+
+      const leave = this.mapPrismaLeaveRecord(leaveRow);
+      const employee = leaveRow.employee ? this.mapPrismaEmployee(leaveRow.employee) : undefined;
+      this.assertManagerApprovalScope(actor, employee);
+      const wasApproved = leave.status === "approved";
+      const nextApproverFlow = [...leave.approverFlow, `${actor?.name ?? payload.actor} -> ${payload.status}`];
+      const updates: Record<string, unknown> = {
+        status: payload.status,
+        approverFlow: nextApproverFlow
+      };
+
+      await prisma.$transaction(async (tx: any) => {
+        if (payload.status === "approved" && employee && !wasApproved) {
+          this.applyLeaveBalance(employee, leave.type, leave.daysRequested);
+          const nextBalanceLabel = this.leaveBalanceLabelAfterApproval(employee, leave.type);
+          updates.balanceLabel = nextBalanceLabel;
+
+          await tx.employee.update({
+            where: { id: employee.id },
+            data: {
+              leaveBalances: employee.leaveBalances
+            }
+          });
+
+          if (leave.type === "On Duty Request" || leave.type === "Remote Work") {
+            const existingRows = await tx.attendanceLog.findMany({
+              where: {
+                userId: employee.id,
+                timestamp: {
+                  gte: new Date(`${leave.startDate}T00:00:00.000Z`),
+                  lt: new Date(`${leave.endDate}T23:59:59.999Z`)
+                }
+              },
+              orderBy: { timestamp: "desc" }
+            });
+            const existingRecords = existingRows.map((record: any) => this.mapPrismaAttendanceRecord(record));
+            const generated = this.buildOnDutyAttendanceRecords(employee, leave, existingRecords);
+            if (generated.length > 0) {
+              await tx.attendanceLog.createMany({
+                data: generated.map((record) => ({
+                  id: record.id,
+                  userId: record.userId,
+                  employeeName: record.employeeName,
+                  department: record.department,
+                  timestamp: this.toDate(record.timestamp) ?? new Date(),
+                  checkIn: record.checkIn,
+                  checkOut: record.checkOut,
+                  location: record.location,
+                  latitude: record.latitude,
+                  longitude: record.longitude,
+                  description: record.description,
+                  gpsValidated: record.gpsValidated,
+                  gpsDistanceMeters: record.gpsDistanceMeters,
+                  photoUrl: record.photoUrl,
+                  status: record.status,
+                  overtimeMinutes: record.overtimeMinutes
+                }))
+              });
+            }
+          }
+        }
+
+        await tx.leaveRequest.update({
+          where: { id: leave.id },
+          data: updates
+        });
+      });
+
+      const refreshed = await prisma.leaveRequest.findUnique({
+        where: { id: leave.id }
+      });
+      const result = refreshed ? this.mapPrismaLeaveRecord(refreshed) : { ...leave, ...updates } as LeaveRecord;
+      await this.writeAuditLog("leave.approve", { leaveId: leave.id, status: payload.status, actor: actor?.name ?? payload.actor });
+      return this.toSafeLeaveRecord(result);
+    }
+
     const db = await this.readDb();
     const leave = db.leaveRequests.find((entry) => entry.id === payload.leaveId);
     if (!leave) {
@@ -2734,11 +4540,47 @@ export class AppService {
   }
 
   async getReimbursementClaimTypes() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const rows = await prisma.reimbursementClaimType.findMany({
+        orderBy: { updatedAt: "desc" }
+      });
+      return rows.map((row: any) => this.mapPrismaReimbursementClaimType(row));
+    }
+
     const db = await this.readDb();
     return db.reimbursementClaimTypes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async createReimbursementClaimType(payload: CreateReimbursementClaimTypeDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const employeeRow = await prisma.employee.findUnique({
+        where: { id: payload.employeeId }
+      });
+      const employee = employeeRow ? this.mapPrismaEmployee(employeeRow) : null;
+      const claimType = await prisma.reimbursementClaimType.create({
+        data: {
+          id: `claim-${randomUUID().slice(0, 8)}`,
+          employeeId: payload.employeeId,
+          employeeName: employee?.name ?? payload.employeeName,
+          department: employee?.department ?? payload.department,
+          designation: employee?.position ?? payload.designation,
+          category: payload.category,
+          claimType: payload.claimType,
+          subType: payload.subType,
+          currency: payload.currency,
+          annualLimit: payload.annualLimit,
+          remainingBalance: Math.min(payload.remainingBalance, payload.annualLimit),
+          active: payload.active,
+          notes: payload.notes ?? "",
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      });
+      return this.mapPrismaReimbursementClaimType(claimType);
+    }
+
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === payload.employeeId);
     const now = new Date().toISOString();
@@ -2765,6 +4607,46 @@ export class AppService {
   }
 
   async updateReimbursementClaimType(id: string, payload: UpdateReimbursementClaimTypeDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const current = await prisma.reimbursementClaimType.findUnique({
+        where: { id }
+      });
+      if (!current) {
+        throw new NotFoundException("Reimbursement claim type not found");
+      }
+
+      const employeeRow = payload.employeeId
+        ? await prisma.employee.findUnique({ where: { id: payload.employeeId } })
+        : null;
+      const employee = employeeRow ? this.mapPrismaEmployee(employeeRow) : null;
+      const nextAnnualLimit = payload.annualLimit ?? Number(current.annualLimit);
+      const nextRemainingBalance = payload.annualLimit !== undefined && Number(current.remainingBalance) > payload.annualLimit
+        ? payload.annualLimit
+        : payload.remainingBalance ?? Number(current.remainingBalance);
+      const updated = await prisma.reimbursementClaimType.update({
+        where: { id },
+        data: {
+          ...(payload.employeeId ? {
+            employeeId: employee?.id ?? payload.employeeId,
+            employeeName: employee?.name ?? payload.employeeName ?? current.employeeName,
+            department: employee?.department ?? payload.department ?? current.department,
+            designation: employee?.position ?? payload.designation ?? current.designation
+          } : {}),
+          ...(payload.category !== undefined ? { category: payload.category } : {}),
+          ...(payload.claimType !== undefined ? { claimType: payload.claimType } : {}),
+          ...(payload.subType !== undefined ? { subType: payload.subType } : {}),
+          ...(payload.currency !== undefined ? { currency: payload.currency } : {}),
+          ...(payload.annualLimit !== undefined ? { annualLimit: nextAnnualLimit } : {}),
+          remainingBalance: Math.min(nextRemainingBalance, nextAnnualLimit),
+          ...(payload.active !== undefined ? { active: payload.active } : {}),
+          ...(payload.notes !== undefined ? { notes: payload.notes ?? "" } : {}),
+          updatedAt: new Date()
+        }
+      });
+      return this.mapPrismaReimbursementClaimType(updated);
+    }
+
     const db = await this.readDb();
     const claimType = db.reimbursementClaimTypes.find((entry) => entry.id === id);
     if (!claimType) {
@@ -2788,6 +4670,20 @@ export class AppService {
   }
 
   async deleteReimbursementClaimType(id: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const exists = await prisma.reimbursementClaimType.findUnique({
+        where: { id }
+      });
+      if (!exists) {
+        throw new NotFoundException("Reimbursement claim type not found");
+      }
+      await prisma.reimbursementClaimType.delete({
+        where: { id }
+      });
+      return { deleted: true, id };
+    }
+
     const db = await this.readDb();
     const exists = db.reimbursementClaimTypes.some((entry) => entry.id === id);
     if (!exists) {
@@ -2802,7 +4698,7 @@ export class AppService {
     const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.department || query?.status || query?.userId);
     const prisma = this.getPrisma();
 
-    if (prisma && shouldPaginate) {
+    if (prisma) {
       const meta = this.toPageMeta(query?.page, query?.pageSize);
       const search = query?.search?.trim();
       const where: Record<string, unknown> = {
@@ -2820,6 +4716,14 @@ export class AppService {
         ];
       }
 
+      if (!shouldPaginate) {
+        const rows = await prisma.reimbursementRequest.findMany({
+          where,
+          orderBy: { updatedAt: "desc" }
+        });
+        return rows.map((record: any) => this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(record)));
+      }
+
       const [total, rows] = await Promise.all([
         prisma.reimbursementRequest.count({ where }),
         prisma.reimbursementRequest.findMany({
@@ -2830,16 +4734,7 @@ export class AppService {
         })
       ]);
 
-      const items = rows.map((record: any) => this.toSafeReimbursementRequest({
-        ...record,
-        amount: Number(record.amount),
-        balanceSnapshot: Number(record.balanceSnapshot),
-        submittedAt: record.submittedAt ? record.submittedAt.toISOString() : null,
-        approvedAt: record.approvedAt ? record.approvedAt.toISOString() : null,
-        processedAt: record.processedAt ? record.processedAt.toISOString() : null,
-        createdAt: record.createdAt.toISOString(),
-        updatedAt: record.updatedAt.toISOString()
-      }));
+      const items = rows.map((record: any) => this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(record)));
 
       return {
         items,
@@ -2884,6 +4779,63 @@ export class AppService {
     file?: Express.Multer.File,
     receiptFileUrl?: string | null
   ) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const claimTypeRow = await prisma.reimbursementClaimType.findFirst({
+        where: {
+          id: payload.claimTypeId,
+          active: true
+        }
+      });
+      const claimType = claimTypeRow ? this.mapPrismaReimbursementClaimType(claimTypeRow) : null;
+      if (!claimType) {
+        throw new NotFoundException("Reimbursement claim type not found");
+      }
+      if (claimType.employeeId !== payload.userId) {
+        throw new NotFoundException("Claim type is not available for this employee");
+      }
+
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const amount = Number(payload.amount);
+      const shouldSubmit = this.parseBooleanFlag((payload as { submit?: unknown }).submit);
+      if (shouldSubmit && !file) {
+        throw new NotFoundException("Receipt file is required before submitting reimbursement");
+      }
+      if (shouldSubmit && amount > claimType.remainingBalance) {
+        throw new NotFoundException("Requested amount exceeds remaining reimbursement balance");
+      }
+
+      const created = await prisma.reimbursementRequest.create({
+        data: {
+          id: `reimb-${randomUUID().slice(0, 8)}`,
+          userId: payload.userId,
+          employeeName: payload.employeeName,
+          department: payload.department,
+          designation: payload.designation,
+          claimTypeId: claimType.id,
+          claimType: claimType.claimType,
+          subType: claimType.subType,
+          category: claimType.category,
+          currency: payload.currency,
+          amount,
+          receiptDate: this.toDateOnly(payload.receiptDate) ?? new Date(),
+          remarks: payload.remarks ?? "",
+          receiptFileName: file?.originalname ?? null,
+          receiptFileUrl: receiptFileUrl ?? null,
+          status: shouldSubmit ? "pending-manager" : "draft",
+          submittedAt: shouldSubmit ? now : null,
+          approvedAt: null,
+          processedAt: null,
+          createdAt: now,
+          updatedAt: now,
+          approverFlow: shouldSubmit ? ["Employee submitted reimbursement", "Manager pending"] : ["Saved as draft"],
+          balanceSnapshot: claimType.remainingBalance
+        }
+      });
+      return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(created));
+    }
+
     const db = await this.readDb();
     const claimType = this.findReimbursementClaimType(db, payload.claimTypeId);
     if (!claimType) {
@@ -2940,6 +4892,81 @@ export class AppService {
     file?: Express.Multer.File,
     receiptFileUrl?: string | null
   ) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const currentRow = await prisma.reimbursementRequest.findUnique({
+        where: { id }
+      });
+      const request = currentRow ? this.mapPrismaReimbursementRequest(currentRow) : null;
+      if (!request) {
+        throw new NotFoundException("Reimbursement request not found");
+      }
+      if (!["draft", "pending-manager"].includes(request.status)) {
+        throw new NotFoundException("Only draft or pending manager requests can be updated");
+      }
+
+      const claimTypeRow = await prisma.reimbursementClaimType.findFirst({
+        where: {
+          id: payload.claimTypeId ?? request.claimTypeId,
+          active: true
+        }
+      });
+      const claimType = claimTypeRow ? this.mapPrismaReimbursementClaimType(claimTypeRow) : null;
+      if (!claimType) {
+        throw new NotFoundException("Reimbursement claim type not found");
+      }
+
+      const amount = payload.amount !== undefined ? Number(payload.amount) : request.amount;
+      const receiptDate = payload.receiptDate ?? request.receiptDate;
+      const currency = payload.currency ?? request.currency;
+      const remarks = payload.remarks ?? request.remarks;
+      const shouldSubmit = this.parseBooleanFlag((payload as { submit?: unknown }).submit);
+      const nextReceiptFileUrl = receiptFileUrl ?? request.receiptFileUrl;
+      if (shouldSubmit && !nextReceiptFileUrl) {
+        throw new NotFoundException("Receipt file is required before submitting reimbursement");
+      }
+      if (shouldSubmit && amount > claimType.remainingBalance) {
+        throw new NotFoundException("Requested amount exceeds remaining reimbursement balance");
+      }
+      if (file && request.receiptFileUrl) {
+        this.removeStoredFile(request.receiptFileUrl);
+      }
+
+      this.applyReimbursementClaimDetails(request, claimType, amount, receiptDate, currency, remarks);
+      request.receiptFileName = file?.originalname ?? request.receiptFileName;
+      request.receiptFileUrl = nextReceiptFileUrl;
+      request.updatedAt = new Date().toISOString();
+      if (shouldSubmit) {
+        request.status = "pending-manager";
+        request.submittedAt = request.submittedAt ?? request.updatedAt;
+        request.approverFlow = [...request.approverFlow.filter((entry) => entry !== "Saved as draft"), "Submitted to manager"];
+      } else if (request.status === "draft") {
+        request.approverFlow = ["Saved as draft"];
+      }
+
+      const updated = await prisma.reimbursementRequest.update({
+        where: { id },
+        data: {
+          claimTypeId: request.claimTypeId,
+          claimType: request.claimType,
+          subType: request.subType,
+          category: request.category,
+          currency: request.currency,
+          amount: request.amount,
+          receiptDate: this.toDateOnly(request.receiptDate) ?? new Date(),
+          remarks: request.remarks,
+          receiptFileName: request.receiptFileName,
+          receiptFileUrl: request.receiptFileUrl,
+          status: request.status,
+          submittedAt: this.toDate(request.submittedAt),
+          updatedAt: this.toDate(request.updatedAt) ?? new Date(),
+          approverFlow: request.approverFlow,
+          balanceSnapshot: request.balanceSnapshot
+        }
+      });
+      return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
+    }
+
     const db = await this.readDb();
     const request = db.reimbursementRequests.find((entry) => entry.id === id);
     if (!request) {
@@ -2990,6 +5017,43 @@ export class AppService {
   }
 
   async managerApproveReimbursement(payload: ReimbursementApproveDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const current = await prisma.reimbursementRequest.findUnique({
+        where: { id: payload.reimbursementId }
+      });
+      const request = current ? this.mapPrismaReimbursementRequest(current) : null;
+      if (!request) {
+        throw new NotFoundException("Reimbursement request not found");
+      }
+      if (request.status !== "pending-manager") {
+        throw new NotFoundException("Reimbursement is not waiting for manager approval");
+      }
+
+      request.status = payload.status === "approved" ? "awaiting-hr" : "rejected";
+      request.approvedAt = payload.status === "approved" ? new Date().toISOString() : null;
+      request.updatedAt = new Date().toISOString();
+      request.approverFlow = [
+        ...request.approverFlow,
+        payload.status === "approved" ? `${payload.actor} approved, HR pending` : `${payload.actor} rejected`
+      ];
+      const updated = await prisma.reimbursementRequest.update({
+        where: { id: payload.reimbursementId },
+        data: {
+          status: request.status,
+          approvedAt: this.toDate(request.approvedAt),
+          updatedAt: this.toDate(request.updatedAt) ?? new Date(),
+          approverFlow: request.approverFlow
+        }
+      });
+      await this.writeAuditLog("reimbursement.manager-approve", {
+        reimbursementId: updated.id,
+        status: payload.status,
+        actor: payload.actor
+      });
+      return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
+    }
+
     const db = await this.readDb();
     const request = db.reimbursementRequests.find((entry) => entry.id === payload.reimbursementId);
     if (!request) {
@@ -3016,6 +5080,82 @@ export class AppService {
   }
 
   async hrProcessReimbursement(payload: ReimbursementProcessDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const requestRow = await prisma.reimbursementRequest.findUnique({
+        where: { id: payload.reimbursementId }
+      });
+      const request = requestRow ? this.mapPrismaReimbursementRequest(requestRow) : null;
+      if (!request) {
+        throw new NotFoundException("Reimbursement request not found");
+      }
+      if (!["awaiting-hr", "approved"].includes(request.status)) {
+        throw new NotFoundException("Reimbursement is not ready for HR processing");
+      }
+
+      const claimTypeRow = await prisma.reimbursementClaimType.findUnique({
+        where: { id: request.claimTypeId }
+      });
+      const claimType = claimTypeRow ? this.mapPrismaReimbursementClaimType(claimTypeRow) : null;
+      if (!claimType) {
+        throw new NotFoundException("Reimbursement claim type not found");
+      }
+
+      if (payload.status === "rejected") {
+        const updated = await prisma.reimbursementRequest.update({
+          where: { id: request.id },
+          data: {
+            status: "rejected",
+            updatedAt: new Date(),
+            approverFlow: [...request.approverFlow, `${payload.actor} rejected`]
+          }
+        });
+        await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+        return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
+      }
+
+      if (payload.status === "approved") {
+        const updated = await prisma.reimbursementRequest.update({
+          where: { id: request.id },
+          data: {
+            status: "approved",
+            approvedAt: this.toDate(request.approvedAt) ?? new Date(),
+            updatedAt: new Date(),
+            approverFlow: [...request.approverFlow, `${payload.actor} approved for payout`]
+          }
+        });
+        await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+        return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
+      }
+
+      if (request.amount > claimType.remainingBalance) {
+        throw new NotFoundException("Remaining balance is insufficient to process this reimbursement");
+      }
+
+      const processedAt = new Date();
+      const updated = await prisma.$transaction(async (tx: any) => {
+        await tx.reimbursementClaimType.update({
+          where: { id: claimType.id },
+          data: {
+            remainingBalance: Number((claimType.remainingBalance - request.amount).toFixed(2)),
+            updatedAt: processedAt
+          }
+        });
+        return tx.reimbursementRequest.update({
+          where: { id: request.id },
+          data: {
+            status: "processed",
+            approvedAt: this.toDate(request.approvedAt) ?? processedAt,
+            processedAt,
+            updatedAt: processedAt,
+            approverFlow: [...request.approverFlow, `${payload.actor} processed reimbursement`]
+          }
+        });
+      });
+      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+      return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
+    }
+
     const db = await this.readDb();
     const request = db.reimbursementRequests.find((entry) => entry.id === payload.reimbursementId);
     if (!request) {
@@ -3066,6 +5206,26 @@ export class AppService {
   }
 
   async getPayrollOverview() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const [latestRunRow, payrollComponents, activeEmployees, draftRuns, publishedPayslips] = await Promise.all([
+        prisma.payRun.findFirst({
+          orderBy: { periodEnd: "desc" }
+        }),
+        prisma.payrollComponent.count(),
+        prisma.employee.count({ where: { status: "active" } }),
+        prisma.payRun.count({ where: { status: "draft" } }),
+        prisma.payslip.count({ where: { status: "published" } })
+      ]);
+      return {
+        latestRun: latestRunRow ? this.mapPrismaPayRun(latestRunRow) : null,
+        payrollComponents,
+        activeEmployees,
+        draftRuns,
+        publishedPayslips
+      };
+    }
+
     const db = await this.readDb();
     const latestRun = [...db.payRuns].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd))[0] ?? null;
     const draftCount = db.payRuns.filter((run) => run.status === "draft").length;
@@ -3080,11 +5240,40 @@ export class AppService {
   }
 
   async getPayrollComponents() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const rows = await prisma.payrollComponent.findMany({
+        orderBy: { code: "asc" }
+      });
+      return rows.map((row: any) => this.mapPrismaPayrollComponent(row));
+    }
+
     const db = await this.readDb();
     return db.payrollComponents;
   }
 
   async createPayrollComponent(payload: CreatePayrollComponentDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const component = await prisma.payrollComponent.create({
+        data: {
+          id: `paycomp-${randomUUID().slice(0, 8)}`,
+          code: payload.code.toUpperCase(),
+          name: payload.name,
+          type: payload.type,
+          calculationType: payload.calculationType,
+          amount: payload.amount,
+          percentage: payload.percentage ?? null,
+          taxable: payload.taxable,
+          active: payload.active,
+          appliesToAll: payload.appliesToAll,
+          employeeIds: payload.employeeIds ?? [],
+          description: payload.description
+        }
+      });
+      return this.mapPrismaPayrollComponent(component);
+    }
+
     const db = await this.readDb();
     const component: PayrollComponentRecord = {
       id: `paycomp-${randomUUID().slice(0, 8)}`,
@@ -3106,6 +5295,25 @@ export class AppService {
   }
 
   async updatePayrollComponent(id: string, payload: UpdatePayrollComponentDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const component = await prisma.payrollComponent.findUnique({
+        where: { id }
+      });
+      if (!component) {
+        throw new NotFoundException("Payroll component not found");
+      }
+      const updated = await prisma.payrollComponent.update({
+        where: { id },
+        data: {
+          ...payload,
+          ...(payload.code ? { code: payload.code.toUpperCase() } : {}),
+          ...(payload.employeeIds ? { employeeIds: payload.employeeIds } : {})
+        }
+      });
+      return this.mapPrismaPayrollComponent(updated);
+    }
+
     const db = await this.readDb();
     const component = db.payrollComponents.find((entry) => entry.id === id);
     if (!component) {
@@ -3117,6 +5325,38 @@ export class AppService {
   }
 
   async deletePayrollComponent(id: string) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const exists = await prisma.payrollComponent.findUnique({
+        where: { id }
+      });
+      if (!exists) {
+        throw new NotFoundException("Payroll component not found");
+      }
+      await prisma.$transaction(async (tx: any) => {
+        const employees = await tx.employee.findMany({
+          where: {
+            financialComponentIds: {
+              has: id
+            }
+          }
+        });
+        for (const employee of employees) {
+          const current = this.mapPrismaEmployee(employee);
+          await tx.employee.update({
+            where: { id: current.id },
+            data: {
+              financialComponentIds: current.financialComponentIds.filter((componentId) => componentId !== id)
+            }
+          });
+        }
+        await tx.payrollComponent.delete({
+          where: { id }
+        });
+      });
+      return { deleted: true, id };
+    }
+
     const db = await this.readDb();
     const exists = db.payrollComponents.some((entry) => entry.id === id);
     if (!exists) {
@@ -3132,11 +5372,104 @@ export class AppService {
   }
 
   async getPayRuns() {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const rows = await prisma.payRun.findMany({
+        orderBy: { periodEnd: "desc" }
+      });
+      return rows.map((row: any) => this.mapPrismaPayRun(row));
+    }
+
     const db = await this.readDb();
     return [...db.payRuns].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
   }
 
   async generatePayrollRun(payload: GeneratePayrollRunDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const [employeeRows, overtimeRows, payrollComponentRows, taxProfileRows] = await Promise.all([
+        prisma.employee.findMany({ where: { status: "active" }, orderBy: { name: "asc" } }),
+        prisma.overtimeRequest.findMany({ orderBy: { date: "desc" } }),
+        prisma.payrollComponent.findMany({ orderBy: { code: "asc" } }),
+        prisma.taxProfile.findMany({ orderBy: { name: "asc" } })
+      ]);
+      const db = {
+        employees: employeeRows.map((row: any) => this.mapPrismaEmployee(row)),
+        overtimeRequests: overtimeRows.map((row: any) => this.mapPrismaOvertimeRecord(row)),
+        payrollComponents: payrollComponentRows.map((row: any) => this.mapPrismaPayrollComponent(row)),
+        taxProfiles: taxProfileRows.map((row: any) => this.mapPrismaTaxProfile(row))
+      } as Pick<DatabaseShape, "employees" | "overtimeRequests" | "payrollComponents" | "taxProfiles">;
+      const payRunId = `payrun-${randomUUID().slice(0, 8)}`;
+      const slips = db.employees.map((employee) => this.buildPayslip(employee, db as DatabaseShape, payload, payRunId));
+      const payRunCreatedAt = new Date();
+      const payRun = await prisma.$transaction(async (tx: any) => {
+        await tx.payRun.create({
+          data: {
+            id: payRunId,
+            periodLabel: payload.periodLabel,
+            periodStart: this.toDateOnly(payload.periodStart) ?? new Date(),
+            periodEnd: this.toDateOnly(payload.periodEnd) ?? new Date(),
+            payDate: this.toDateOnly(payload.payDate) ?? new Date(),
+            status: "draft",
+            totalGross: slips.reduce((sum, slip) => sum + slip.grossPay, 0),
+            totalNet: slips.reduce((sum, slip) => sum + slip.netPay, 0),
+            totalTax: slips.reduce((sum, slip) => sum + slip.taxDeduction, 0),
+            employeeCount: slips.length,
+            createdAt: payRunCreatedAt,
+            publishedAt: null
+          }
+        });
+        if (slips.length > 0) {
+          await tx.payslip.createMany({
+            data: slips.map((slip) => ({
+              id: slip.id,
+              payRunId: slip.payRunId,
+              userId: slip.userId,
+              employeeName: slip.employeeName,
+              employeeNumber: slip.employeeNumber,
+              department: slip.department,
+              position: slip.position,
+              periodLabel: slip.periodLabel,
+              periodStart: this.toDateOnly(slip.periodStart) ?? new Date(),
+              periodEnd: this.toDateOnly(slip.periodEnd) ?? new Date(),
+              payDate: this.toDateOnly(slip.payDate) ?? new Date(),
+              status: slip.status,
+              baseSalary: slip.baseSalary,
+              allowance: slip.allowance,
+              overtimePay: slip.overtimePay,
+              additionalEarnings: slip.additionalEarnings,
+              grossPay: slip.grossPay,
+              taxDeduction: slip.taxDeduction,
+              otherDeductions: slip.otherDeductions,
+              netPay: slip.netPay,
+              bankName: slip.bankName,
+              bankAccountMasked: slip.bankAccountMasked,
+              taxProfile: slip.taxProfile,
+              components: slip.components,
+              generatedFileUrl: slip.generatedFileUrl
+            }))
+          });
+        }
+        return tx.payRun.findUnique({ where: { id: payRunId } });
+      });
+      const normalizedPayRun = payRun ? this.mapPrismaPayRun(payRun) : {
+        id: payRunId,
+        periodLabel: payload.periodLabel,
+        periodStart: payload.periodStart,
+        periodEnd: payload.periodEnd,
+        payDate: payload.payDate,
+        status: "draft",
+        totalGross: slips.reduce((sum, slip) => sum + slip.grossPay, 0),
+        totalNet: slips.reduce((sum, slip) => sum + slip.netPay, 0),
+        totalTax: slips.reduce((sum, slip) => sum + slip.taxDeduction, 0),
+        employeeCount: slips.length,
+        createdAt: payRunCreatedAt.toISOString(),
+        publishedAt: null
+      } as PayRunRecord;
+      await this.writeAuditLog("payroll.generate-run", { payRunId, periodLabel: payload.periodLabel, employeeCount: slips.length });
+      return { payRun: normalizedPayRun, payslips: slips };
+    }
+
     const db = await this.readDb();
     const activeEmployees = db.employees.filter((employee) => employee.status === "active");
     const payRunId = `payrun-${randomUUID().slice(0, 8)}`;
@@ -3163,6 +5496,32 @@ export class AppService {
   }
 
   async publishPayrollRun(payload: PublishPayrollRunDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const payRun = await prisma.payRun.findUnique({
+        where: { id: payload.payRunId }
+      });
+      if (!payRun) {
+        throw new NotFoundException("Pay run not found");
+      }
+      const publishedAt = new Date();
+      const updated = await prisma.$transaction(async (tx: any) => {
+        await tx.payslip.updateMany({
+          where: { payRunId: payload.payRunId },
+          data: { status: "published" }
+        });
+        return tx.payRun.update({
+          where: { id: payload.payRunId },
+          data: {
+            status: "published",
+            publishedAt
+          }
+        });
+      });
+      await this.writeAuditLog("payroll.publish-run", { payRunId: updated.id, periodLabel: updated.periodLabel });
+      return this.mapPrismaPayRun(updated);
+    }
+
     const db = await this.readDb();
     const payRun = db.payRuns.find((entry) => entry.id === payload.payRunId);
     if (!payRun) {
@@ -3180,7 +5539,7 @@ export class AppService {
     const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.status || query?.userId);
     const prisma = this.getPrisma();
 
-    if (prisma && shouldPaginate) {
+    if (prisma) {
       const meta = this.toPageMeta(query?.page, query?.pageSize);
       const search = query?.search?.trim();
       const where: Record<string, unknown> = {
@@ -3197,6 +5556,14 @@ export class AppService {
         ];
       }
 
+      if (!shouldPaginate) {
+        const rows = await prisma.payslip.findMany({
+          where,
+          orderBy: { payDate: "desc" }
+        });
+        return rows.map((record: any) => this.mapPrismaPayslip(record));
+      }
+
       const [total, rows] = await Promise.all([
         prisma.payslip.count({ where }),
         prisma.payslip.findMany({
@@ -3207,18 +5574,7 @@ export class AppService {
         })
       ]);
 
-      const items = rows.map((record: any) => ({
-        ...record,
-        baseSalary: Number(record.baseSalary),
-        allowance: Number(record.allowance),
-        overtimePay: Number(record.overtimePay),
-        additionalEarnings: Number(record.additionalEarnings),
-        grossPay: Number(record.grossPay),
-        taxDeduction: Number(record.taxDeduction),
-        otherDeductions: Number(record.otherDeductions),
-        netPay: Number(record.netPay),
-        components: Array.isArray(record.components) ? record.components : []
-      }));
+      const items = rows.map((record: any) => this.mapPrismaPayslip(record));
 
       return {
         items,
@@ -3327,6 +5683,51 @@ export class AppService {
   }
 
   private async performPayslipExport(payload: ExportPayslipDto) {
+    const prisma = this.getPrisma();
+    if (prisma) {
+      const payslipRow = await prisma.payslip.findUnique({
+        where: { id: payload.payslipId }
+      });
+      const payslip = payslipRow ? this.mapPrismaPayslip(payslipRow) : null;
+      if (!payslip) {
+        throw new NotFoundException("Payslip not found");
+      }
+      const fileName = `${this.safeFileBaseName(payslip.employeeNumber, "employee")}-${this.safeFileBaseName(payslip.periodLabel, "payslip")}.xlsx`;
+      const fullPath = path.join(this.storageRoot, "documents", fileName);
+
+      const rows = [
+        ["Employee Name", payslip.employeeName],
+        ["Employee Number", payslip.employeeNumber],
+        ["Department", payslip.department],
+        ["Position", payslip.position],
+        ["Period", payslip.periodLabel],
+        ["Pay Date", payslip.payDate],
+        [""],
+        ["Earnings", "Amount"],
+        ["Base Salary", payslip.baseSalary],
+        ["Allowance", payslip.allowance],
+        ["Overtime", payslip.overtimePay],
+        ["Additional Earnings", payslip.additionalEarnings],
+        [""],
+        ["Deductions", "Amount"],
+        ["Tax Deduction", payslip.taxDeduction],
+        ["Other Deductions", payslip.otherDeductions],
+        [""],
+        ["Net Pay", payslip.netPay]
+      ];
+
+      await this.writeWorkbookFromRows(fullPath, "Payslip", rows);
+
+      const generatedFileUrl = `/storage/documents/${fileName}`;
+      await prisma.payslip.update({
+        where: { id: payslip.id },
+        data: {
+          generatedFileUrl
+        }
+      });
+      return { fileName, fileUrl: generatedFileUrl, payslipId: payslip.id };
+    }
+
     const db = await this.readDb();
     const payslip = db.payslips.find((entry) => entry.id === payload.payslipId);
     if (!payslip) {

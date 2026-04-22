@@ -8,14 +8,19 @@ import {
   approveLeaveRequest,
   approveOvertimeRequest,
   createLeaveRequest,
+  findLeaveAllocation,
   createOvertimeRequest,
   formatLeaveStatus,
   formatLeaveType,
   formatOvertimeStatus,
+  getLeaveAllocationAvailable,
   getAttendanceHistory,
   getEmployees,
   getAttendanceOvertime,
-  getLeaveHistory
+  getLeaveHistory,
+  isHalfDayLeaveType,
+  isOnDutyLeaveType,
+  isSickLeaveType
 } from "@/lib/api";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useSession } from "@/components/providers/session-provider";
@@ -82,24 +87,6 @@ const leaveTone = {
   Rejected: "danger"
 } as const;
 
-const leaveRequestOptions = [
-  "Annual Leave",
-  "Religious Leave",
-  "Maternity Leave",
-  "Paternity Leave",
-  "Marriage Leave",
-  "Bereavement Leave"
-] as const;
-
-const leaveBalanceKeyMap: Record<(typeof leaveRequestOptions)[number], "annual" | "religious" | "maternity" | "paternity" | "marriage" | "bereavement"> = {
-  "Annual Leave": "annual",
-  "Religious Leave": "religious",
-  "Maternity Leave": "maternity",
-  "Paternity Leave": "paternity",
-  "Marriage Leave": "marriage",
-  "Bereavement Leave": "bereavement"
-};
-
 function leaveTypeForAction(action: Exclude<ActionKey, "overtime">) {
   switch (action) {
     case "on-duty":
@@ -124,7 +111,7 @@ function leaveTypesForAction(action: Exclude<ActionKey, "overtime">) {
       return ["Half Day Leave", "Permission"] as const;
     case "leave":
     default:
-      return ["Leave Request", "Annual Leave", "Religious Leave", "Maternity Leave", "Paternity Leave", "Marriage Leave", "Bereavement Leave"] as const;
+      return [] as const;
   }
 }
 
@@ -136,7 +123,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [leaveReason, setLeaveReason] = useState("");
-  const [leaveCategory, setLeaveCategory] = useState<(typeof leaveRequestOptions)[number]>("Annual Leave");
+  const [leaveCategory, setLeaveCategory] = useState("Annual Leave");
   const [halfDaySlot, setHalfDaySlot] = useState<"Morning" | "Afternoon">("Morning");
   const [overtimeDate, setOvertimeDate] = useState(today);
   const [overtimeMinutes, setOvertimeMinutes] = useState("120");
@@ -168,6 +155,21 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     [currentUser?.id, employeesQuery.data]
   );
 
+  const customLeaveTypes = useMemo(
+    () => currentEmployee?.leaveBalances.allocations ?? [],
+    [currentEmployee]
+  );
+
+  useEffect(() => {
+    if (activeAction !== "leave") {
+      return;
+    }
+    const firstLeaveType = customLeaveTypes[0]?.label;
+    if (firstLeaveType && !customLeaveTypes.some((item) => item.label === leaveCategory)) {
+      setLeaveCategory(firstLeaveType);
+    }
+  }, [activeAction, customLeaveTypes, leaveCategory]);
+
   const attendanceLogs = useMemo(
     () => (attendanceQuery.data ?? []).filter((item) => item.userId === currentUser?.id),
     [attendanceQuery.data, currentUser?.id]
@@ -186,25 +188,24 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   );
 
   const onDutyRequests = useMemo(
-    () => leaveRequests.filter((item) => item.type === "On Duty Request" || item.type === "Remote Work"),
+    () => leaveRequests.filter((item) => isOnDutyLeaveType(item.type)),
     [leaveRequests]
   );
   const sickRequests = useMemo(
-    () => leaveRequests.filter((item) => item.type === "Sick Submission" || item.type === "Sick Leave"),
+    () => leaveRequests.filter((item) => isSickLeaveType(item.type)),
     [leaveRequests]
   );
-  const annualLeaveRequests = useMemo(
-    () => leaveRequests.filter((item) => ["Leave Request", "Annual Leave", "Religious Leave", "Maternity Leave", "Paternity Leave", "Marriage Leave", "Bereavement Leave"].includes(item.type)),
+  const standardLeaveRequests = useMemo(
+    () => leaveRequests.filter((item) => !isOnDutyLeaveType(item.type) && !isSickLeaveType(item.type) && !isHalfDayLeaveType(item.type)),
     [leaveRequests]
   );
   const halfDayRequests = useMemo(
-    () => leaveRequests.filter((item) => item.type === "Half Day Leave" || item.type === "Permission"),
+    () => leaveRequests.filter((item) => isHalfDayLeaveType(item.type)),
     [leaveRequests]
   );
   const annualLeaveAvailable = useMemo(() => {
-    const current = currentEmployee?.leaveBalances.annual ?? 0;
-    const carry = currentEmployee?.leaveBalances.annualCarryOver ?? 0;
-    return Number((current + carry).toFixed(1));
+    const annualAllocation = currentEmployee ? findLeaveAllocation(currentEmployee.leaveBalances, "Annual Leave") : null;
+    return getLeaveAllocationAvailable(annualAllocation ?? { code: "", label: "", days: 0, carryOver: 0, carryOverExpiresAt: null });
   }, [currentEmployee]);
 
   const leaveMutation = useMutation({
@@ -214,6 +215,11 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       }
       if (!leaveReason.trim()) {
         throw new Error(activeAction === "on-duty" ? "Description is required." : "Reason is required.");
+      }
+      if (activeAction === "leave") {
+        if (customLeaveTypes.length === 0) {
+          throw new Error("No leave types have been allocated for this employee yet.");
+        }
       }
       const type = activeAction === "leave" ? leaveCategory : leaveTypeForAction(activeAction as Exclude<ActionKey, "overtime">);
       const normalizedReason = activeAction === "half-day" ? `[${halfDaySlot}] ${leaveReason.trim()}` : leaveReason.trim();
@@ -309,11 +315,11 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
     }
 
     if (activeAction === "leave") {
-      const approved = annualLeaveRequests.filter((item) => item.status === "approved").length;
-      const pending = annualLeaveRequests.filter((item) => item.status !== "approved" && item.status !== "rejected").length;
-      const days = annualLeaveRequests.reduce((sum, item) => sum + item.daysRequested, 0);
+      const approved = standardLeaveRequests.filter((item) => item.status === "approved").length;
+      const pending = standardLeaveRequests.filter((item) => item.status !== "approved" && item.status !== "rejected").length;
+      const days = standardLeaveRequests.reduce((sum, item) => sum + item.daysRequested, 0);
       return [
-        { label: "Leave Requests", value: String(annualLeaveRequests.length), note: "Total leave requests." },
+        { label: "Leave Requests", value: String(standardLeaveRequests.length), note: "Total leave requests." },
         { label: "Approved", value: String(approved), note: "Approved requests." },
         { label: "Pending", value: String(pending), note: "Awaiting manager review." },
         { label: "Requested Days", value: String(days), note: "Total requested days.", tone: "primary" }
@@ -342,7 +348,7 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       { label: "Pending", value: String(pending), note: "Awaiting manager review." },
       { label: "Overtime Hours", value: String(totalHours), note: "Total overtime hours.", tone: "primary" }
     ];
-  }, [activeAction, annualLeaveAvailable, annualLeaveRequests, attendanceLogs, halfDayRequests, onDutyRequests, overtimeItems, sickRequests]);
+  }, [activeAction, annualLeaveAvailable, attendanceLogs, halfDayRequests, onDutyRequests, overtimeItems, sickRequests, standardLeaveRequests]);
 
   const leaveRecordsForAction = useMemo(() => {
     switch (activeAction) {
@@ -351,21 +357,24 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       case "sick":
         return sickRequests;
       case "leave":
-        return annualLeaveRequests;
+        return standardLeaveRequests;
       case "half-day":
         return halfDayRequests;
       default:
         return [];
     }
-  }, [activeAction, annualLeaveRequests, halfDayRequests, onDutyRequests, sickRequests]);
+  }, [activeAction, halfDayRequests, onDutyRequests, sickRequests, standardLeaveRequests]);
 
   const leaveApprovalQueue = useMemo(() => {
     if (activeAction === "overtime" || !canApprove || !currentUser) {
       return [];
     }
-    const typeSet = new Set<string>(leaveTypesForAction(activeAction as Exclude<ActionKey, "overtime">));
     return allLeaveRequests.filter((item) => {
-      if (!typeSet.has(item.type) || item.status !== "pending-manager") {
+      const matchesAction =
+        activeAction === "leave"
+          ? !isOnDutyLeaveType(item.type) && !isSickLeaveType(item.type) && !isHalfDayLeaveType(item.type)
+          : leaveTypesForAction(activeAction as Exclude<ActionKey, "overtime">).includes(item.type as never);
+      if (!matchesAction || item.status !== "pending-manager") {
         return false;
       }
       const employee = employeeById.get(item.userId);
@@ -402,17 +411,11 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   );
 
   const leaveCategoryOptions = useMemo(() => {
-    return leaveRequestOptions.map((item) => {
-      const balanceKey = leaveBalanceKeyMap[item];
-      const current = currentEmployee?.leaveBalances[balanceKey] ?? 0;
-      const carryOver = currentEmployee?.leaveBalances[`${balanceKey}CarryOver`] ?? 0;
-      const available = Number((current + carryOver).toFixed(1));
-      return {
-        value: item,
-        label: `${item} (${available} days)`
-      };
-    });
-  }, [currentEmployee]);
+    return customLeaveTypes.map((allocation) => ({
+      value: allocation.label,
+      label: `${allocation.label} (${getLeaveAllocationAvailable(allocation)} days)`
+    }));
+  }, [customLeaveTypes]);
 
   const filteredLeaveRecords = useMemo(() => {
     if (activeAction !== "leave") {
@@ -523,9 +526,15 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
             {activeAction === "leave" ? (
               <label className="space-y-2 text-[14px] font-medium text-[var(--primary)]">
                 <span>Leave Type</span>
-                <select value={leaveCategory} onChange={(event) => setLeaveCategory(event.target.value as (typeof leaveRequestOptions)[number])} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]">
-                  {leaveCategoryOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                </select>
+                {leaveCategoryOptions.length > 0 ? (
+                  <select value={leaveCategory} onChange={(event) => setLeaveCategory(event.target.value)} className="w-full rounded-[12px] border border-[var(--border)] bg-white px-4 py-3 text-[14px]">
+                    {leaveCategoryOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                ) : (
+                  <div className="rounded-[12px] border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-[13px] text-[var(--text-muted)]">
+                    HR has not allocated any leave types for this employee yet.
+                  </div>
+                )}
               </label>
             ) : null}
             {activeAction === "half-day" ? (
@@ -578,12 +587,63 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
         <section className="page-card overflow-hidden p-0">
           <div className="flex flex-col gap-4 border-b border-[var(--border)] px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
             <div>
-              <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Attendance Records</p>
-              <p className="mt-2 text-[14px] text-[var(--text-muted)]">Personal attendance history related to on-duty activity.</p>
+              <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Attendance & On-Duty Records</p>
+              <p className="mt-2 text-[14px] text-[var(--text-muted)]">Attendance logs and submitted on-duty requests are shown together in this workspace.</p>
             </div>
             <div className="rounded-[12px] bg-[var(--panel-alt)] px-4 py-3 text-[13px] text-[var(--text-muted)]">
-              {attendanceQuery.isLoading ? "Loading attendance history..." : `${attendanceLogs.length} records loaded`}
+              {attendanceQuery.isLoading ? "Loading attendance history..." : `${attendanceLogs.length} attendance logs and ${onDutyRequests.length} on-duty requests loaded`}
             </div>
+          </div>
+
+          <div className="border-b border-[var(--border)] px-5 py-5 lg:px-6">
+            <p className="text-[16px] font-semibold text-[var(--primary)]">Submitted On-Duty Requests</p>
+            <p className="mt-2 text-[14px] text-[var(--text-muted)]">Requests appear here immediately after submission, even before attendance logs are generated.</p>
+          </div>
+
+          <div className="mobile-scroll-shadow overflow-x-auto px-4 py-4 lg:px-6">
+            <table className="min-w-full border-separate border-spacing-y-2">
+              <thead>
+                <tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                  <th className="px-4 pb-2">Request Type</th>
+                  <th className="px-4 pb-2">Date Range</th>
+                  <th className="px-4 pb-2">Reason</th>
+                  <th className="px-4 pb-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {onDutyRequests.map((request) => {
+                  const label = formatLeaveStatus(request.status);
+                  return (
+                    <tr key={request.id} className="bg-[var(--surface-muted)]">
+                      <td className="rounded-l-[12px] px-4 py-4 align-top">
+                        <p className="text-[14px] font-semibold text-[var(--text)]">{formatLeaveType(request.type)}</p>
+                        <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                          Submitted {new Date(request.requestedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      </td>
+                      <td className="px-4 py-4 align-top text-[14px] text-[var(--text)]">
+                        {request.startDate === request.endDate ? request.startDate : `${request.startDate} - ${request.endDate}`}
+                      </td>
+                      <td className="px-4 py-4 align-top text-[14px] text-[var(--text-muted)]">{request.reason}</td>
+                      <td className="rounded-r-[12px] px-4 py-4 align-top">
+                        <StatusPill tone={leaveTone[label as keyof typeof leaveTone]}>{label}</StatusPill>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {onDutyRequests.length === 0 ? (
+              <div className="panel-muted mt-4 px-4 py-5 text-[14px] text-[var(--text-muted)]">
+                No on-duty requests have been submitted yet.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="border-b border-t border-[var(--border)] px-5 py-5 lg:px-6">
+            <p className="text-[16px] font-semibold text-[var(--primary)]">Generated Attendance Logs</p>
+            <p className="mt-2 text-[14px] text-[var(--text-muted)]">Approved on-duty requests can generate attendance records that appear below.</p>
           </div>
 
           <div className="mobile-scroll-shadow overflow-x-auto px-4 py-4 lg:px-6">
@@ -621,6 +681,12 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
                 ))}
               </tbody>
             </table>
+
+            {attendanceLogs.length === 0 ? (
+              <div className="panel-muted mt-4 px-4 py-5 text-[14px] text-[var(--text-muted)]">
+                No attendance logs have been generated for this account yet.
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}

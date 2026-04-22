@@ -14,45 +14,61 @@ export function LoginPanel() {
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const nativeLoginAction = "/api/auth/login?redirect=/dashboard";
+
+  const completeLogin = (payload: { data: { redirectTo: string; user: SessionUser } }) => {
+    setCurrentUser(payload.data.user);
+    router.replace(payload.data.redirectTo);
+    router.refresh();
+    if (typeof window !== "undefined") {
+      window.location.assign(payload.data.redirectTo);
+    }
+  };
 
   const loginAs = (user: SessionUser) => {
     setError(null);
     startTransition(async () => {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionKey: user.sessionKey })
-      });
+      try {
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionKey: user.sessionKey })
+        });
 
-      if (!response.ok) {
-        setError("Gagal masuk ke demo account.");
-        return;
+        if (!response.ok) {
+          setError("Failed to sign in to the demo account.");
+          return;
+        }
+
+        const payload = (await response.json()) as { data: { redirectTo: string; user: SessionUser } };
+        completeLogin(payload);
+      } catch {
+        setError("Unable to reach the login service. Please try again.");
       }
-
-      const payload = (await response.json()) as { data: { redirectTo: string; user: SessionUser } };
-      setCurrentUser(payload.data.user);
-      router.replace(payload.data.redirectTo);
     });
   };
 
   const loginWithCredentials = () => {
     setError(null);
     startTransition(async () => {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
-      });
+      try {
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null) as { error?: string } | null;
-        setError(payload?.error ?? "Gagal masuk dengan username dan password.");
-        return;
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null) as { error?: string } | null;
+          setError(payload?.error ?? "Failed to sign in with username and password.");
+          return;
+        }
+
+        const payload = (await response.json()) as { data: { redirectTo: string; user: SessionUser } };
+        completeLogin(payload);
+      } catch {
+        setError("Unable to reach the login service. Please try again.");
       }
-
-      const payload = (await response.json()) as { data: { redirectTo: string; user: SessionUser } };
-      setCurrentUser(payload.data.user);
-      router.replace(payload.data.redirectTo);
     });
   };
 
@@ -77,6 +93,8 @@ export function LoginPanel() {
 
           <form
             className="mt-6 page-card border-[var(--border)] bg-[var(--surface-muted)] p-5 shadow-none"
+            action={nativeLoginAction}
+            method="post"
             onSubmit={(event) => {
               event.preventDefault();
               if (pending || !username.trim() || !password.trim()) {
@@ -89,11 +107,11 @@ export function LoginPanel() {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
                 <span>Username</span>
-                <input value={username} onChange={(event) => setUsername(event.target.value)} className="filter-control w-full" placeholder="Contoh: NIK employee" />
+                <input name="username" value={username} onChange={(event) => setUsername(event.target.value)} className="filter-control w-full" placeholder="Contoh: NIK employee" />
               </label>
               <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
                 <span>Password</span>
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="filter-control w-full" placeholder="Password dari HR" />
+                <input name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="filter-control w-full" placeholder="Password dari HR" />
               </label>
             </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -113,11 +131,16 @@ export function LoginPanel() {
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {demoUsers.map((user) => (
-              <button
+              <a
                 key={user.sessionKey}
-                type="button"
-                onClick={() => loginAs(user)}
-                disabled={pending}
+                href={`/api/auth/login?sessionKey=${encodeURIComponent(user.sessionKey)}&redirect=${encodeURIComponent("/dashboard")}`}
+                onClick={(event) => {
+                  if (!pending) {
+                    loginAs(user);
+                    event.preventDefault();
+                  }
+                }}
+                aria-disabled={pending}
                 className="page-card p-5 text-left shadow-none hover:border-[var(--primary)]/25 hover:bg-[var(--surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <div className="flex items-start justify-between gap-4">
@@ -128,7 +151,7 @@ export function LoginPanel() {
                   </div>
                   <span className="inline-flex rounded-full bg-[var(--primary-soft)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary)]">{user.role}</span>
                 </div>
-              </button>
+              </a>
             ))}
           </div>
 

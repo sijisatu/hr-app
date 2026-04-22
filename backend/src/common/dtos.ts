@@ -382,8 +382,8 @@ export class LeaveRequestDto {
   @IsString()
   employeeName!: string;
 
-  @IsIn(["Leave Request", "Sick Submission", "On Duty Request", "Half Day Leave", "Annual Leave", "Religious Leave", "Maternity Leave", "Paternity Leave", "Marriage Leave", "Bereavement Leave", "Sick Leave", "Permission", "Remote Work"])
-  type!: "Leave Request" | "Sick Submission" | "On Duty Request" | "Half Day Leave" | "Annual Leave" | "Religious Leave" | "Maternity Leave" | "Paternity Leave" | "Marriage Leave" | "Bereavement Leave" | "Sick Leave" | "Permission" | "Remote Work";
+  @IsString()
+  type!: string;
 
   @IsString()
   startDate!: string;

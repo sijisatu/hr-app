@@ -1,11 +1,8 @@
-﻿import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import type { Metadata } from "next";
 import "./globals.css";
 import { AppProviders } from "@/components/providers/app-providers";
 import { activeTenant } from "@/lib/tenant";
 import { getCurrentSession } from "@/lib/auth";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "Pralux HR-App",
@@ -31,12 +28,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     "--accent": activeTenant.theme.accent,
     "--success": activeTenant.theme.success,
     "--danger": activeTenant.theme.danger,
-    "--warning": activeTenant.theme.warning
+    "--warning": activeTenant.theme.warning,
+    "--font-inter": "\"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif"
   } as React.CSSProperties;
 
   return (
     <html lang="en">
-      <body className={inter.variable} style={themeVars}>
+      <body style={themeVars}>
         <AppProviders currentUser={currentUser}>{children}</AppProviders>
       </body>
     </html>

@@ -4,17 +4,34 @@ import { DepartmentSnapshotChart } from "@/components/attendance/department-snap
 import { AppShell } from "@/components/layout/app-shell";
 import { AttendanceTable } from "@/components/tables/attendance-table";
 import { requireSession } from "@/lib/auth";
-import { getAttendanceHistory, getAttendanceOverview, getAttendanceOvertime, getEmployees } from "@/lib/api";
+import { getAttendanceHistory, getAttendanceOverview, getAttendanceOvertime, getEmployees, getLeaveHistory } from "@/lib/api";
 
 export default async function TeamAttendanceReportPage() {
   await requireSession(["admin", "hr"]);
 
-  const [employees, logs, overview, overtime] = await Promise.all([
+  const [employeesResult, logsResult, overviewResult, overtimeResult, leaveHistoryResult] = await Promise.allSettled([
     getEmployees(),
     getAttendanceHistory(),
     getAttendanceOverview(),
-    getAttendanceOvertime()
+    getAttendanceOvertime(),
+    getLeaveHistory()
   ]);
+  const employees = employeesResult.status === "fulfilled" ? employeesResult.value : [];
+  const logs = logsResult.status === "fulfilled" ? logsResult.value : [];
+  const overview = overviewResult.status === "fulfilled"
+    ? overviewResult.value
+    : { checkedInToday: 0, openCheckIns: 0, gpsValidated: 0, selfieCaptured: 0, overtimeHours: 0 };
+  const overtime = overtimeResult.status === "fulfilled" ? overtimeResult.value : [];
+  const leaveHistory = leaveHistoryResult.status === "fulfilled" ? leaveHistoryResult.value : [];
+  const dataUnavailable =
+    employeesResult.status === "rejected" ||
+    logsResult.status === "rejected" ||
+    overviewResult.status === "rejected" ||
+    overtimeResult.status === "rejected" ||
+    leaveHistoryResult.status === "rejected";
+
+  const onDutyRequests = leaveHistory.filter((item) => item.type === "On Duty Request" || item.type === "Remote Work");
+  const pendingOnDuty = onDutyRequests.filter((item) => item.status !== "approved" && item.status !== "rejected").length;
 
   const punctuality = logs.length === 0 ? 0 : (logs.filter((item) => item.status === "on-time").length / logs.length) * 100;
   const activeEmployees = employees.filter((item) => item.status === "active");
@@ -43,6 +60,11 @@ export default async function TeamAttendanceReportPage() {
       label: "Pending Overtime",
       value: String(pendingOvertime),
       note: "Requests still waiting for a decision"
+    },
+    {
+      label: "On Duty Requests",
+      value: String(onDutyRequests.length),
+      note: `${pendingOnDuty} still waiting for approval`
     }
   ];
 
@@ -79,6 +101,11 @@ export default async function TeamAttendanceReportPage() {
       )}
     >
       <div className="space-y-6">
+        {dataUnavailable ? (
+          <div className="page-card border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
+            Some attendance report data is temporarily unavailable. The page is still loaded with the latest safe data.
+          </div>
+        ) : null}
         <section className="rounded-[20px] bg-[var(--primary)] px-6 py-6 text-white lg:px-8">
           <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white/68">HR Attendance Report</p>
           <h2 className="mt-4 text-[28px] font-semibold leading-tight">A clear view of attendance across the entire organization.</h2>
@@ -87,12 +114,12 @@ export default async function TeamAttendanceReportPage() {
           </p>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {reportCards.map((item, index) => (
-            <div key={item.label} className={index === 3 ? "page-card bg-[var(--primary)] p-5 text-white" : "page-card p-5"}>
-              <p className={index === 3 ? "text-[12px] font-medium uppercase tracking-[0.08em] text-white/72" : "text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]"}>{item.label}</p>
-              <p className={index === 3 ? "mt-3 text-[30px] font-semibold leading-none" : "mt-3 text-[30px] font-semibold leading-none text-[var(--primary)]"}>{item.value}</p>
-              <p className={index === 3 ? "mt-3 text-[14px] text-white/74" : "mt-3 text-[14px] text-[var(--text-muted)]"}>{item.note}</p>
+            <div key={item.label} className={index >= 3 ? "page-card bg-[var(--primary)] p-5 text-white" : "page-card p-5"}>
+              <p className={index >= 3 ? "text-[12px] font-medium uppercase tracking-[0.08em] text-white/72" : "text-[12px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]"}>{item.label}</p>
+              <p className={index >= 3 ? "mt-3 text-[30px] font-semibold leading-none" : "mt-3 text-[30px] font-semibold leading-none text-[var(--primary)]"}>{item.value}</p>
+              <p className={index >= 3 ? "mt-3 text-[14px] text-white/74" : "mt-3 text-[14px] text-[var(--text-muted)]"}>{item.note}</p>
             </div>
           ))}
         </section>
@@ -128,7 +155,7 @@ export default async function TeamAttendanceReportPage() {
           </div>
         </section>
 
-        <AttendanceTable logs={logs} punctuality={punctuality} overview={overview} />
+        <AttendanceTable logs={logs} employees={employees} onDutyRequests={onDutyRequests} punctuality={punctuality} overview={overview} />
       </div>
     </AppShell>
   );
