@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { Camera, Clock3, Eye, MapPinned, Search, X } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -306,7 +307,7 @@ export function AttendanceTable({
                           onClick={() => setPreviewSelfie({ url: resolveAssetUrl(log.photoUrl) ?? "", name: log.employeeName })}
                           className="block h-10 w-10 overflow-hidden rounded-[10px] border border-[var(--border)] bg-white"
                         >
-                          <img src={resolveAssetUrl(log.photoUrl) ?? ""} alt={`${log.employeeName} selfie`} className="h-full w-full object-cover" />
+                          <Image src={resolveAssetUrl(log.photoUrl) ?? ""} alt={`${log.employeeName} selfie`} width={40} height={40} unoptimized className="h-full w-full object-cover" />
                         </button>
                         <button
                           type="button"
@@ -348,7 +349,7 @@ export function AttendanceTable({
             </div>
             <div className="bg-[var(--surface-muted)] p-4">
               <div className="max-h-[70vh] overflow-auto rounded-[16px] bg-slate-100 p-2">
-                <img src={previewSelfie.url} alt={`${previewSelfie.name} selfie`} className="h-auto w-full rounded-[12px] object-contain" />
+                <Image src={previewSelfie.url} alt={`${previewSelfie.name} selfie`} width={1400} height={1400} unoptimized className="h-auto w-full rounded-[12px] object-contain" />
               </div>
             </div>
           </div>

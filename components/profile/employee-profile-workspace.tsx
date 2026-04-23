@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { Download, Eye, FileText, KeyRound, LoaderCircle, X } from "lucide-react";
 import type { EmployeeDocumentRecord, EmployeeRecord } from "@/lib/api";
@@ -18,14 +19,14 @@ const tabs: { key: TabKey; label: string }[] = [
 ];
 
 const documentTypeLabels: Record<string, string> = {
-  ktp: "KTP",
-  ijazah: "Ijazah",
-  sertifikat: "Sertifikat",
+  ktp: "Identity Card",
+  ijazah: "Diploma",
+  sertifikat: "Certificate",
   npwp: "NPWP",
-  kk: "Kartu Keluarga",
-  "kontrak-kerja": "Kontrak Kerja",
+  kk: "Family Card",
+  "kontrak-kerja": "Employment Contract",
   bpjs: "BPJS",
-  lainnya: "Lainnya"
+  lainnya: "Other"
 };
 
 function money(value: number) {
@@ -73,7 +74,7 @@ function DocumentPreview({ document }: { document: EmployeeDocumentRecord }) {
   if (isImage) {
     return (
       <div className="flex justify-center">
-        <img src={resolvedUrl} alt={document.title} className="max-h-[72vh] w-auto max-w-full rounded-[20px] border border-[var(--border)] bg-white object-contain shadow-soft" />
+        <Image src={resolvedUrl} alt={document.title} width={1400} height={1400} unoptimized className="max-h-[72vh] h-auto w-auto max-w-full rounded-[20px] border border-[var(--border)] bg-white object-contain shadow-soft" />
       </div>
     );
   }
@@ -92,8 +93,8 @@ function DocumentPreview({ document }: { document: EmployeeDocumentRecord }) {
     <div className="flex h-[72vh] flex-col items-center justify-center gap-4 rounded-[20px] border border-dashed border-[var(--border)] bg-white p-8 text-center">
       <FileText className="h-12 w-12 text-[var(--primary)]" />
       <div>
-        <p className="text-[18px] font-semibold text-[var(--text)]">Preview belum tersedia untuk tipe file ini.</p>
-        <p className="mt-2 text-[14px] text-[var(--text-muted)]">Silakan download atau buka file di tab baru untuk melihat dokumen lengkapnya.</p>
+        <p className="text-[18px] font-semibold text-[var(--text)]">Preview is not available for this file type.</p>
+        <p className="mt-2 text-[14px] text-[var(--text-muted)]">Download the file or open it in a new tab to view the full document.</p>
       </div>
       <div className="flex gap-3">
         <a href={resolvedUrl} download={document.fileName} className="secondary-button"><Download className="h-4 w-4" /> Download</a>
@@ -140,15 +141,15 @@ export function EmployeeProfileWorkspace({
     setPasswordMessage(null);
 
     if (!passwordForm.currentPassword.trim() || !passwordForm.newPassword.trim() || !passwordForm.confirmPassword.trim()) {
-      setPasswordError("Semua field password wajib diisi.");
+      setPasswordError("All password fields are required.");
       return;
     }
     if (passwordForm.newPassword.trim().length < 8) {
-      setPasswordError("Password baru minimal 8 karakter.");
+      setPasswordError("The new password must be at least 8 characters.");
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setPasswordError("Konfirmasi password baru belum sama.");
+      setPasswordError("The new password confirmation does not match.");
       return;
     }
 
@@ -164,10 +165,10 @@ export function EmployeeProfileWorkspace({
       });
       const payload = await response.json().catch(() => null) as { error?: string; data?: { message?: string } } | null;
       if (!response.ok) {
-        setPasswordError(payload?.error ?? "Gagal mengubah password.");
+        setPasswordError(payload?.error ?? "Failed to change password.");
         return;
       }
-      setPasswordMessage(payload?.data?.message ?? "Password berhasil diperbarui.");
+      setPasswordMessage(payload?.data?.message ?? "Password updated successfully.");
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
       setPasswordModalOpen(false);
     } finally {
@@ -211,22 +212,21 @@ export function EmployeeProfileWorkspace({
         <div className="px-4 py-5 sm:px-6 sm:py-6">
           {tab === "personal" ? (
             <div className="grid gap-4 md:grid-cols-2">
-              <ReadOnlyField label="Nama" value={employee.name} />
+              <ReadOnlyField label="Name" value={employee.name} />
               <ReadOnlyField label="NIK" value={employee.nik} />
               <ReadOnlyField label="Email" value={employee.email} />
               <ReadOnlyField label="Phone" value={employee.phone} />
-              <ReadOnlyField label="Tempat Lahir" value={employee.birthPlace} />
-              <ReadOnlyField label="Tanggal Lahir" value={employee.birthDate} />
+              <ReadOnlyField label="Birth Place" value={employee.birthPlace} />
+              <ReadOnlyField label="Birth Date" value={employee.birthDate} />
               <ReadOnlyField label="Gender" value={employee.gender} />
               <ReadOnlyField label="Marital Status" value={employee.maritalStatus} />
               <ReadOnlyField label="Date of Marriage" value={employee.marriageDate ?? "-"} />
-              <ReadOnlyField label="No KTP" value={employee.idCardNumber} />
-              <ReadOnlyArea label="Alamat" value={employee.address} className="md:col-span-2" />
+              <ReadOnlyField label="Identity Number" value={employee.idCardNumber} />
+              <ReadOnlyArea label="Address" value={employee.address} className="md:col-span-2" />
               <div className="page-card p-4 sm:p-5 md:col-span-2">
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div>
                     <p className="section-title text-[18px] font-semibold text-[var(--primary)] sm:text-[20px]">Account Access</p>
-                    <p className="mt-2 text-[14px] text-[var(--text-muted)]">Kelola akses akun tanpa menampilkan password di layar.</p>
                   </div>
                   <button type="button" className="secondary-button" onClick={() => setPasswordModalOpen(true)}>
                     <KeyRound className="h-4 w-4" />
@@ -234,9 +234,9 @@ export function EmployeeProfileWorkspace({
                   </button>
                 </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
-                  <ReadOnlyField label="Akun Aktif" value={employee.appLoginEnabled ? "Yes" : "No"} />
+                  <ReadOnlyField label="Account Active" value={employee.appLoginEnabled ? "Yes" : "No"} />
                   <ReadOnlyField label="Username" value={employee.loginUsername ?? "-"} />
-                  <ReadOnlyField label="Password" value={employee.appLoginEnabled ? "Disembunyikan demi keamanan" : "-"} />
+                  <ReadOnlyField label="Password" value={employee.appLoginEnabled ? "Hidden for security" : "-"} />
                 </div>
               </div>
             </div>
@@ -264,8 +264,8 @@ export function EmployeeProfileWorkspace({
 
           {tab === "job" ? (
             <div className="grid gap-4 md:grid-cols-2">
-              <ReadOnlyField label="Departemen" value={employee.department} />
-              <ReadOnlyField label="Jabatan" value={employee.position} />
+              <ReadOnlyField label="Department" value={employee.department} />
+              <ReadOnlyField label="Position" value={employee.position} />
               <ReadOnlyField label="Role" value={employee.role} />
               <ReadOnlyField label="Status" value={employee.status} />
               <ReadOnlyField label="Contract Status" value={employee.contractStatus} />
@@ -307,9 +307,9 @@ export function EmployeeProfileWorkspace({
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <MiniCard label="Allowance" value={money(employee.allowance)} note={`${selectedAllowances} komponen terpilih`} />
+                <MiniCard label="Allowance" value={money(employee.allowance)} note={`${selectedAllowances} selected components`} />
                 <MiniCard label="Annual Leave" value={`${getLeaveAllocationAvailable(annualAllocation ?? { code: "", label: "", days: 0, carryOver: 0, carryOverExpiresAt: null })} days`} note="Current + carry over annual leave" />
-                <MiniCard label="Sick Leave Used" value={`${sickLeaveUsed} times`} note="Ditampilkan sebagai jumlah pemakaian" />
+                <MiniCard label="Sick Leave Used" value={`${sickLeaveUsed} times`} note="Displayed as total usage count" />
                 <MiniCard label="Permission" value={`${getLeaveAllocationAvailable(permissionAllocation ?? { code: "", label: "", days: 0, carryOver: 0, carryOverExpiresAt: null })} days`} note="Remaining permission balance" />
               </div>
             </div>
@@ -318,8 +318,7 @@ export function EmployeeProfileWorkspace({
           {tab === "documents" ? (
             <div className="space-y-5">
               <div className="page-card p-4 sm:p-5">
-                <p className="section-title text-[18px] font-semibold text-[var(--primary)] sm:text-[20px]">Dokumen Karyawan</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Karyawan bisa melihat dokumen yang sudah diupload HR untuk datanya sendiri.</p>
+                <p className="section-title text-[18px] font-semibold text-[var(--primary)] sm:text-[20px]">Employee Documents</p>
               </div>
 
               <section className="page-card p-4 sm:p-5">
@@ -331,7 +330,7 @@ export function EmployeeProfileWorkspace({
                       <div className="min-w-0">
                         <p className="text-[15px] font-semibold text-[var(--text)]">{item.title}</p>
                         <p className="mt-1 text-[13px] text-[var(--text-muted)]">{documentTypeLabels[item.type] ?? item.type} • {item.fileName}</p>
-                        <p className="mt-1 text-[12px] text-[var(--text-muted)]">Upload: {new Date(item.uploadedAt).toLocaleString("id-ID")}</p>
+                        <p className="mt-1 text-[12px] text-[var(--text-muted)]">Uploaded: {new Date(item.uploadedAt).toLocaleString("en-GB")}</p>
                         {item.notes ? <p className="mt-2 text-[13px] text-[var(--text-muted)]">{item.notes}</p> : null}
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -376,7 +375,6 @@ export function EmployeeProfileWorkspace({
             <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
               <div>
                 <p className="section-title text-[22px] font-semibold text-[var(--primary)]">Change Password</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Gunakan password minimal 8 karakter untuk keamanan akun.</p>
               </div>
               <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setPasswordModalOpen(false)}>
                 <X className="h-4 w-4" />
@@ -384,15 +382,15 @@ export function EmployeeProfileWorkspace({
             </div>
             <div className="space-y-4 px-6 py-5">
               <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
-                <span>Password Saat Ini</span>
+                <span>Current Password</span>
                 <input type="password" value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((prev) => ({ ...prev, currentPassword: event.target.value }))} className="filter-control w-full" />
               </label>
               <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
-                <span>Password Baru</span>
+                <span>New Password</span>
                 <input type="password" value={passwordForm.newPassword} onChange={(event) => setPasswordForm((prev) => ({ ...prev, newPassword: event.target.value }))} className="filter-control w-full" />
               </label>
               <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
-                <span>Konfirmasi Password Baru</span>
+                <span>Confirm New Password</span>
                 <input type="password" value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirmPassword: event.target.value }))} className="filter-control w-full" />
               </label>
               {passwordError ? <div className="rounded-[12px] border border-[var(--danger-soft)] bg-[var(--danger-soft)] px-4 py-3 text-[14px] text-[var(--danger)]">{passwordError}</div> : null}

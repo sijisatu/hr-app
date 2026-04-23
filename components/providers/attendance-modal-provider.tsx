@@ -123,7 +123,7 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
   const employeesQuery = useQuery({ queryKey: ["employees"], queryFn: getEmployees, enabled: open });
   const todayQuery = useQuery({ queryKey: ["attendance-today"], queryFn: getAttendanceToday, enabled: open });
 
-  const employees = employeesQuery.data ?? [];
+  const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
   const todayRecords = todayQuery.data ?? [];
   const selectedEmployee = useMemo(() => {
     const matchedEmployee = employees.find((employee) => employee.id === currentUser?.id);
@@ -308,7 +308,7 @@ function AttendanceModal({ open, onClose }: { open: boolean; onClose: () => void
               </div>
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Selfie attendance disimpan sebagai data validasi kehadiran dengan retensi terbatas dan hanya bisa diakses oleh HR, owner data, atau manager yang berada dalam scope approval.
+                Attendance selfies are stored as validation evidence with limited retention and can only be accessed by HR, the record owner, or managers within the approval scope.
               </div>
             </div>
 

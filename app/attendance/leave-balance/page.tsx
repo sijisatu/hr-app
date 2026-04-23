@@ -6,10 +6,7 @@ export default async function LeaveBalancePage() {
   await requireSession(["employee", "manager", "hr"]);
 
   return (
-    <AppShell
-      title="Leave Balance"
-      subtitle="Review your available leave balance based on the latest HR allocation."
-    >
+    <AppShell title="Leave Balance">
       <EmployeeLeaveBalanceView />
     </AppShell>
   );

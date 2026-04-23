@@ -55,7 +55,6 @@ export default async function DashboardPage() {
   return (
     <AppShell
       title="Dashboard"
-      subtitle={isEmployeeView ? "Track your attendance activity and current request summary." : "Monitor attendance activity and operational signals in one workspace."}
       actions={<AttendanceQuickAction compact />}
     >
       <div className="space-y-6">
@@ -80,7 +79,6 @@ export default async function DashboardPage() {
             <ActivityPanel
               entries={activity}
               title="Latest History Activity"
-              subtitle="Latest attendance activity across the organization."
             />
           </div>
         ) : (

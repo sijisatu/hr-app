@@ -17,7 +17,7 @@ export default async function ProfilePage() {
 
   if (!employee) {
     return (
-      <AppShell title="Profile" subtitle="Employee information for the current signed-in account.">
+      <AppShell title="Profile">
         <div className="space-y-4">
           {dataUnavailable ? (
             <div className="page-card border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
@@ -31,7 +31,7 @@ export default async function ProfilePage() {
   }
 
   return (
-    <AppShell title="Profile" subtitle="Employee information for the current signed-in account.">
+    <AppShell title="Profile">
       {dataUnavailable ? (
         <div className="page-card mb-6 border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
           Some profile data is temporarily unavailable. The page is still loaded with the latest safe data.

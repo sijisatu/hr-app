@@ -283,6 +283,28 @@ export type ActivityItem = {
   status: "live" | "alert";
 };
 
+export type AuditLogRecord = {
+  id: string;
+  eventKey: string;
+  module: string;
+  action: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorRole: string | null;
+  actorDepartment: string | null;
+  targetType: string | null;
+  targetId: string | null;
+  targetLabel: string | null;
+  summary: string;
+  beforeData: unknown | null;
+  afterData: unknown | null;
+  metadata: unknown | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  occurredAt: string;
+  createdAt: string;
+};
+
 export type Performer = {
   name: string;
   role: string;
@@ -482,6 +504,21 @@ async function apiPostForm<T>(pathname: string, body: FormData): Promise<T> {
 
 export async function getDashboardSummary() {
   return apiFetch<DashboardSummary>("/api/dashboard/summary");
+}
+
+export async function getAuditLogsPage(query: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  module?: string;
+  eventKey?: string;
+  actorUserId?: string;
+  actorRole?: string;
+  targetType?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  return apiFetch<PaginatedList<AuditLogRecord>>(`/api/ops/audit-logs${toQueryString(query)}`);
 }
 
 export async function getEmployees() {

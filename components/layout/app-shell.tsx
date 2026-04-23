@@ -25,6 +25,7 @@ import clsx from "clsx";
 import { activeTenant } from "@/lib/tenant";
 import { navItems } from "@/lib/data";
 import { AttendanceQuickAction } from "@/components/layout/attendance-quick-action";
+import { NotificationCenter } from "@/components/layout/notification-center";
 import { useSession } from "@/components/providers/session-provider";
 import { LogoutButton } from "@/components/auth/logout-button";
 
@@ -33,6 +34,7 @@ const iconMap = {
   "Employee List": Users,
   "Employee Attendance": ClipboardList,
   Reimbursement: ReceiptText,
+  "Activity Logs": Bell,
   Payroll: WalletCards,
   Profile: UserRound,
   Reports: ChartColumn,
@@ -40,7 +42,7 @@ const iconMap = {
   "Leave System": CalendarClock
 };
 
-export function AppShell({ title, subtitle, actions, children, compact = false }: { title: string; subtitle: string; actions?: React.ReactNode; children: React.ReactNode; compact?: boolean }) {
+export function AppShell({ title, subtitle, actions, children, compact = false }: { title: string; subtitle?: string; actions?: React.ReactNode; children: React.ReactNode; compact?: boolean }) {
   const pathname = usePathname();
   const { currentUser } = useSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -223,9 +225,7 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
                 <Search className="h-4 w-4" />
               </button>
 
-              <button className="secondary-button !hidden !min-h-10 !w-10 !rounded-full !p-0 sm:inline-flex">
-                <Bell className="h-4 w-4" />
-              </button>
+              <NotificationCenter />
               <button className="secondary-button !hidden !min-h-10 !w-10 !rounded-full !p-0 sm:inline-flex">
                 <Settings className="h-4 w-4" />
               </button>
@@ -246,7 +246,7 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
           <div className={clsx("flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between", compact ? "mb-6" : "mb-8")}>
             <div className="min-w-0">
               <h1 className={clsx("section-title font-semibold leading-tight text-[var(--primary)]", compact ? "text-[30px] sm:text-[32px] lg:text-[36px]" : "text-[32px] sm:text-[36px] lg:text-[44px]")}>{title}</h1>
-              <p className={clsx("mt-2 max-w-3xl text-[var(--text-muted)]", compact ? "text-[14px] leading-5" : "text-[14px] leading-6 sm:text-[15px]")}>{subtitle}</p>
+              {subtitle ? <p className={clsx("mt-2 max-w-3xl text-[var(--text-muted)]", compact ? "text-[14px] leading-5" : "text-[14px] leading-6 sm:text-[15px]")}>{subtitle}</p> : null}
             </div>
             {actions ? <div className="min-w-0 shrink-0 max-sm:w-full max-sm:[&>*]:w-full">{actions}</div> : null}
           </div>

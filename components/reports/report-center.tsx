@@ -93,7 +93,7 @@ export function ReportCenter({ overview }: ReportCenterProps) {
       {
         onSuccess: (result) => {
           const fileUrl = toAssetUrl(result.fileUrl);
-          setMessage(fileUrl ? `Report siap di-download: ${fileUrl}` : "Report berhasil dibuat.");
+          setMessage(fileUrl ? `Report is ready to download: ${fileUrl}` : "Report generated successfully.");
           if (fileUrl) {
             window.open(fileUrl, "_blank", "noopener,noreferrer");
           }
@@ -109,7 +109,6 @@ export function ReportCenter({ overview }: ReportCenterProps) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Generate HR Reports</p>
-            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Preview the dataset first, then download the Excel file.</p>
             <p className="mt-1 text-[13px] text-[var(--text-muted)]">Current filter: {overview.period.label}</p>
           </div>
           <FileSpreadsheet className="h-7 w-7 text-[var(--primary)]" />
@@ -259,7 +258,6 @@ function ReportPreviewModal({
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Preview {reportNameMap[reportKey]}</p>
-            <p className="mt-1 text-[14px] text-[var(--text-muted)]">Review the dataset before downloading the Excel export.</p>
           </div>
           <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -358,7 +356,6 @@ function ModuleSection({ title, subtitle, metrics, action, children }: { title: 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="section-title text-[24px] font-semibold text-[var(--primary)]">{title}</p>
-          <p className="mt-1 text-[14px] text-[var(--text-muted)]">{subtitle}</p>
         </div>
         <div className="shrink-0">{action}</div>
       </div>

@@ -13,6 +13,28 @@ export type ReimbursementCategory = "medical" | "glasses" | "maternity" | "trans
 export type Gender = "male" | "female";
 export type MaritalStatus = "single" | "married" | "divorced" | "widowed";
 
+export type AuditLogRecord = {
+  id: string;
+  eventKey: string;
+  module: string;
+  action: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorRole: string | null;
+  actorDepartment: string | null;
+  targetType: string | null;
+  targetId: string | null;
+  targetLabel: string | null;
+  summary: string;
+  beforeData: unknown | null;
+  afterData: unknown | null;
+  metadata: unknown | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  occurredAt: string;
+  createdAt: string;
+};
+
 export type LeaveBalanceAllocation = {
   code: string;
   label: string;

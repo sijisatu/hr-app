@@ -56,18 +56,20 @@ type AllocationForm = {
 };
 
 const presets = [
-  { category: "medical" as const, claimType: "Medical", subType: "Outpatient", annualLimit: 3500000, notes: "Konsultasi dokter, rawat jalan, dan obat resep." },
-  { category: "medical" as const, claimType: "Medical", subType: "Dental", annualLimit: 2500000, notes: "Scaling, tambal gigi, dan tindakan dasar." },
-  { category: "glasses" as const, claimType: "Glasses", subType: "Self", annualLimit: 1000000, notes: "Frame dan lensa kacamata pribadi." },
-  { category: "maternity" as const, claimType: "Maternity", subType: "Normal Delivery", annualLimit: 12000000, notes: "Persalinan normal sesuai plafon benefit." },
-  { category: "maternity" as const, claimType: "Maternity", subType: "Caesarean", annualLimit: 18000000, notes: "Benefit persalinan caesar." },
-  { category: "transport" as const, claimType: "Transport", subType: "Business Trip", annualLimit: 6000000, notes: "Taksi, parkir, tol, dan transport dinas." },
-  { category: "communication" as const, claimType: "Communication", subType: "Mobile & Internet", annualLimit: 2400000, notes: "Paket data, pulsa, dan internet kerja." }
+  { category: "medical" as const, claimType: "Medical", subType: "Outpatient", annualLimit: 3500000, notes: "Doctor consultation, outpatient visits, and prescribed medicine." },
+  { category: "medical" as const, claimType: "Medical", subType: "Dental", annualLimit: 2500000, notes: "Scaling, fillings, and basic dental treatment." },
+  { category: "glasses" as const, claimType: "Glasses", subType: "Self", annualLimit: 1000000, notes: "Personal eyeglass frames and lenses." },
+  { category: "maternity" as const, claimType: "Maternity", subType: "Normal Delivery", annualLimit: 12000000, notes: "Normal delivery reimbursement within the approved benefit cap." },
+  { category: "maternity" as const, claimType: "Maternity", subType: "Caesarean", annualLimit: 18000000, notes: "Cesarean delivery benefit allocation." },
+  { category: "transport" as const, claimType: "Transport", subType: "Business Trip", annualLimit: 6000000, notes: "Taxi, parking, toll, and business travel transport." },
+  { category: "communication" as const, claimType: "Communication", subType: "Mobile & Internet", annualLimit: 2400000, notes: "Business mobile data, airtime, and internet allowance." }
 ];
 
 const emptyClaim = (): ClaimForm => ({ reimbursementId: null, claimTypeId: "", receiptDate: new Date().toISOString().slice(0, 10), currency: "IDR", amount: "", remarks: "", receipt: null });
 const emptyAllocation = (employeeId = ""): AllocationForm => ({ id: null, employeeId, category: "medical", claimType: "", subType: "", currency: "IDR", annualLimit: "", remainingBalance: "", active: true, notes: "" });
-const money = (value: number, currencyCode = "IDR") => new Intl.NumberFormat("id-ID", { style: "currency", currency: currencyCode, maximumFractionDigits: 0 }).format(value);
+const money = (value: number, currencyCode = "IDR") => new Intl.NumberFormat("en-US", { style: "currency", currency: currencyCode, maximumFractionDigits: 0 }).format(value);
+const formatDate = (value: string | null | undefined) => value ? new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-";
+const formatDateTime = (value: string | null | undefined) => value ? new Date(value).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-";
 const formatNumberInput = (value: string) => {
   const digits = value.replace(/\D/g, "");
   if (!digits) {
@@ -114,9 +116,9 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
   const claimTypesQuery = useQuery({ queryKey: ["reimbursement-claim-types"], queryFn: getReimbursementClaimTypes, initialData: initialClaimTypes });
   const requestsQuery = useQuery({ queryKey: ["reimbursement-requests"], queryFn: getReimbursementRequests, initialData: initialRequests });
 
-  const employees = employeesQuery.data ?? [];
-  const claimTypes = claimTypesQuery.data ?? [];
-  const requests = requestsQuery.data ?? [];
+  const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
+  const claimTypes = useMemo(() => claimTypesQuery.data ?? [], [claimTypesQuery.data]);
+  const requests = useMemo(() => requestsQuery.data ?? [], [requestsQuery.data]);
   const currentEmployee = employees.find((item) => item.id === userId) ?? null;
   const myClaimTypes = claimTypes.filter((item) => item.employeeId === userId && item.active);
   const myRequests = requests.filter((item) => item.userId === userId);
@@ -143,9 +145,9 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
 
   const claimMutation = useMutation({
     mutationFn: async (submit: boolean) => {
-      if (!claimForm.claimTypeId) throw new Error("Claim type harus dipilih dulu.");
+      if (!claimForm.claimTypeId) throw new Error("Please select a claim type first.");
       if (submit && !claimForm.receipt && !receiptName) {
-        throw new Error("Upload receipt file dulu sebelum submit reimbursement.");
+        throw new Error("Please upload a receipt before submitting the reimbursement.");
       }
       const payload = { claimTypeId: claimForm.claimTypeId, currency: claimForm.currency, amount: numberValue(claimForm.amount), receiptDate: claimForm.receiptDate, remarks: claimForm.remarks, submit, receipt: claimForm.receipt };
       if (claimForm.reimbursementId) return updateReimbursementRequest({ reimbursementId: claimForm.reimbursementId, ...payload });
@@ -158,7 +160,7 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
       });
     },
     onSuccess: async (_, submit) => {
-      setMessage(submit ? "Reimbursement berhasil dikirim." : "Draft reimbursement berhasil disimpan.");
+      setMessage(submit ? "Reimbursement submitted successfully." : "Reimbursement draft saved successfully.");
       setClaimModalOpen(false);
       setClaimForm(emptyClaim());
       setReceiptName("");
@@ -170,13 +172,13 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
   const allocationMutation = useMutation({
     mutationFn: async () => {
       const employee = employees.find((item) => item.id === allocationForm.employeeId);
-      if (!employee) throw new Error("Pilih karyawan dulu.");
+      if (!employee) throw new Error("Please select an employee first.");
       const payload = { employeeId: employee.id, employeeName: employee.name, department: employee.department, designation: employee.position, category: allocationForm.category, claimType: allocationForm.claimType, subType: allocationForm.subType, currency: allocationForm.currency, annualLimit: numberValue(allocationForm.annualLimit), remainingBalance: numberValue(allocationForm.remainingBalance || allocationForm.annualLimit), active: allocationForm.active, notes: allocationForm.notes };
       if (allocationForm.id) return updateReimbursementClaimType(allocationForm.id, payload);
       return createReimbursementClaimType(payload);
     },
     onSuccess: async () => {
-      setMessage("Claim type reimbursement berhasil disimpan.");
+      setMessage("Reimbursement claim type saved successfully.");
       setAllocationModalOpen(false);
       setAllocationForm(emptyAllocation());
       await refresh();
@@ -184,9 +186,9 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
     onError: (error: Error) => setMessage(error.message)
   });
 
-  const deleteAllocationMutation = useMutation({ mutationFn: deleteReimbursementClaimType, onSuccess: async () => { setMessage("Claim type reimbursement berhasil dihapus."); await refresh(); }, onError: (error: Error) => setMessage(error.message) });
-  const managerMutation = useMutation({ mutationFn: (payload: { reimbursementId: string; status: "approved" | "rejected" }) => managerApproveReimbursement({ ...payload, actor: "Manager/Leader" }), onSuccess: async () => { setMessage("Approval manager berhasil disimpan."); await refresh(); }, onError: (error: Error) => setMessage(error.message) });
-  const hrMutation = useMutation({ mutationFn: (payload: { reimbursementId: string; status: "approved" | "rejected" | "processed" }) => hrProcessReimbursement({ ...payload, actor: "HRD" }), onSuccess: async () => { setMessage("Proses HR reimbursement berhasil disimpan."); await refresh(); }, onError: (error: Error) => setMessage(error.message) });
+  const deleteAllocationMutation = useMutation({ mutationFn: deleteReimbursementClaimType, onSuccess: async () => { setMessage("Reimbursement claim type deleted successfully."); await refresh(); }, onError: (error: Error) => setMessage(error.message) });
+  const managerMutation = useMutation({ mutationFn: (payload: { reimbursementId: string; status: "approved" | "rejected" }) => managerApproveReimbursement({ ...payload, actor: "Manager/Leader" }), onSuccess: async () => { setMessage("Manager approval updated successfully."); await refresh(); }, onError: (error: Error) => setMessage(error.message) });
+  const hrMutation = useMutation({ mutationFn: (payload: { reimbursementId: string; status: "approved" | "rejected" | "processed" }) => hrProcessReimbursement({ ...payload, actor: "HR" }), onSuccess: async () => { setMessage("HR reimbursement processing updated successfully."); await refresh(); }, onError: (error: Error) => setMessage(error.message) });
 
   const openDraft = (draft: ReimbursementRequestRecord) => {
     setClaimForm({ reimbursementId: draft.id, claimTypeId: draft.claimTypeId, receiptDate: draft.receiptDate, currency: draft.currency, amount: formatNumberInput(String(draft.amount)), remarks: draft.remarks, receipt: null });
@@ -229,7 +231,6 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="section-title text-[24px] font-semibold text-[var(--primary)]">New Reimbursement</p>
-                <p className="mt-2 max-w-2xl text-[14px] leading-6 text-[var(--text-muted)]">Select a claim type, add receipt details, and upload supporting documents when you are ready to submit.</p>
               </div>
               <button className="primary-button" onClick={() => setClaimModalOpen(true)} disabled={myClaimTypes.length === 0}><Plus className="h-4 w-4" />Add Claim</button>
             </div>
@@ -251,18 +252,25 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
         <>
           <section className="page-card overflow-hidden p-0">
             <div className="flex flex-col gap-4 border-b border-[var(--border)] px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-              <div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">All Employee Reimbursements</p><p className="mt-2 text-[14px] text-[var(--text-muted)]">Review incoming claims and process the HR queue from one table.</p></div>
-              <label className="topbar-control w-full lg:max-w-sm"><Search className="h-4 w-4 text-[var(--text-muted)]" /><input value={hrSearch} onChange={(event) => setHrSearch(event.target.value)} className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]" placeholder="Search employee, claim type, atau department..." /></label>
+              <div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">All Employee Reimbursements</p></div>
+              <label className="topbar-control w-full lg:max-w-sm"><Search className="h-4 w-4 text-[var(--text-muted)]" /><input value={hrSearch} onChange={(event) => setHrSearch(event.target.value)} className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]" placeholder="Search employee, claim type, or department..." /></label>
             </div>
             <div className="overflow-x-auto px-4 py-4 lg:px-6">
               <table className="min-w-full border-separate border-spacing-y-2">
-                <thead><tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]"><th className="px-4 pb-2">Employee</th><th className="px-4 pb-2">Claim</th><th className="px-4 pb-2">Amount</th><th className="px-4 pb-2">Status</th><th className="px-4 pb-2 text-right">Action</th></tr></thead>
+                <thead><tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]"><th className="px-4 pb-2">Employee</th><th className="px-4 pb-2">Claim</th><th className="px-4 pb-2">Amount</th><th className="px-4 pb-2">Dates</th><th className="px-4 pb-2">Status</th><th className="px-4 pb-2 text-right">Action</th></tr></thead>
                 <tbody>
                   {hrRows.map((item) => (
                     <tr key={item.id} className="bg-[var(--surface-muted)]">
                       <td className="rounded-l-[12px] px-4 py-4 align-top"><p className="text-[14px] font-semibold text-[var(--text)]">{item.employeeName}</p><p className="mt-1 text-[12px] text-[var(--text-muted)]">{item.designation} | {item.department}</p></td>
                       <td className="px-4 py-4 align-top"><p className="text-[14px] font-semibold text-[var(--text)]">{item.claimType}</p><p className="mt-1 text-[12px] text-[var(--text-muted)]">{item.subType}</p></td>
                       <td className="px-4 py-4 text-[14px] text-[var(--text)]">{money(item.amount, item.currency)}</td>
+                      <td className="px-4 py-4 align-top">
+                        <div className="space-y-1 text-[12px] text-[var(--text-muted)]">
+                          <p><span className="font-semibold text-[var(--text)]">Submitted:</span> {formatDateTime(item.submittedAt ?? item.createdAt)}</p>
+                          <p><span className="font-semibold text-[var(--text)]">Receipt:</span> {formatDate(item.receiptDate)}</p>
+                          {item.processedAt ? <p><span className="font-semibold text-[var(--text)]">Processed:</span> {formatDateTime(item.processedAt)}</p> : item.approvedAt ? <p><span className="font-semibold text-[var(--text)]">Approved:</span> {formatDateTime(item.approvedAt)}</p> : null}
+                        </div>
+                      </td>
                       <td className="px-4 py-4"><StatusPill tone={statusTone(item.status)}>{formatReimbursementStatus(item.status)}</StatusPill></td>
                       <td className="rounded-r-[12px] px-4 py-4 text-right"><div className="flex flex-wrap justify-end gap-2">{item.status === "awaiting-hr" ? <button className="secondary-button !px-3 !py-2" onClick={() => hrMutation.mutate({ reimbursementId: item.id, status: "approved" })} disabled={hrMutation.isPending}>Approve</button> : null}{(item.status === "awaiting-hr" || item.status === "approved") ? <button className="primary-button !px-3 !py-2" onClick={() => hrMutation.mutate({ reimbursementId: item.id, status: "processed" })} disabled={hrMutation.isPending}>Process</button> : null}{(item.status === "awaiting-hr" || item.status === "approved") ? <button className="secondary-button !px-3 !py-2" onClick={() => hrMutation.mutate({ reimbursementId: item.id, status: "rejected" })} disabled={hrMutation.isPending}>Reject</button> : null}</div></td>
                     </tr>
@@ -274,11 +282,11 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
 
           <section className="page-card p-5 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">Claim Type Allocation</p><p className="mt-2 max-w-3xl text-[14px] leading-6 text-[var(--text-muted)]">Assign available claim categories, limits, and balances for each employee.</p></div>
+              <div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">Claim Type Allocation</p></div>
               <button className="primary-button" onClick={() => { setAllocationForm(emptyAllocation(employees.find((item) => item.status === "active")?.id ?? "")); setAllocationModalOpen(true); }}><Plus className="h-4 w-4" />Add Claim Type</button>
             </div>
             <div className="mt-5 flex flex-wrap gap-2">{presets.map((preset) => <button key={`${preset.category}-${preset.subType}`} type="button" className="rounded-full border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-[12px] font-medium text-[var(--primary)] transition hover:border-[var(--primary)] hover:bg-white" onClick={() => { setAllocationForm((prev) => ({ ...prev, category: preset.category, claimType: preset.claimType, subType: preset.subType, annualLimit: String(preset.annualLimit), remainingBalance: prev.id ? prev.remainingBalance : String(preset.annualLimit), notes: preset.notes })); setAllocationModalOpen(true); }}>{preset.claimType} - {preset.subType}</button>)}</div>
-            <div className="mt-5"><label className="topbar-control w-full lg:max-w-md"><Search className="h-4 w-4 text-[var(--text-muted)]" /><input value={allocationSearch} onChange={(event) => setAllocationSearch(event.target.value)} className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]" placeholder="Search employee atau claim type..." /></label></div>
+            <div className="mt-5"><label className="topbar-control w-full lg:max-w-md"><Search className="h-4 w-4 text-[var(--text-muted)]" /><input value={allocationSearch} onChange={(event) => setAllocationSearch(event.target.value)} className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]" placeholder="Search employee or claim type..." /></label></div>
             <div className="mt-5 overflow-x-auto">
               <table className="min-w-full border-separate border-spacing-y-2">
                 <thead><tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]"><th className="px-4 pb-2">Employee</th><th className="px-4 pb-2">Claim Type</th><th className="px-4 pb-2">Limit</th><th className="px-4 pb-2">Remaining</th><th className="px-4 pb-2 text-right">Action</th></tr></thead>
@@ -308,22 +316,22 @@ export function ReimbursementWorkspace({ role, userId, initialEmployees, initial
 function RequestTable({ title, rows }: { title: string; rows: ReimbursementRequestRecord[] }) {
   return (
     <section className="page-card overflow-hidden p-0">
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-5"><div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">{title}</p><p className="mt-2 text-[14px] text-[var(--text-muted)]">Submitted reimbursement history.</p></div><div className="rounded-[12px] bg-[var(--panel-alt)] px-4 py-3 text-[13px] text-[var(--text-muted)]">{rows.length} claims</div></div>
-      <div className="overflow-x-auto px-4 py-4 lg:px-6"><table className="min-w-full border-separate border-spacing-y-2"><thead><tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]"><th className="px-4 pb-2">Claim Type</th><th className="px-4 pb-2">Amount</th><th className="px-4 pb-2">Submitted</th><th className="px-4 pb-2">Receipt Date</th><th className="px-4 pb-2">Status</th></tr></thead><tbody>{rows.map((item) => <tr key={item.id} className="bg-[var(--surface-muted)]"><td className="rounded-l-[12px] px-4 py-4 align-top"><p className="text-[14px] font-semibold text-[var(--text)]">{item.claimType}</p><p className="mt-1 text-[12px] text-[var(--text-muted)]">{item.subType} | {formatReimbursementCategory(item.category)}</p></td><td className="px-4 py-4 text-[14px] text-[var(--text)]">{money(item.amount, item.currency)}</td><td className="px-4 py-4 text-[14px] text-[var(--text)]">{item.submittedAt ? new Date(item.submittedAt).toLocaleString("en-GB") : "-"}</td><td className="px-4 py-4 text-[14px] text-[var(--text)]">{item.receiptDate}</td><td className="rounded-r-[12px] px-4 py-4"><StatusPill tone={statusTone(item.status)}>{formatReimbursementStatus(item.status)}</StatusPill></td></tr>)}</tbody></table></div>
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-5"><div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">{title}</p></div><div className="rounded-[12px] bg-[var(--panel-alt)] px-4 py-3 text-[13px] text-[var(--text-muted)]">{rows.length} claims</div></div>
+      <div className="overflow-x-auto px-4 py-4 lg:px-6"><table className="min-w-full border-separate border-spacing-y-2"><thead><tr className="text-left text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]"><th className="px-4 pb-2">Claim Type</th><th className="px-4 pb-2">Amount</th><th className="px-4 pb-2">Submitted</th><th className="px-4 pb-2">Receipt Date</th><th className="px-4 pb-2">Status</th></tr></thead><tbody>{rows.map((item) => <tr key={item.id} className="bg-[var(--surface-muted)]"><td className="rounded-l-[12px] px-4 py-4 align-top"><p className="text-[14px] font-semibold text-[var(--text)]">{item.claimType}</p><p className="mt-1 text-[12px] text-[var(--text-muted)]">{item.subType} | {formatReimbursementCategory(item.category)}</p></td><td className="px-4 py-4 text-[14px] text-[var(--text)]">{money(item.amount, item.currency)}</td><td className="px-4 py-4 text-[14px] text-[var(--text)]">{formatDateTime(item.submittedAt)}</td><td className="px-4 py-4 text-[14px] text-[var(--text)]">{formatDate(item.receiptDate)}</td><td className="rounded-r-[12px] px-4 py-4"><StatusPill tone={statusTone(item.status)}>{formatReimbursementStatus(item.status)}</StatusPill></td></tr>)}</tbody></table></div>
     </section>
   );
 }
 
 function EntitlementList({ rows }: { rows: ReimbursementClaimTypeRecord[] }) {
-  return <section className="page-card p-5 sm:p-6"><div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-[var(--primary)]" /><div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">My Claim Entitlements</p><p className="mt-2 text-[14px] text-[var(--text-muted)]">Claim types currently assigned to your account.</p></div></div><div className="mt-5 grid gap-4 xl:grid-cols-2">{rows.map((item) => <div key={item.id} className="panel-muted p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[15px] font-semibold text-[var(--text)]">{item.claimType}</p><p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.subType} | {formatReimbursementCategory(item.category)}</p></div><StatusPill tone={item.active ? "success" : "neutral"}>{item.active ? "Active" : "Inactive"}</StatusPill></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><p className="text-[12px] uppercase tracking-[0.08em] text-[var(--text-muted)]">Annual Limit</p><p className="mt-1 text-[15px] font-semibold text-[var(--primary)]">{money(item.annualLimit, item.currency)}</p></div><div><p className="text-[12px] uppercase tracking-[0.08em] text-[var(--text-muted)]">Remaining Balance</p><p className="mt-1 text-[15px] font-semibold text-[var(--primary)]">{money(item.remainingBalance, item.currency)}</p></div></div><p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{item.notes || "No policy notes."}</p></div>)}</div></section>;
+  return <section className="page-card p-5 sm:p-6"><div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-[var(--primary)]" /><div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">My Claim Entitlements</p></div></div><div className="mt-5 grid gap-4 xl:grid-cols-2">{rows.map((item) => <div key={item.id} className="panel-muted p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[15px] font-semibold text-[var(--text)]">{item.claimType}</p><p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.subType} | {formatReimbursementCategory(item.category)}</p></div><StatusPill tone={item.active ? "success" : "neutral"}>{item.active ? "Active" : "Inactive"}</StatusPill></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><p className="text-[12px] uppercase tracking-[0.08em] text-[var(--text-muted)]">Annual Limit</p><p className="mt-1 text-[15px] font-semibold text-[var(--primary)]">{money(item.annualLimit, item.currency)}</p></div><div><p className="text-[12px] uppercase tracking-[0.08em] text-[var(--text-muted)]">Remaining Balance</p><p className="mt-1 text-[15px] font-semibold text-[var(--primary)]">{money(item.remainingBalance, item.currency)}</p></div></div><p className="mt-3 text-[13px] leading-5 text-[var(--text-muted)]">{item.notes || "No policy notes."}</p></div>)}</div></section>;
 }
 
 function DraftList({ rows, onEdit }: { rows: ReimbursementRequestRecord[]; onEdit: (draft: ReimbursementRequestRecord) => void }) {
-  return <section className="page-card p-5 sm:p-6"><div className="flex items-center gap-3"><FolderPen className="h-5 w-5 text-[var(--primary)]" /><div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">My Draft Claim</p><p className="mt-2 text-[14px] text-[var(--text-muted)]">Draft reimbursement entries waiting to be submitted.</p></div></div><div className="mt-5 grid gap-4 xl:grid-cols-2">{rows.map((item) => <div key={item.id} className="panel-muted p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[15px] font-semibold text-[var(--text)]">{item.claimType}</p><p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.subType} | {item.receiptDate}</p></div><StatusPill tone="neutral">Draft</StatusPill></div><p className="mt-3 text-[14px] text-[var(--text)]">{money(item.amount, item.currency)}</p><p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">{item.remarks || "No remarks added."}</p><div className="mt-4"><button className="secondary-button" onClick={() => onEdit(item)}><Pencil className="h-4 w-4" />Continue Draft</button></div></div>)}</div></section>;
+  return <section className="page-card p-5 sm:p-6"><div className="flex items-center gap-3"><FolderPen className="h-5 w-5 text-[var(--primary)]" /><div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">My Draft Claim</p></div></div><div className="mt-5 grid gap-4 xl:grid-cols-2">{rows.map((item) => <div key={item.id} className="panel-muted p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[15px] font-semibold text-[var(--text)]">{item.claimType}</p><p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.subType} | {item.receiptDate}</p></div><StatusPill tone="neutral">Draft</StatusPill></div><p className="mt-3 text-[14px] text-[var(--text)]">{money(item.amount, item.currency)}</p><p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">{item.remarks || "No remarks added."}</p><div className="mt-4"><button className="secondary-button" onClick={() => onEdit(item)}><Pencil className="h-4 w-4" />Continue Draft</button></div></div>)}</div></section>;
 }
 
 function ApprovalQueue({ rows, pending, onApprove }: { rows: ReimbursementRequestRecord[]; pending: boolean; onApprove: (reimbursementId: string, status: "approved" | "rejected") => void }) {
-  return <section className="page-card p-5 sm:p-6"><div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-[var(--primary)]" /><div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">Manager Approval Queue</p><p className="mt-2 text-[14px] text-[var(--text-muted)]">Review and action reimbursement requests submitted by employees.</p></div></div><div className="mt-5 grid gap-4 xl:grid-cols-2">{rows.map((item) => <div key={item.id} className="panel-muted p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[15px] font-semibold text-[var(--text)]">{item.employeeName}</p><p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.designation} | {item.claimType} - {item.subType}</p></div><StatusPill tone="warning">Pending Manager</StatusPill></div><p className="mt-3 text-[14px] font-semibold text-[var(--primary)]">{money(item.amount, item.currency)}</p><p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">{item.remarks || "No additional notes."}</p><div className="mt-4 flex flex-col gap-2 sm:flex-row"><button className="secondary-button" onClick={() => onApprove(item.id, "rejected")} disabled={pending}><X className="h-4 w-4" />Reject</button><button className="primary-button" onClick={() => onApprove(item.id, "approved")} disabled={pending}><Check className="h-4 w-4" />Approve</button></div></div>)}</div></section>;
+  return <section className="page-card p-5 sm:p-6"><div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-[var(--primary)]" /><div><p className="section-title text-[24px] font-semibold text-[var(--primary)]">Manager Approval Queue</p></div></div><div className="mt-5 grid gap-4 xl:grid-cols-2">{rows.map((item) => <div key={item.id} className="panel-muted p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[15px] font-semibold text-[var(--text)]">{item.employeeName}</p><p className="mt-1 text-[13px] text-[var(--text-muted)]">{item.designation} | {item.claimType} - {item.subType}</p></div><StatusPill tone="warning">Pending Manager</StatusPill></div><p className="mt-3 text-[14px] font-semibold text-[var(--primary)]">{money(item.amount, item.currency)}</p><p className="mt-2 text-[13px] leading-5 text-[var(--text-muted)]">{item.remarks || "No additional notes."}</p><div className="mt-4 flex flex-col gap-2 sm:flex-row"><button className="secondary-button" onClick={() => onApprove(item.id, "rejected")} disabled={pending}><X className="h-4 w-4" />Reject</button><button className="primary-button" onClick={() => onApprove(item.id, "approved")} disabled={pending}><Check className="h-4 w-4" />Approve</button></div></div>)}</div></section>;
 }
 
 function ClaimModal({ form, currentEmployee, claimTypes, selectedClaimType, receiptName, pending, onClose, onChange, onReceipt, onSave }: { form: ClaimForm; currentEmployee: EmployeeRecord | null; claimTypes: ReimbursementClaimTypeRecord[]; selectedClaimType: ReimbursementClaimTypeRecord | null; receiptName: string; pending: boolean; onClose: () => void; onChange: React.Dispatch<React.SetStateAction<ClaimForm>>; onReceipt: (file: File | null) => void; onSave: (submit: boolean) => void }) {
@@ -374,7 +382,7 @@ function AllocationModal({ form, employees, pending, onClose, onChange, onSave }
                     setEmployeeSearch(event.target.value);
                     setEmployeePickerOpen(true);
                   }}
-                  placeholder="Search nama, NIK, department, atau jabatan..."
+                  placeholder="Search by name, employee ID, department, or position..."
                   className="w-full border-none bg-transparent text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
                 />
               </div>

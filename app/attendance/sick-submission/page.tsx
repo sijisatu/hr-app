@@ -6,10 +6,7 @@ export default async function SickSubmissionPage() {
   await requireSession(["employee", "manager", "hr"]);
 
   return (
-    <AppShell
-      title="Sick Submission"
-      subtitle="Submit and review sick leave requests from a dedicated workspace."
-    >
+    <AppShell title="Sick Submission">
       <EmployeeAttendanceWorkspace fixedAction="sick" />
     </AppShell>
   );

@@ -212,11 +212,11 @@ export async function exportPayslip(payslipId: string) {
       return { fileName: status.fileName, fileUrl: status.fileUrl, payslipId: status.payslipId };
     }
     if (status.status === "failed") {
-      throw new Error(status.error || "Gagal generate payslip export.");
+      throw new Error(status.error || "Failed to generate the payslip export.");
     }
   }
 
-  throw new Error("Export payslip timeout. Silakan coba lagi.");
+  throw new Error("Payslip export timed out. Please try again.");
 }
 
 export function money(value: number) {

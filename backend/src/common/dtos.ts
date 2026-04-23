@@ -894,6 +894,36 @@ export class PayslipListQueryDto extends ListQueryDto {
   status?: string;
 }
 
+export class AuditLogListQueryDto extends ListQueryDto {
+  @IsOptional()
+  @IsString()
+  module?: string;
+
+  @IsOptional()
+  @IsString()
+  eventKey?: string;
+
+  @IsOptional()
+  @IsString()
+  actorUserId?: string;
+
+  @IsOptional()
+  @IsString()
+  actorRole?: string;
+
+  @IsOptional()
+  @IsString()
+  targetType?: string;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
 export class CreateExportDto {
   @IsString()
   reportName!: string;

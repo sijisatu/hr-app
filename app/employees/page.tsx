@@ -20,10 +20,7 @@ export default async function EmployeesPage() {
     departmentsResult.status === "rejected";
 
   return (
-    <AppShell
-      title="Employee Management"
-      subtitle="Manage employee records, compensation mapping, and payroll profile assignments."
-    >
+    <AppShell title="Employee Management">
       {dataUnavailable ? (
         <div className="page-card mb-6 border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
           Some employee management data is temporarily unavailable. The page is still loaded with the latest safe data.

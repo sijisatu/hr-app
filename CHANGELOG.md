@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-04-23
+- Add operational activity logs UI, approval notifications, and supporting backend audit/session updates for HR and manager workflows.
+- Continue production-readiness cleanup across attendance, employee, reimbursement, payroll, reporting, and authentication flows.
+- Refresh the login experience with a cleaner themed layout, Pralux HR-App branding, and demo account access improvements.
+
 ## 2026-04-22
 - Stabilize local production-mode frontend auth, proxy routing, and POST forwarding so login/logout and form submissions work reliably again.
 - Fix employee self-service data loading for attendance, leave balances, employee lookup, and newly created employee leave allocations.

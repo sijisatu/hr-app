@@ -116,7 +116,7 @@ export async function POST(request: Request) {
     if (expectsRedirect) {
       return NextResponse.redirect(new URL("/login?error=missing-credentials", requestUrl));
     }
-    return NextResponse.json({ success: false, error: "Username dan password wajib diisi." }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Username and password are required." }, { status: 400 });
   }
 
   const response = await fetch(`${getServerApiBase()}/api/auth/employee-login`, {
@@ -130,7 +130,7 @@ export async function POST(request: Request) {
     if (expectsRedirect) {
       return NextResponse.redirect(new URL("/login?error=invalid-credentials", requestUrl));
     }
-    return NextResponse.json({ success: false, error: "Username atau password tidak valid." }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Invalid username or password." }, { status: 400 });
   }
 
   const employeePayload = (await response.json()) as { data: EmployeeLoginResponse };

@@ -6,10 +6,7 @@ export default async function LeaveRequestPage() {
   await requireSession(["employee", "manager", "hr"]);
 
   return (
-    <AppShell
-      title="Leave Request"
-      subtitle="Submit and review leave requests from a dedicated workspace."
-    >
+    <AppShell title="Leave Request">
       <EmployeeAttendanceWorkspace fixedAction="leave" />
     </AppShell>
   );

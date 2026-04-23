@@ -6,10 +6,7 @@ export default async function SubmitOvertimePage() {
   await requireSession(["employee", "manager", "hr"]);
 
   return (
-    <AppShell
-      title="Submit Overtime"
-      subtitle="Submit and review overtime requests from a dedicated workspace."
-    >
+    <AppShell title="Submit Overtime">
       <EmployeeAttendanceWorkspace fixedAction="overtime" />
     </AppShell>
   );

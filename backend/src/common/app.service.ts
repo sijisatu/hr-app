@@ -11,6 +11,7 @@ import { hashPassword, isPasswordHash, verifyPassword } from "./password.service
 import { writeSystemLog } from "./system-log";
 import { seedData } from "../data/seed";
 import {
+  AuditLogRecord,
   AttendanceRecord,
   CompensationProfileRecord,
   DepartmentRecord,
@@ -33,6 +34,7 @@ import {
 } from "./types";
 import {
   AttendanceHistoryQueryDto,
+  AuditLogListQueryDto,
   CheckInDto,
   CheckOutDto,
   ChangePasswordDto,
@@ -114,9 +116,15 @@ type ExportJob = {
   error: string | null;
 };
 
-type SessionRequestMetadata = {
+  type SessionRequestMetadata = {
   ipAddress?: string | null;
   userAgent?: string | null;
+};
+
+type AuditLogTarget = {
+  targetType: string | null;
+  targetId: string | null;
+  targetLabel: string | null;
 };
 
 @Injectable()
@@ -267,7 +275,7 @@ export class AppService {
       gender: (employee.gender as EmployeeRecord["gender"]) ?? "male",
       maritalStatus: (employee.maritalStatus as EmployeeRecord["maritalStatus"]) ?? "single",
       marriageDate: employee.marriageDate == null ? null : String(employee.marriageDate),
-      address: String(employee.address ?? "Alamat belum diisi"),
+      address: String(employee.address ?? "Address has not been provided"),
       idCardNumber: String(employee.idCardNumber ?? `3171${padded}0000000000`),
       education: String(employee.education ?? "Belum ada data pendidikan"),
       workExperience: String(employee.workExperience ?? "Belum ada data pengalaman kerja"),
@@ -1302,13 +1310,13 @@ export class AppService {
     }
 
     if (conflicts.nik.trim().toLowerCase() === candidate.nik.trim().toLowerCase()) {
-      throw new BadRequestException("NIK sudah dipakai oleh karyawan lain.");
+      throw new BadRequestException("The NIK is already assigned to another employee.");
     }
     if (conflicts.email.trim().toLowerCase() === candidate.email.trim().toLowerCase()) {
-      throw new BadRequestException("Email sudah dipakai oleh karyawan lain.");
+      throw new BadRequestException("The email address is already assigned to another employee.");
     }
     if (conflicts.idCardNumber.trim() === candidate.idCardNumber.trim()) {
-      throw new BadRequestException("Nomor KTP sudah dipakai oleh karyawan lain.");
+      throw new BadRequestException("The ID card number is already assigned to another employee.");
     }
     if (
       candidate.appLoginEnabled &&
@@ -1317,7 +1325,7 @@ export class AppService {
       conflicts.loginUsername &&
       conflicts.loginUsername.trim().toLowerCase() === candidate.loginUsername.trim().toLowerCase()
     ) {
-      throw new BadRequestException("Username login sudah dipakai oleh karyawan lain.");
+      throw new BadRequestException("The login username is already assigned to another employee.");
     }
   }
 
@@ -1325,10 +1333,10 @@ export class AppService {
     const normalized = departmentName.trim().toLowerCase();
     const department = db.departments.find((entry) => entry.name.trim().toLowerCase() === normalized);
     if (!department) {
-      throw new BadRequestException("Department belum terdaftar di master.");
+      throw new BadRequestException("The department has not been registered in the master data.");
     }
     if (!department.active) {
-      throw new BadRequestException("Department tidak aktif.");
+      throw new BadRequestException("The department is inactive.");
     }
   }
 
@@ -1346,13 +1354,13 @@ export class AppService {
       entry.status === "active"
     );
     if (!manager) {
-      throw new BadRequestException("Manager approval tidak ditemukan atau tidak aktif.");
+      throw new BadRequestException("The assigned manager approver was not found or is inactive.");
     }
     if (manager.department.trim().toLowerCase() !== payload.department.trim().toLowerCase()) {
       throw new BadRequestException("Manager approval harus berasal dari department yang sama.");
     }
     if (payload.employeeId && manager.id === payload.employeeId) {
-      throw new BadRequestException("Manager approval tidak boleh memilih dirinya sendiri.");
+      throw new BadRequestException("The assigned manager approver cannot be the same employee.");
     }
   }
 
@@ -1689,7 +1697,98 @@ export class AppService {
     };
   }
 
-  private async writeAuditLog(action: string, details: Record<string, unknown>) {
+  private inferAuditLogTarget(details: Record<string, unknown>): AuditLogTarget {
+    const targetMap = [
+      { key: "employeeId", type: "employee" },
+      { key: "departmentId", type: "department" },
+      { key: "leaveId", type: "leave" },
+      { key: "overtimeId", type: "overtime" },
+      { key: "reimbursementId", type: "reimbursement" },
+      { key: "payRunId", type: "pay-run" }
+    ] as const;
+
+    const labels = [
+      details.targetLabel,
+      details.name,
+      details.employeeName,
+      details.department,
+      details.periodLabel,
+      details.claimType
+    ];
+
+    for (const candidate of targetMap) {
+      const value = details[candidate.key];
+      if (typeof value === "string" && value.trim().length > 0) {
+        const targetLabel = labels.find((entry) => typeof entry === "string" && entry.trim().length > 0);
+        return {
+          targetType: candidate.type,
+          targetId: value,
+          targetLabel: typeof targetLabel === "string" ? targetLabel : null
+        };
+      }
+    }
+
+    return {
+      targetType: null,
+      targetId: null,
+      targetLabel: null
+    };
+  }
+
+  private toAuditSafeJson(value: unknown) {
+    if (value === undefined) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (error) {
+      return {
+        serializationError: error instanceof Error ? error.message : "Unknown serialization error"
+      };
+    }
+  }
+
+  private buildAuditSummary(
+    eventKey: string,
+    moduleName: string,
+    actionName: string,
+    target: AuditLogTarget,
+    actor?: AuthenticatedActor | null,
+    details?: Record<string, unknown>
+  ) {
+    const actorName = actor?.name ?? (typeof details?.actor === "string" ? details.actor : null) ?? "System";
+    const readableAction = actionName.replace(/-/g, " ");
+    const readableModule = moduleName.replace(/-/g, " ");
+    const targetLabel = target.targetLabel ?? target.targetId ?? readableModule;
+    return `${actorName} ${readableAction} ${targetLabel}`.trim();
+  }
+
+  private mapPrismaAuditLog(record: any): AuditLogRecord {
+    return {
+      id: record.id,
+      eventKey: record.eventKey,
+      module: record.module,
+      action: record.action,
+      actorUserId: record.actorUserId ?? null,
+      actorName: record.actorName ?? null,
+      actorRole: record.actorRole ?? null,
+      actorDepartment: record.actorDepartment ?? null,
+      targetType: record.targetType ?? null,
+      targetId: record.targetId ?? null,
+      targetLabel: record.targetLabel ?? null,
+      summary: record.summary,
+      beforeData: record.beforeData ?? null,
+      afterData: record.afterData ?? null,
+      metadata: record.metadata ?? null,
+      ipAddress: record.ipAddress ?? null,
+      userAgent: record.userAgent ?? null,
+      occurredAt: this.toIsoString(record.occurredAt),
+      createdAt: this.toIsoString(record.createdAt)
+    };
+  }
+
+  private async writeAuditLog(eventKey: string, details: Record<string, unknown>, actor?: AuthenticatedActor | null) {
     this.auditQueue = this.auditQueue.then(async () => {
       let previousHash = "GENESIS";
       let sequence = 1;
@@ -1718,7 +1817,7 @@ export class AppService {
       const payload = {
         sequence,
         timestamp,
-        action,
+        action: eventKey,
         details
       };
       const entryHash = createHash("sha256")
@@ -1732,6 +1831,54 @@ export class AppService {
         hashAlgorithm: "sha256"
       };
       await appendFile(this.auditLogPath, `${JSON.stringify(entry)}\n`, "utf8");
+
+      const prisma = this.getPrisma();
+      if (prisma?.auditLog?.create) {
+        const [moduleName, ...actionParts] = eventKey.split(".");
+        const actionName = actionParts.join(".") || "event";
+        const target = this.inferAuditLogTarget(details);
+        const metadata = this.toAuditSafeJson(details);
+        const actorName = actor?.name ?? (typeof details.actor === "string" ? details.actor : null);
+        const actorRole = actor?.role ?? (typeof details.actorRole === "string" ? details.actorRole : null);
+        const actorDepartment = actor?.department ?? (typeof details.actorDepartment === "string" ? details.actorDepartment : null);
+        const ipAddress = typeof details.ipAddress === "string" ? details.ipAddress : null;
+        const userAgent = typeof details.userAgent === "string" ? details.userAgent : null;
+
+        try {
+          await prisma.auditLog.create({
+            data: {
+              id: `audit-${randomUUID().slice(0, 12)}`,
+              eventKey,
+              module: moduleName || "system",
+              action: actionName,
+              actorUserId: actor?.id ?? null,
+              actorName,
+              actorRole,
+              actorDepartment,
+              targetType: target.targetType,
+              targetId: target.targetId,
+              targetLabel: target.targetLabel,
+              summary: this.buildAuditSummary(eventKey, moduleName || "system", actionName, target, actor, details),
+              beforeData: null,
+              afterData: null,
+              metadata,
+              ipAddress,
+              userAgent,
+              occurredAt: new Date(timestamp)
+            }
+          });
+        } catch (error) {
+          await writeSystemLog({
+            source: "backend",
+            event: "audit.persist-failed",
+            level: "error",
+            details: {
+              eventKey,
+              error: error instanceof Error ? error.message : String(error)
+            }
+          });
+        }
+      }
     });
     await this.auditQueue;
   }
@@ -2653,6 +2800,86 @@ export class AppService {
     };
   }
 
+  async getAuditLogs(query?: AuditLogListQueryDto) {
+    const shouldPaginate = Boolean(
+      query?.page ||
+      query?.pageSize ||
+      query?.search ||
+      query?.module ||
+      query?.eventKey ||
+      query?.actorUserId ||
+      query?.actorRole ||
+      query?.targetType ||
+      query?.startDate ||
+      query?.endDate
+    );
+    const prisma = this.getPrisma();
+
+    if (prisma) {
+      const meta = this.toPageMeta(query?.page, query?.pageSize);
+      const search = query?.search?.trim();
+      const startDate = this.toDate(query?.startDate);
+      const endDate = this.toDate(query?.endDate);
+      const occurredAt: Record<string, Date> = {};
+      if (startDate) {
+        occurredAt.gte = startDate;
+      }
+      if (endDate) {
+        occurredAt.lte = endDate;
+      }
+
+      const where: Record<string, unknown> = {
+        ...(query?.module ? { module: query.module } : {}),
+        ...(query?.eventKey ? { eventKey: query.eventKey } : {}),
+        ...(query?.actorUserId ? { actorUserId: query.actorUserId } : {}),
+        ...(query?.actorRole ? { actorRole: query.actorRole } : {}),
+        ...(query?.targetType ? { targetType: query.targetType } : {}),
+        ...(Object.keys(occurredAt).length > 0 ? { occurredAt } : {})
+      };
+
+      if (search) {
+        where.OR = [
+          { summary: { contains: search, mode: "insensitive" } },
+          { actorName: { contains: search, mode: "insensitive" } },
+          { targetLabel: { contains: search, mode: "insensitive" } },
+          { targetId: { contains: search, mode: "insensitive" } },
+          { eventKey: { contains: search, mode: "insensitive" } }
+        ];
+      }
+
+      if (!shouldPaginate) {
+        const rows = await prisma.auditLog.findMany({
+          where,
+          orderBy: { occurredAt: "desc" }
+        });
+        return rows.map((record: any) => this.mapPrismaAuditLog(record));
+      }
+
+      const [total, rows] = await Promise.all([
+        prisma.auditLog.count({ where }),
+        prisma.auditLog.findMany({
+          where,
+          orderBy: { occurredAt: "desc" },
+          skip: meta.skip,
+          take: meta.pageSize
+        })
+      ]);
+
+      const items = rows.map((record: any) => this.mapPrismaAuditLog(record));
+      return {
+        items,
+        total,
+        page: meta.page,
+        pageSize: meta.pageSize,
+        hasNext: meta.skip + items.length < total
+      } satisfies PaginatedResult<AuditLogRecord>;
+    }
+
+    return shouldPaginate
+      ? this.paginateArray<AuditLogRecord>([], query?.page, query?.pageSize)
+      : [];
+  }
+
   async getEmployees(query?: EmployeeListQueryDto, actor?: AuthenticatedActor) {
     const shouldPaginate = Boolean(query?.page || query?.pageSize || query?.search || query?.department || query?.role || query?.status);
     const prisma = this.getPrisma();
@@ -2740,12 +2967,12 @@ export class AppService {
     }
 
     if (!employee) {
-      throw new NotFoundException("Username atau password tidak valid.");
+      throw new NotFoundException("Invalid username or password.");
     }
 
     const passwordMatches = await verifyPassword(normalizedPassword, employee.loginPassword);
     if (!passwordMatches) {
-      throw new NotFoundException("Username atau password tidak valid.");
+      throw new NotFoundException("Invalid username or password.");
     }
 
     if (employee.loginPassword && !isPasswordHash(employee.loginPassword)) {
@@ -2823,7 +3050,7 @@ export class AppService {
       });
       const employee = employeeRow ? this.mapPrismaEmployee(employeeRow) : null;
       if (!employee || !employee.loginPassword) {
-        throw new NotFoundException("Akun employee tidak ditemukan atau belum aktif.");
+        throw new NotFoundException("The employee account was not found or is inactive.");
       }
 
       const currentPassword = payload.currentPassword.trim();
@@ -2837,7 +3064,7 @@ export class AppService {
 
       const passwordMatches = await verifyPassword(currentPassword, employee.loginPassword);
       if (!passwordMatches) {
-        throw new BadRequestException("Password saat ini tidak valid.");
+        throw new BadRequestException("The current password is invalid.");
       }
 
       const hashedPassword = await hashPassword(newPassword);
@@ -2846,13 +3073,13 @@ export class AppService {
         data: { loginPassword: hashedPassword }
       });
       await this.writeAuditLog("auth.change-password", { employeeId: employee.id, actor: actor.name });
-      return { success: true, message: "Password berhasil diperbarui." };
+      return { success: true, message: "Password updated successfully." };
     }
 
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === actor.id && entry.appLoginEnabled && entry.status === "active");
     if (!employee || !employee.loginPassword) {
-      throw new NotFoundException("Akun employee tidak ditemukan atau belum aktif.");
+      throw new NotFoundException("The employee account was not found or is inactive.");
     }
 
     const currentPassword = payload.currentPassword.trim();
@@ -2866,13 +3093,13 @@ export class AppService {
 
     const passwordMatches = await verifyPassword(currentPassword, employee.loginPassword);
     if (!passwordMatches) {
-      throw new BadRequestException("Password saat ini tidak valid.");
+      throw new BadRequestException("The current password is invalid.");
     }
 
     employee.loginPassword = await hashPassword(newPassword);
     await this.writeDb(db);
     await this.writeAuditLog("auth.change-password", { employeeId: employee.id, actor: actor.name });
-    return { success: true, message: "Password berhasil diperbarui." };
+    return { success: true, message: "Password updated successfully." };
   }
 
   async resetEmployeePassword(payload: ResetEmployeePasswordDto, actor?: AuthenticatedActor) {
@@ -2887,10 +3114,10 @@ export class AppService {
       });
       const employee = employeeRow ? this.mapPrismaEmployee(employeeRow) : null;
       if (!employee) {
-        throw new NotFoundException("Employee tidak ditemukan.");
+        throw new NotFoundException("Employee not found.");
       }
       if (!employee.appLoginEnabled) {
-        throw new BadRequestException("Akun aplikasi employee belum aktif.");
+        throw new BadRequestException("The employee application account is not active yet.");
       }
 
       const newPassword = payload.newPassword.trim();
@@ -2911,17 +3138,17 @@ export class AppService {
       });
       return {
         success: true,
-        message: `Password akun ${employee.name} berhasil di-reset.`
+        message: `The password for ${employee.name} was reset successfully.`
       };
     }
 
     const db = await this.readDb();
     const employee = db.employees.find((entry) => entry.id === payload.employeeId);
     if (!employee) {
-      throw new NotFoundException("Employee tidak ditemukan.");
+      throw new NotFoundException("Employee not found.");
     }
     if (!employee.appLoginEnabled) {
-      throw new BadRequestException("Akun aplikasi employee belum aktif.");
+      throw new BadRequestException("The employee application account is not active yet.");
     }
 
     const newPassword = payload.newPassword.trim();
@@ -2938,11 +3165,11 @@ export class AppService {
     });
     return {
       success: true,
-      message: `Password akun ${employee.name} berhasil di-reset.`
+      message: `The password for ${employee.name} was reset successfully.`
     };
   }
 
-  async createEmployee(payload: CreateEmployeeDto) {
+  async createEmployee(payload: CreateEmployeeDto, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const department = await prisma.department.findFirst({
@@ -2951,10 +3178,10 @@ export class AppService {
         }
       });
       if (!department) {
-        throw new BadRequestException("Department belum terdaftar di master.");
+        throw new BadRequestException("The department has not been registered in the master data.");
       }
       if (!department.active) {
-        throw new BadRequestException("Department tidak aktif.");
+        throw new BadRequestException("The department is inactive.");
       }
 
       const managerName = payload.managerName.trim();
@@ -2968,7 +3195,7 @@ export class AppService {
           }
         });
         if (!manager) {
-          throw new BadRequestException("Manager approval tidak ditemukan atau tidak aktif.");
+          throw new BadRequestException("The assigned manager approver was not found or is inactive.");
         }
       }
 
@@ -3013,13 +3240,13 @@ export class AppService {
       });
       for (const conflict of conflicts) {
         if (conflict.nik.trim().toLowerCase() === payload.nik.trim().toLowerCase()) {
-          throw new BadRequestException("NIK sudah dipakai oleh karyawan lain.");
+          throw new BadRequestException("The NIK is already assigned to another employee.");
         }
         if (conflict.email.trim().toLowerCase() === payload.email.trim().toLowerCase()) {
-          throw new BadRequestException("Email sudah dipakai oleh karyawan lain.");
+          throw new BadRequestException("The email address is already assigned to another employee.");
         }
         if (conflict.idCardNumber.trim() === payload.idCardNumber.trim()) {
-          throw new BadRequestException("Nomor KTP sudah dipakai oleh karyawan lain.");
+          throw new BadRequestException("The ID card number is already assigned to another employee.");
         }
         if (
           payload.appLoginEnabled !== false &&
@@ -3028,7 +3255,7 @@ export class AppService {
           conflict.loginUsername &&
           conflict.loginUsername.trim().toLowerCase() === loginUsername.trim().toLowerCase()
         ) {
-          throw new BadRequestException("Username login sudah dipakai oleh karyawan lain.");
+          throw new BadRequestException("The login username is already assigned to another employee.");
         }
       }
 
@@ -3080,7 +3307,7 @@ export class AppService {
         }
       });
       const employee = this.sanitizeEmployee(this.mapPrismaEmployee(created));
-      await this.writeAuditLog("employee.create", { employeeId: employee.id, role: employee.role, department: employee.department });
+      await this.writeAuditLog("employee.create", { employeeId: employee.id, role: employee.role, department: employee.department, name: employee.name }, actor);
       return employee;
     }
 
@@ -3128,11 +3355,11 @@ export class AppService {
     };
     db.employees.unshift(employee);
     await this.writeDb(db);
-    await this.writeAuditLog("employee.create", { employeeId: employee.id, role: employee.role, department: employee.department });
+    await this.writeAuditLog("employee.create", { employeeId: employee.id, role: employee.role, department: employee.department, name: employee.name }, actor);
     return this.sanitizeEmployee(employee);
   }
 
-  async updateEmployee(id: string, payload: UpdateEmployeeDto) {
+  async updateEmployee(id: string, payload: UpdateEmployeeDto, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const currentRow = await prisma.employee.findUnique({
@@ -3201,10 +3428,10 @@ export class AppService {
         where: { name: next.department }
       });
       if (!department) {
-        throw new BadRequestException("Department belum terdaftar di master.");
+        throw new BadRequestException("The department has not been registered in the master data.");
       }
       if (!department.active) {
-        throw new BadRequestException("Department tidak aktif.");
+        throw new BadRequestException("The department is inactive.");
       }
       if (next.managerName.trim()) {
         const manager = await prisma.employee.findFirst({
@@ -3217,7 +3444,7 @@ export class AppService {
           }
         });
         if (!manager) {
-          throw new BadRequestException("Manager approval tidak ditemukan atau tidak aktif.");
+          throw new BadRequestException("The assigned manager approver was not found or is inactive.");
         }
       }
 
@@ -3241,13 +3468,13 @@ export class AppService {
       });
       for (const conflict of conflicts) {
         if (conflict.nik.trim().toLowerCase() === next.nik.trim().toLowerCase()) {
-          throw new BadRequestException("NIK sudah dipakai oleh karyawan lain.");
+          throw new BadRequestException("The NIK is already assigned to another employee.");
         }
         if (conflict.email.trim().toLowerCase() === next.email.trim().toLowerCase()) {
-          throw new BadRequestException("Email sudah dipakai oleh karyawan lain.");
+          throw new BadRequestException("The email address is already assigned to another employee.");
         }
         if (conflict.idCardNumber.trim() === next.idCardNumber.trim()) {
-          throw new BadRequestException("Nomor KTP sudah dipakai oleh karyawan lain.");
+          throw new BadRequestException("The ID card number is already assigned to another employee.");
         }
         if (
           next.appLoginEnabled &&
@@ -3256,7 +3483,7 @@ export class AppService {
           conflict.loginUsername &&
           conflict.loginUsername.trim().toLowerCase() === next.loginUsername.trim().toLowerCase()
         ) {
-          throw new BadRequestException("Username login sudah dipakai oleh karyawan lain.");
+          throw new BadRequestException("The login username is already assigned to another employee.");
         }
       }
 
@@ -3303,7 +3530,7 @@ export class AppService {
           leaveBalances: next.leaveBalances
         }
       });
-      await this.writeAuditLog("employee.update", { employeeId: id, fields: Object.keys(payload) });
+      await this.writeAuditLog("employee.update", { employeeId: id, fields: Object.keys(payload), name: updated.name }, actor);
       return this.sanitizeEmployee(this.mapPrismaEmployee(updated));
     }
 
@@ -3366,11 +3593,11 @@ export class AppService {
       loginUsername: employee.loginUsername
     }, employee.id);
     await this.writeDb(db);
-    await this.writeAuditLog("employee.update", { employeeId: id, fields: Object.keys(payload) });
+    await this.writeAuditLog("employee.update", { employeeId: id, fields: Object.keys(payload), name: employee.name }, actor);
     return this.sanitizeEmployee(employee);
   }
 
-  async deleteEmployee(id: string) {
+  async deleteEmployee(id: string, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const existing = await prisma.employee.findUnique({
@@ -3382,7 +3609,7 @@ export class AppService {
       await prisma.employee.delete({
         where: { id }
       });
-      await this.writeAuditLog("employee.delete", { employeeId: id });
+      await this.writeAuditLog("employee.delete", { employeeId: id, name: existing.name }, actor);
       return { deleted: true, id };
     }
 
@@ -3393,7 +3620,7 @@ export class AppService {
     }
     db.employees = nextEmployees;
     await this.writeDb(db);
-    await this.writeAuditLog("employee.delete", { employeeId: id });
+    await this.writeAuditLog("employee.delete", { employeeId: id }, actor);
     return { deleted: true, id };
   }
 
@@ -3566,7 +3793,7 @@ export class AppService {
     return [...db.departments].sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async createDepartment(payload: CreateDepartmentDto) {
+  async createDepartment(payload: CreateDepartmentDto, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const name = payload.name.trim();
@@ -3582,7 +3809,7 @@ export class AppService {
         }
       });
       if (duplicate) {
-        throw new BadRequestException("Department sudah ada.");
+        throw new BadRequestException("The department already exists.");
       }
 
       const department = await prisma.department.create({
@@ -3593,7 +3820,7 @@ export class AppService {
         }
       });
       const normalized = this.mapPrismaDepartment(department);
-      await this.writeAuditLog("department.create", { departmentId: normalized.id, name: normalized.name, active: normalized.active });
+      await this.writeAuditLog("department.create", { departmentId: normalized.id, name: normalized.name, active: normalized.active }, actor);
       return normalized;
     }
 
@@ -3604,7 +3831,7 @@ export class AppService {
     }
     const exists = db.departments.some((entry) => entry.name.trim().toLowerCase() === name.toLowerCase());
     if (exists) {
-      throw new BadRequestException("Department sudah ada.");
+      throw new BadRequestException("The department already exists.");
     }
     const now = new Date().toISOString();
     const department: DepartmentRecord = {
@@ -3617,11 +3844,11 @@ export class AppService {
     db.departments.push(department);
     db.departments.sort((a, b) => a.name.localeCompare(b.name));
     await this.writeDb(db);
-    await this.writeAuditLog("department.create", { departmentId: department.id, name: department.name, active: department.active });
+    await this.writeAuditLog("department.create", { departmentId: department.id, name: department.name, active: department.active }, actor);
     return department;
   }
 
-  async updateDepartment(id: string, payload: UpdateDepartmentDto) {
+  async updateDepartment(id: string, payload: UpdateDepartmentDto, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const department = await prisma.department.findUnique({
@@ -3643,7 +3870,7 @@ export class AppService {
           }
         });
         if (duplicate) {
-          throw new BadRequestException("Department sudah ada.");
+          throw new BadRequestException("The department already exists.");
         }
       }
 
@@ -3663,7 +3890,7 @@ export class AppService {
           }
         });
       });
-      await this.writeAuditLog("department.update", { departmentId: id, fields: Object.keys(payload) });
+      await this.writeAuditLog("department.update", { departmentId: id, fields: Object.keys(payload), name: updated.name }, actor);
       return this.mapPrismaDepartment(updated);
     }
 
@@ -3677,7 +3904,7 @@ export class AppService {
     if (nextName && nextName.toLowerCase() !== department.name.trim().toLowerCase()) {
       const duplicate = db.departments.some((entry) => entry.id !== id && entry.name.trim().toLowerCase() === nextName.toLowerCase());
       if (duplicate) {
-        throw new BadRequestException("Department sudah ada.");
+        throw new BadRequestException("The department already exists.");
       }
       const previousName = department.name;
       department.name = nextName;
@@ -3693,11 +3920,11 @@ export class AppService {
     }
     department.updatedAt = new Date().toISOString();
     await this.writeDb(db);
-    await this.writeAuditLog("department.update", { departmentId: id, fields: Object.keys(payload) });
+    await this.writeAuditLog("department.update", { departmentId: id, fields: Object.keys(payload), name: department.name }, actor);
     return department;
   }
 
-  async deleteDepartment(id: string) {
+  async deleteDepartment(id: string, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const department = await prisma.department.findUnique({
@@ -3710,13 +3937,13 @@ export class AppService {
         where: { department: department.name }
       });
       if (isUsed > 0) {
-        throw new BadRequestException("Department masih dipakai employee aktif, tidak bisa dihapus.");
+        throw new BadRequestException("The department is still assigned to active employees and cannot be deleted.");
       }
 
       await prisma.department.delete({
         where: { id }
       });
-      await this.writeAuditLog("department.delete", { departmentId: id, name: department.name });
+      await this.writeAuditLog("department.delete", { departmentId: id, name: department.name }, actor);
       return { deleted: true, id };
     }
 
@@ -3727,11 +3954,11 @@ export class AppService {
     }
     const isUsed = db.employees.some((entry) => entry.department.trim().toLowerCase() === department.name.trim().toLowerCase());
     if (isUsed) {
-      throw new BadRequestException("Department masih dipakai employee aktif, tidak bisa dihapus.");
+      throw new BadRequestException("The department is still assigned to active employees and cannot be deleted.");
     }
     db.departments = db.departments.filter((entry) => entry.id !== id);
     await this.writeDb(db);
-    await this.writeAuditLog("department.delete", { departmentId: id, name: department.name });
+    await this.writeAuditLog("department.delete", { departmentId: id, name: department.name }, actor);
     return { deleted: true, id };
   }
 
@@ -5016,7 +5243,7 @@ export class AppService {
     return this.toSafeReimbursementRequest(request);
   }
 
-  async managerApproveReimbursement(payload: ReimbursementApproveDto) {
+  async managerApproveReimbursement(payload: ReimbursementApproveDto, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const current = await prisma.reimbursementRequest.findUnique({
@@ -5050,7 +5277,7 @@ export class AppService {
         reimbursementId: updated.id,
         status: payload.status,
         actor: payload.actor
-      });
+      }, actor);
       return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
     }
 
@@ -5075,11 +5302,11 @@ export class AppService {
       reimbursementId: request.id,
       status: payload.status,
       actor: payload.actor
-    });
+    }, actor);
     return this.toSafeReimbursementRequest(request);
   }
 
-  async hrProcessReimbursement(payload: ReimbursementProcessDto) {
+  async hrProcessReimbursement(payload: ReimbursementProcessDto, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const requestRow = await prisma.reimbursementRequest.findUnique({
@@ -5110,7 +5337,7 @@ export class AppService {
             approverFlow: [...request.approverFlow, `${payload.actor} rejected`]
           }
         });
-        await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+        await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor }, actor);
         return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
       }
 
@@ -5124,7 +5351,7 @@ export class AppService {
             approverFlow: [...request.approverFlow, `${payload.actor} approved for payout`]
           }
         });
-        await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+        await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor }, actor);
         return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
       }
 
@@ -5152,7 +5379,7 @@ export class AppService {
           }
         });
       });
-      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor }, actor);
       return this.toSafeReimbursementRequest(this.mapPrismaReimbursementRequest(updated));
     }
 
@@ -5175,7 +5402,7 @@ export class AppService {
       request.updatedAt = new Date().toISOString();
       request.approverFlow = [...request.approverFlow, `${payload.actor} rejected`];
       await this.writeDb(db);
-      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor }, actor);
       return this.toSafeReimbursementRequest(request);
     }
 
@@ -5185,7 +5412,7 @@ export class AppService {
       request.updatedAt = new Date().toISOString();
       request.approverFlow = [...request.approverFlow, `${payload.actor} approved for payout`];
       await this.writeDb(db);
-      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+      await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor }, actor);
       return this.toSafeReimbursementRequest(request);
     }
 
@@ -5201,7 +5428,7 @@ export class AppService {
     request.updatedAt = request.processedAt;
     request.approverFlow = [...request.approverFlow, `${payload.actor} processed reimbursement`];
     await this.writeDb(db);
-    await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor });
+    await this.writeAuditLog("reimbursement.hr-process", { reimbursementId: request.id, status: payload.status, actor: payload.actor }, actor);
     return this.toSafeReimbursementRequest(request);
   }
 
@@ -5384,7 +5611,7 @@ export class AppService {
     return [...db.payRuns].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
   }
 
-  async generatePayrollRun(payload: GeneratePayrollRunDto) {
+  async generatePayrollRun(payload: GeneratePayrollRunDto, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const [employeeRows, overtimeRows, payrollComponentRows, taxProfileRows] = await Promise.all([
@@ -5466,7 +5693,7 @@ export class AppService {
         createdAt: payRunCreatedAt.toISOString(),
         publishedAt: null
       } as PayRunRecord;
-      await this.writeAuditLog("payroll.generate-run", { payRunId, periodLabel: payload.periodLabel, employeeCount: slips.length });
+      await this.writeAuditLog("payroll.generate-run", { payRunId, periodLabel: payload.periodLabel, employeeCount: slips.length }, actor);
       return { payRun: normalizedPayRun, payslips: slips };
     }
 
@@ -5491,11 +5718,11 @@ export class AppService {
     db.payRuns.unshift(payRun);
     db.payslips = [...slips, ...db.payslips.filter((slip) => slip.payRunId !== payRunId)];
     await this.writeDb(db);
-    await this.writeAuditLog("payroll.generate-run", { payRunId, periodLabel: payload.periodLabel, employeeCount: slips.length });
+    await this.writeAuditLog("payroll.generate-run", { payRunId, periodLabel: payload.periodLabel, employeeCount: slips.length }, actor);
     return { payRun, payslips: slips };
   }
 
-  async publishPayrollRun(payload: PublishPayrollRunDto) {
+  async publishPayrollRun(payload: PublishPayrollRunDto, actor?: AuthenticatedActor | null) {
     const prisma = this.getPrisma();
     if (prisma) {
       const payRun = await prisma.payRun.findUnique({
@@ -5518,7 +5745,7 @@ export class AppService {
           }
         });
       });
-      await this.writeAuditLog("payroll.publish-run", { payRunId: updated.id, periodLabel: updated.periodLabel });
+      await this.writeAuditLog("payroll.publish-run", { payRunId: updated.id, periodLabel: updated.periodLabel }, actor);
       return this.mapPrismaPayRun(updated);
     }
 
@@ -5531,7 +5758,7 @@ export class AppService {
     payRun.publishedAt = new Date().toISOString();
     db.payslips = db.payslips.map((slip) => slip.payRunId === payRun.id ? { ...slip, status: "published" } : slip);
     await this.writeDb(db);
-    await this.writeAuditLog("payroll.publish-run", { payRunId: payRun.id, periodLabel: payRun.periodLabel });
+    await this.writeAuditLog("payroll.publish-run", { payRunId: payRun.id, periodLabel: payRun.periodLabel }, actor);
     return payRun;
   }
 

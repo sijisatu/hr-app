@@ -22,12 +22,7 @@ export default async function AttendancePage() {
 
   if (session.role === "employee" || session.role === "manager" || session.role === "hr") {
     return (
-      <AppShell
-        title="Employee Attendance"
-        subtitle={session.role === "hr"
-          ? "Manage employee attendance requests and access team-level reporting."
-          : "Choose a request type and manage each attendance workflow from its dedicated page."}
-      >
+      <AppShell title="Employee Attendance">
         <EmployeeAttendanceHub showAttendanceReport={session.role === "hr"} />
       </AppShell>
     );
@@ -53,7 +48,6 @@ export default async function AttendancePage() {
   return (
     <AppShell
       title="Employee Attendance"
-      subtitle="Track attendance records and overtime in one operational workspace."
       actions={(
         <div className="flex flex-wrap gap-2">
           <button className="secondary-button">

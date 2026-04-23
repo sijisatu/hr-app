@@ -42,7 +42,6 @@ export default async function LeaveReportPage() {
   return (
     <AppShell
       title="Leave Report"
-      subtitle="Review leave activity, approval status, and supporting documents across the organization."
       actions={(
         <Link href="/attendance" className="secondary-button">
           Back to Attendance
@@ -81,7 +80,6 @@ export default async function LeaveReportPage() {
               </div>
               <div>
                 <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Coverage</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">{employees.length} employees are included in this report.</p>
               </div>
             </div>
           </div>
@@ -93,7 +91,6 @@ export default async function LeaveReportPage() {
               </div>
               <div>
                 <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Medical Files</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">{withDocuments} sick submissions already include an uploaded doctor letter.</p>
               </div>
             </div>
           </div>
@@ -105,7 +102,6 @@ export default async function LeaveReportPage() {
               </div>
               <div>
                 <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Review Focus</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">Prioritize pending requests and sick submissions with missing supporting files.</p>
               </div>
             </div>
           </div>

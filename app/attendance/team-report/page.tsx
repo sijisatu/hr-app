@@ -87,7 +87,6 @@ export default async function TeamAttendanceReportPage() {
   return (
     <AppShell
       title="Attendance Report"
-      subtitle="Monitor organization-wide attendance coverage, punctuality, and overtime activity."
       actions={(
         <div className="flex flex-wrap gap-2">
           <Link href="/attendance" className="secondary-button">

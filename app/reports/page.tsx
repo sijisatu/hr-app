@@ -85,7 +85,6 @@ export default async function ReportsPage({
   return (
     <AppShell
       title="Reports"
-      subtitle="Centralized attendance, employee, and reimbursement reporting with export-ready output."
       actions={<PeriodAction period={period} />}
     >
       {dataUnavailable ? (

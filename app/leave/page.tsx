@@ -6,10 +6,7 @@ export default async function LeavePage() {
   await requireSession(["admin", "hr"]);
 
   return (
-    <AppShell
-      title="Leave System"
-      subtitle="Manage leave balances, carry over, and expiration policies for active employees."
-    >
+    <AppShell title="Leave System">
       <LeaveWorkflowBoard />
     </AppShell>
   );

@@ -6,10 +6,7 @@ export default async function HalfDayRequestPage() {
   await requireSession(["employee", "manager", "hr"]);
 
   return (
-    <AppShell
-      title="Half Day Request"
-      subtitle="Submit and review half-day leave requests from a dedicated workspace."
-    >
+    <AppShell title="Half Day Request">
       <EmployeeAttendanceWorkspace fixedAction="half-day" />
     </AppShell>
   );

@@ -94,7 +94,7 @@ export function CompensationProfileWorkspace() {
           employeeIds: []
         }),
     onSuccess: async () => {
-      setMessage(componentForm.id ? "Allowance / deduction master berhasil diperbarui." : "Allowance / deduction master berhasil ditambahkan.");
+      setMessage(componentForm.id ? "Allowance / deduction rule updated successfully." : "Allowance / deduction rule added successfully.");
       setComponentForm(emptyComponentForm());
       await refresh();
     }
@@ -105,7 +105,7 @@ export function CompensationProfileWorkspace() {
       ? updateTaxProfile(taxForm.id, { name: taxForm.name, rate: Number(taxForm.rate), active: taxForm.active, description: taxForm.description })
       : createTaxProfile({ name: taxForm.name, rate: Number(taxForm.rate), active: taxForm.active, description: taxForm.description }),
     onSuccess: async () => {
-      setMessage("Tax profile berhasil disimpan.");
+      setMessage("Tax profile saved successfully.");
       setTaxForm(emptyTaxForm());
       await refresh();
     }
@@ -114,7 +114,7 @@ export function CompensationProfileWorkspace() {
   const deleteComponent = useMutation({
     mutationFn: (id: string) => deletePayrollComponent(id),
     onSuccess: async () => {
-      setMessage("Allowance / deduction master berhasil dihapus.");
+      setMessage("Allowance / deduction rule deleted successfully.");
       setComponentForm(emptyComponentForm());
       await refresh();
     }
@@ -123,7 +123,7 @@ export function CompensationProfileWorkspace() {
   const deleteTax = useMutation({
     mutationFn: (id: string) => deleteTaxProfile(id),
     onSuccess: async () => {
-      setMessage("Tax profile berhasil dihapus.");
+      setMessage("Tax profile deleted successfully.");
       setTaxForm(emptyTaxForm());
       await refresh();
     }

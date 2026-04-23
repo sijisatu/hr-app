@@ -297,7 +297,6 @@ export function EmployeeDashboardOverview({ logs, leaves }: EmployeeDashboardOve
             <ChartColumnBig className="mt-1 h-7 w-7 shrink-0 text-[var(--text)]" />
             <div className="min-w-0">
               <p className="section-title text-[clamp(22px,2.2vw,32px)] font-semibold leading-[1.08] text-[var(--text)]">Attendance Info</p>
-              <p className="mt-1.5 text-[clamp(13px,1.1vw,15px)] leading-6 text-[var(--text-muted)]">Attendance overview for the last 3 weeks.</p>
             </div>
           </div>
 

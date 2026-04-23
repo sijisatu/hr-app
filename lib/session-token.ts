@@ -2,10 +2,24 @@ import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const sessionSecret = process.env.APP_SESSION_SECRET?.trim() || "dev-session-secret-change-me";
 const isProduction = (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+const demoSessionSecret = "local-demo-session-secret-2026-04-23-pralux";
+const invalidProductionSecrets = new Set([
+  "dev-session-secret-change-me",
+  "change-this-production-secret"
+]);
+
+function resolveSessionSecret() {
+  const configuredSecret = process.env.APP_SESSION_SECRET?.trim() || demoSessionSecret;
+  if (isProduction && invalidProductionSecrets.has(configuredSecret)) {
+    throw new Error("APP_SESSION_SECRET must be configured with a strong unique value in production.");
+  }
+
+  return configuredSecret;
+}
 
 export function signSessionToken(sessionSubject: string) {
+  const sessionSecret = resolveSessionSecret();
   const signature = createHmac("sha256", sessionSecret).update(sessionSubject).digest("base64url");
   return `${sessionSubject}.${signature}`;
 }
@@ -20,6 +34,7 @@ export function verifyAndExtractSessionToken(token: string | undefined | null) {
     return isProduction ? null : token;
   }
 
+  const sessionSecret = resolveSessionSecret();
   const sessionSubject = token.slice(0, separatorIndex);
   const signature = token.slice(separatorIndex + 1);
   const expected = createHmac("sha256", sessionSecret).update(sessionSubject).digest("base64url");

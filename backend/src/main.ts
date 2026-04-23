@@ -22,6 +22,28 @@ import { toLoggableError, writeSystemLog } from "./common/system-log";
 let backendErrorHandlersRegistered = false;
 let streamErrorHandlersRegistered = false;
 
+function resolveTrustProxySetting(isProduction: boolean) {
+  const rawValue = (process.env.APP_TRUST_PROXY ?? "").trim();
+  if (!rawValue) {
+    return isProduction ? 1 : "loopback";
+  }
+
+  const normalized = rawValue.toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+
+  const numericValue = Number(rawValue);
+  if (Number.isInteger(numericValue) && numericValue >= 0) {
+    return numericValue;
+  }
+
+  return rawValue;
+}
+
 function registerStdIoGuards() {
   if (streamErrorHandlersRegistered) {
     return;
@@ -107,6 +129,8 @@ async function bootstrap() {
       allowedHeaders: ["Content-Type", "X-Session-Key", "X-Session-Token", "X-Request-Id"]
     }
   });
+  const trustProxy = resolveTrustProxySetting(isProduction);
+  app.getHttpAdapter().getInstance().set("trust proxy", trustProxy);
   app.setGlobalPrefix("");
   app.use(cookieParser());
   app.use(
@@ -118,8 +142,7 @@ async function bootstrap() {
   );
   if ((process.env.NODE_ENV ?? "").toLowerCase() === "production") {
     app.use((req: Request, res: Response, nextFn: NextFunction) => {
-      const forwardedProto = (req.headers["x-forwarded-proto"] as string | undefined)?.toLowerCase();
-      if (forwardedProto !== "https") {
+      if (!req.secure) {
         res.status(400).json({ success: false, error: "HTTPS is required in production.", data: null });
         return;
       }
@@ -235,7 +258,8 @@ async function bootstrap() {
     event: "bootstrap.ready",
     details: {
       pid: process.pid,
-      port
+      port,
+      trustProxy
     }
   });
   console.log(`PulsePresence API listening on http://127.0.0.1:${port}`);

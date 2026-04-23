@@ -6,10 +6,7 @@ export default async function OnDutyRequestPage() {
   await requireSession(["employee", "manager", "hr"]);
 
   return (
-    <AppShell
-      title="On Duty Request"
-      subtitle="Submit and track on-duty or field activity requests from a dedicated workspace."
-    >
+    <AppShell title="On Duty Request">
       <EmployeeAttendanceWorkspace fixedAction="on-duty" />
     </AppShell>
   );

@@ -103,7 +103,7 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
         percentage: componentForm.calculationType === "percentage" ? componentForm.percentage : null
       }),
     onSuccess: async (result) => {
-      setMessage(`Komponen payroll ${result.name} berhasil ditambahkan.`);
+      setMessage(`Payroll component ${result.name} added successfully.`);
       await refreshPayroll();
     },
     onError: (error: Error) => setMessage(error.message)
@@ -112,7 +112,7 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
   const generateRunMutation = useMutation({
     mutationFn: () => generatePayrollRun(runForm),
     onSuccess: async (result) => {
-      setMessage(`Pay run ${result.payRun.periodLabel} berhasil digenerate dalam status draft.`);
+      setMessage(`Pay run ${result.payRun.periodLabel} was generated successfully in draft status.`);
       await refreshPayroll();
     },
     onError: (error: Error) => setMessage(error.message)
@@ -121,7 +121,7 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
   const publishRunMutation = useMutation({
     mutationFn: (payRunId: string) => publishPayrollRun(payRunId),
     onSuccess: async (result) => {
-      setMessage(`Pay run ${result.periodLabel} berhasil dipublish.`);
+      setMessage(`Pay run ${result.periodLabel} was published successfully.`);
       await refreshPayroll();
     },
     onError: (error: Error) => setMessage(error.message)
@@ -131,7 +131,7 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
     mutationFn: (payslipId: string) => exportPayslip(payslipId),
     onSuccess: (result) => {
       setDownloadUrl(toAssetUrl(result.fileUrl));
-      setMessage(`Payslip berhasil digenerate: ${result.fileUrl}`);
+      setMessage(`Payslip generated successfully: ${result.fileUrl}`);
     },
     onError: (error: Error) => setMessage(error.message)
   });
@@ -162,7 +162,6 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
               <Receipt className="h-5 w-5 text-[var(--primary)]" />
               <div>
                 <p className="section-title text-[24px] font-semibold text-[var(--primary)]">My Payslip</p>
-                <p className="mt-1 text-[14px] text-[var(--text-muted)]">Akses slip gaji yang sudah dipublish untuk akun kamu.</p>
               </div>
             </div>
 
@@ -245,7 +244,6 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
           <section className="page-card p-6">
             <div>
               <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Pay Runs</p>
-              <p className="mt-1 text-[14px] text-[var(--text-muted)]">Generate payroll draft, review totals, lalu publish payslip ke employee portal.</p>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-4">
@@ -325,7 +323,6 @@ export function PayrollWorkspace({ role, userId, initialOverview, initialCompone
               <WalletCards className="h-5 w-5 text-[var(--primary)]" />
               <div>
                 <p className="section-title text-[22px] font-semibold text-[var(--primary)]">Salary Component Engine</p>
-                <p className="mt-1 text-[14px] text-[var(--text-muted)]">Tambah earning atau deduction rule untuk payroll berikutnya.</p>
               </div>
             </div>
 

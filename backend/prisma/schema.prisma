@@ -86,6 +86,33 @@ model AppSession {
   @@index([sessionKey])
 }
 
+model AuditLog {
+  id              String   @id
+  eventKey        String
+  module          String
+  action          String
+  actorUserId     String?
+  actorName       String?
+  actorRole       String?
+  actorDepartment String?
+  targetType      String?
+  targetId        String?
+  targetLabel     String?
+  summary         String
+  beforeData      Json?
+  afterData       Json?
+  metadata        Json?
+  ipAddress       String?
+  userAgent       String?
+  occurredAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([module, occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@index([targetType, targetId, occurredAt])
+  @@index([eventKey, occurredAt])
+}
+
 model Department {
   id        String   @id
   name      String   @unique

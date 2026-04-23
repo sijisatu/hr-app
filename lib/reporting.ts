@@ -344,11 +344,11 @@ export async function exportReport(payload: {
     }
 
     if (statusJson.data.status === "failed") {
-      throw new Error(statusJson.data.error || "Gagal generate report.");
+      throw new Error(statusJson.data.error || "Failed to generate the report.");
     }
   }
 
-  throw new Error("Export report timeout. Silakan coba lagi.");
+  throw new Error("Report export timed out. Please try again.");
 }
 
 export function toAssetUrl(fileUrl: string | null) {

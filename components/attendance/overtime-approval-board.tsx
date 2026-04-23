@@ -26,7 +26,6 @@ export function OvertimeApprovalBoard() {
     <section className="page-card p-6">
       <div className="mb-5">
         <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Overtime Approval Queue</p>
-        <p className="mt-1 text-[14px] text-[var(--text-muted)]">Manager/leader melakukan approve atau reject overtime request employee.</p>
       </div>
 
       <div className="space-y-4">

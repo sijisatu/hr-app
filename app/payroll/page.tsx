@@ -24,10 +24,7 @@ export default async function PayrollPage() {
     payslipsResult.status === "rejected";
 
   return (
-    <AppShell
-      title="Payroll"
-      subtitle={session.role === "employee" || session.role === "manager" ? "Access published payslips and review your payroll history." : "Manage payroll components, generate pay runs, and publish employee payslips."}
-    >
+    <AppShell title="Payroll">
       {dataUnavailable ? (
         <div className="page-card mb-6 border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
           Some payroll data is temporarily unavailable. The page is still loaded with the latest safe data.

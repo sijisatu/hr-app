@@ -30,6 +30,7 @@ import { IdempotencyInterceptor } from "./common/idempotency.interceptor";
 import { verifyAndExtractSessionToken } from "./common/session-token";
 import {
   AttendanceHistoryQueryDto,
+  AuditLogListQueryDto,
   CheckInDto,
   CheckOutDto,
   CreateEmployeeDto,
@@ -227,6 +228,13 @@ export class AppController {
     });
   }
 
+  @Get("ops/audit-logs")
+  @Roles("admin", "hr")
+  async auditLogs(@Query() query: AuditLogListQueryDto, @Res({ passthrough: true }) res: Response) {
+    this.setNoStore(res);
+    return this.wrap(await this.appService.getAuditLogs(query));
+  }
+
   @Get("dashboard/summary")
   @Roles("admin", "hr", "manager", "employee")
   async dashboardSummary(@Res({ passthrough: true }) res: Response) {
@@ -306,20 +314,23 @@ export class AppController {
 
   @Post("employees")
   @Roles("admin", "hr")
-  async createEmployee(@Body() body: CreateEmployeeDto) {
-    return this.wrap(await this.appService.createEmployee(body));
+  async createEmployee(@Body() body: CreateEmployeeDto, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.createEmployee(body, actor));
   }
 
   @Patch("employees/:id")
   @Roles("admin", "hr")
-  async updateEmployee(@Param("id") id: string, @Body() body: UpdateEmployeeDto) {
-    return this.wrap(await this.appService.updateEmployee(id, body));
+  async updateEmployee(@Param("id") id: string, @Body() body: UpdateEmployeeDto, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.updateEmployee(id, body, actor));
   }
 
   @Delete("employees/:id")
   @Roles("admin", "hr")
-  async deleteEmployee(@Param("id") id: string) {
-    return this.wrap(await this.appService.deleteEmployee(id));
+  async deleteEmployee(@Param("id") id: string, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.deleteEmployee(id, actor));
   }
 
   @Get("employees/:id/documents")
@@ -390,20 +401,23 @@ export class AppController {
 
   @Post("departments")
   @Roles("admin", "hr")
-  async createDepartment(@Body() body: CreateDepartmentDto) {
-    return this.wrap(await this.appService.createDepartment(body));
+  async createDepartment(@Body() body: CreateDepartmentDto, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.createDepartment(body, actor));
   }
 
   @Patch("departments/:id")
   @Roles("admin", "hr")
-  async updateDepartment(@Param("id") id: string, @Body() body: UpdateDepartmentDto) {
-    return this.wrap(await this.appService.updateDepartment(id, body));
+  async updateDepartment(@Param("id") id: string, @Body() body: UpdateDepartmentDto, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.updateDepartment(id, body, actor));
   }
 
   @Delete("departments/:id")
   @Roles("admin", "hr")
-  async deleteDepartment(@Param("id") id: string) {
-    return this.wrap(await this.appService.deleteDepartment(id));
+  async deleteDepartment(@Param("id") id: string, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.deleteDepartment(id, actor));
   }
 
   @Post("compensation-profiles")
@@ -638,15 +652,17 @@ export class AppController {
   @Post("reimbursement/requests/manager-approve")
   @Roles("admin", "manager")
   @UseInterceptors(IdempotencyInterceptor)
-  async managerApproveReimbursement(@Body() body: ReimbursementApproveDto, @Req() _request: Request) {
-    return this.wrap(await this.appService.managerApproveReimbursement(body));
+  async managerApproveReimbursement(@Body() body: ReimbursementApproveDto, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.managerApproveReimbursement(body, actor));
   }
 
   @Post("reimbursement/requests/hr-process")
   @Roles("admin", "hr")
   @UseInterceptors(IdempotencyInterceptor)
-  async hrProcessReimbursement(@Body() body: ReimbursementProcessDto, @Req() _request: Request) {
-    return this.wrap(await this.appService.hrProcessReimbursement(body));
+  async hrProcessReimbursement(@Body() body: ReimbursementProcessDto, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.hrProcessReimbursement(body, actor));
   }
 
   @Get("assets/reimbursements/:reimbursementId/receipt")
@@ -706,15 +722,17 @@ export class AppController {
   @Post("payroll/runs")
   @Roles("admin", "hr")
   @UseInterceptors(IdempotencyInterceptor)
-  async generatePayrollRun(@Body() body: GeneratePayrollRunDto, @Req() _request: Request) {
-    return this.wrap(await this.appService.generatePayrollRun(body));
+  async generatePayrollRun(@Body() body: GeneratePayrollRunDto, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.generatePayrollRun(body, actor));
   }
 
   @Post("payroll/runs/publish")
   @Roles("admin", "hr")
   @UseInterceptors(IdempotencyInterceptor)
-  async publishPayrollRun(@Body() body: PublishPayrollRunDto, @Req() _request: Request) {
-    return this.wrap(await this.appService.publishPayrollRun(body));
+  async publishPayrollRun(@Body() body: PublishPayrollRunDto, @Req() request: Request) {
+    const actor = await this.resolveActorFromRequest(request);
+    return this.wrap(await this.appService.publishPayrollRun(body, actor));
   }
 
   @Get("payroll/payslips")

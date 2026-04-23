@@ -148,8 +148,8 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
   const leaveQuery = useQuery({ queryKey: ["leave-history"], queryFn: getLeaveHistory });
   const overtimeQuery = useQuery({ queryKey: ["attendance-overtime"], queryFn: getAttendanceOvertime });
 
-  const allLeaveRequests = leaveQuery.data ?? [];
-  const allOvertimeItems = overtimeQuery.data ?? [];
+  const allLeaveRequests = useMemo(() => leaveQuery.data ?? [], [leaveQuery.data]);
+  const allOvertimeItems = useMemo(() => overtimeQuery.data ?? [], [overtimeQuery.data]);
   const currentEmployee = useMemo(
     () => (employeesQuery.data ?? []).find((item) => item.id === currentUser?.id) ?? null,
     [currentUser?.id, employeesQuery.data]
@@ -588,7 +588,6 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
           <div className="flex flex-col gap-4 border-b border-[var(--border)] px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
             <div>
               <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Attendance & On-Duty Records</p>
-              <p className="mt-2 text-[14px] text-[var(--text-muted)]">Attendance logs and submitted on-duty requests are shown together in this workspace.</p>
             </div>
             <div className="rounded-[12px] bg-[var(--panel-alt)] px-4 py-3 text-[13px] text-[var(--text-muted)]">
               {attendanceQuery.isLoading ? "Loading attendance history..." : `${attendanceLogs.length} attendance logs and ${onDutyRequests.length} on-duty requests loaded`}
@@ -597,7 +596,6 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
 
           <div className="border-b border-[var(--border)] px-5 py-5 lg:px-6">
             <p className="text-[16px] font-semibold text-[var(--primary)]">Submitted On-Duty Requests</p>
-            <p className="mt-2 text-[14px] text-[var(--text-muted)]">Requests appear here immediately after submission, even before attendance logs are generated.</p>
           </div>
 
           <div className="mobile-scroll-shadow overflow-x-auto px-4 py-4 lg:px-6">
@@ -643,7 +641,6 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
 
           <div className="border-b border-t border-[var(--border)] px-5 py-5 lg:px-6">
             <p className="text-[16px] font-semibold text-[var(--primary)]">Generated Attendance Logs</p>
-            <p className="mt-2 text-[14px] text-[var(--text-muted)]">Approved on-duty requests can generate attendance records that appear below.</p>
           </div>
 
           <div className="mobile-scroll-shadow overflow-x-auto px-4 py-4 lg:px-6">
@@ -694,7 +691,6 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       {activeAction !== "on-duty" && activeAction !== "overtime" ? (
         <section className="page-card p-5 sm:p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">{actionCards.find((item) => item.key === activeAction)?.label} Records</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Records for the currently selected request type.</p>
           {activeAction === "leave" ? (
             <div className="mt-4 space-y-4">
               <div className="grid gap-3 lg:grid-cols-3">
@@ -809,7 +805,6 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       {activeAction === "overtime" ? (
         <section className="page-card p-5 sm:p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Overtime Records</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Overtime records for this account.</p>
           <div className="mobile-scroll-shadow mt-4 overflow-x-auto">
             <table className="min-w-full border-separate border-spacing-y-2">
               <thead>
@@ -835,7 +830,6 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       {canApprove && activeAction !== "overtime" ? (
         <section className="page-card p-5 sm:p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Approval Queue</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Manager approval queue for the current request type.</p>
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             {leaveApprovalQueue.map((request) => (
               <div key={request.id} className="panel-muted p-4">
@@ -872,7 +866,6 @@ export function EmployeeAttendanceWorkspace({ fixedAction, showActionCards, back
       {canApprove && activeAction === "overtime" ? (
         <section className="page-card p-5 sm:p-6">
           <p className="section-title text-[22px] font-semibold text-[var(--primary)] sm:text-[24px]">Approval Queue</p>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">Manager approval queue for overtime submissions.</p>
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             {overtimeApprovalQueue.map((item) => (
               <div key={item.id} className="panel-muted p-4">

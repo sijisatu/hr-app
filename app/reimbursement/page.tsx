@@ -20,10 +20,7 @@ export default async function ReimbursementPage() {
     requestsResult.status === "rejected";
 
   return (
-    <AppShell
-      title="Reimbursement"
-      subtitle={session.role === "hr" || session.role === "admin" ? "Review employee claims and manage claim type allocations in one workspace." : "Submit claims, check entitlements, and track approval progress."}
-    >
+    <AppShell title="Reimbursement">
       {dataUnavailable ? (
         <div className="page-card mb-6 border-[var(--warning)]/20 bg-[var(--warning-soft)] p-4 text-[14px] text-[var(--primary)]">
           Some reimbursement data is temporarily unavailable. The page is still loaded with the latest safe data.

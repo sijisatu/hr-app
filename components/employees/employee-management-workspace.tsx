@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -475,11 +476,11 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
   const resetPasswordMutation = useMutation({
     mutationFn: async () => {
       if (!form.id) {
-        throw new Error("Employee belum dipilih.");
+        throw new Error("No employee has been selected.");
       }
       const nextPassword = resetPasswordValue.trim();
       if (nextPassword.length < 8) {
-        throw new Error("Password baru minimal 8 karakter.");
+        throw new Error("The new password must be at least 8 characters.");
       }
 
       const response = await fetch("/api/auth/reset-password", {
@@ -491,7 +492,7 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
       if (!response.ok) {
         throw new Error(payload?.error ?? "Failed to reset employee password.");
       }
-      return payload?.data?.message ?? "Password employee berhasil di-reset.";
+      return payload?.data?.message ?? "Employee password has been reset successfully.";
     },
     onSuccess: (message) => {
       setResetPasswordModalOpen(false);
@@ -632,7 +633,6 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Employee Directory</p>
-            <p className="mt-2 max-w-3xl text-[14px] leading-6 text-[var(--text-muted)]">Manage employee records, open financial setup, and add new employees from this action bar.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link href="/employees/financial-details" className="secondary-button"><WalletCards className="h-4 w-4" /> Financial Setup</Link>
@@ -650,7 +650,6 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="section-title text-[24px] font-semibold text-[var(--primary)] sm:text-[28px]">{mode === "create" ? "Add Employee" : mode === "edit" ? "Edit Employee" : "Employee Detail"}</p>
-                  <p className="mt-2 text-[14px] text-[var(--text-muted)]">Employee data is organized by section, with support for multiple education and work experience entries.</p>
                 </div>
                 <button className="secondary-button" onClick={() => setMode(null)}>Close</button>
               </div>
@@ -678,7 +677,6 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
                       <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Account Access</p>
-                      <p className="mt-2 text-[14px] text-[var(--text-muted)]">HR can create an employee login directly from this form.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                       {form.id && form.appLoginEnabled ? (
@@ -707,7 +705,6 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                     <Field label="Username" value={form.loginUsername} onChange={(value) => setForm((prev) => ({ ...prev, loginUsername: value }))} disabled={readOnly || !form.appLoginEnabled} />
                     <Field label="Password" type="text" value={form.loginPassword} onChange={(value) => setForm((prev) => ({ ...prev, loginPassword: value }))} disabled={readOnly || !form.appLoginEnabled} />
                   </div>
-                  <p className="mt-3 text-[13px] text-[var(--text-muted)]">The default username can use the employee ID, and HR can set the initial password here.</p>
                 </div>
               </div> : null}
 
@@ -825,10 +822,6 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="section-title text-[20px] font-semibold text-[var(--primary)]">Upload Employee Documents</p>
-                      <p className="mt-2 text-[14px] text-[var(--text-muted)]">
-                        Upload ID cards, diplomas, certificates, tax documents, insurance files, or other supporting documents.
-                        {form.id ? " For existing employees, uploads can be completed directly from this tab." : " For new employees, queued documents will be uploaded after the employee record is saved."}
-                      </p>
                       <p className="mt-3 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-5 text-amber-800">
                         Sensitive employee documents are stored for HR operations and compliance purposes. Access is limited to HR, the document owner, and managers within the approved reporting scope.
                       </p>
@@ -908,7 +901,6 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
             <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
               <div>
                 <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Reset Password Employee</p>
-                <p className="mt-2 text-[14px] text-[var(--text-muted)]">{form.name || "Employee"} akan menerima password baru dari HR.</p>
               </div>
               <button className="secondary-button !min-h-10 !w-10 !rounded-full !p-0" onClick={() => setResetPasswordModalOpen(false)}>
                 <X className="h-4 w-4" />
@@ -916,10 +908,9 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
             </div>
             <div className="px-6 py-5">
               <label className="block space-y-2 text-[14px] font-medium text-[var(--text)]">
-                <span>Password Baru</span>
+                <span>New Password</span>
                 <input type="text" value={resetPasswordValue} onChange={(event) => setResetPasswordValue(event.target.value)} className="filter-control w-full" />
               </label>
-              <p className="mt-3 text-[13px] text-[var(--text-muted)]">Gunakan minimal 8 karakter. Default yang disarankan: <span className="font-semibold text-[var(--primary)]">employee123</span></p>
             </div>
             <div className="flex justify-end gap-3 border-t border-[var(--border)] px-6 py-4">
               <button className="secondary-button" onClick={() => setResetPasswordModalOpen(false)}>Cancel</button>
@@ -1071,7 +1062,7 @@ function DocumentPreview({ document }: { document: EmployeeDocumentRecord }) {
   if (isImage) {
     return (
       <div className="flex justify-center">
-        <img src={resolvedUrl} alt={document.title} className="max-h-[72vh] w-auto max-w-full rounded-[20px] border border-[var(--border)] bg-white object-contain shadow-soft" />
+        <Image src={resolvedUrl} alt={document.title} width={1400} height={1400} unoptimized className="max-h-[72vh] h-auto w-auto max-w-full rounded-[20px] border border-[var(--border)] bg-white object-contain shadow-soft" />
       </div>
     );
   }

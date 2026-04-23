@@ -1,10 +1,24 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const SESSION_SECRET = process.env.APP_SESSION_SECRET?.trim() || "dev-session-secret-change-me";
 const IS_PRODUCTION = (process.env.NODE_ENV || "").toLowerCase() === "production";
+const DEMO_SESSION_SECRET = "local-demo-session-secret-2026-04-23-pralux";
+const INVALID_PRODUCTION_SECRETS = new Set([
+  "dev-session-secret-change-me",
+  "change-this-production-secret"
+]);
+
+function resolveSessionSecret() {
+  const configuredSecret = process.env.APP_SESSION_SECRET?.trim() || DEMO_SESSION_SECRET;
+  if (IS_PRODUCTION && INVALID_PRODUCTION_SECRETS.has(configuredSecret)) {
+    throw new Error("APP_SESSION_SECRET must be configured with a strong unique value in production.");
+  }
+
+  return configuredSecret;
+}
 
 function toSignature(value: string) {
-  return createHmac("sha256", SESSION_SECRET).update(value).digest("base64url");
+  const sessionSecret = resolveSessionSecret();
+  return createHmac("sha256", sessionSecret).update(value).digest("base64url");
 }
 
 export function signSessionToken(sessionSubject: string) {
