@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Eye, FileText, KeyRound, LoaderCircle, Plus, Trash2, Upload, WalletCards, X } from "lucide-react";
 import { EmployeesTable } from "@/components/tables/employees-table";
@@ -38,6 +38,9 @@ type Props = {
   initialEmployees: EmployeeRecord[];
   initialCompensationProfiles: CompensationProfileRecord[];
   initialDepartments: DepartmentRecord[];
+  initialMode?: Mode;
+  initialTab?: TabKey;
+  documentationMode?: boolean;
 };
 
 type Mode = "create" | "edit" | "view" | null;
@@ -250,11 +253,18 @@ function blankPositionMasterForm(): PositionMasterForm {
   };
 }
 
-export function EmployeeManagementWorkspace({ initialEmployees, initialCompensationProfiles, initialDepartments }: Props) {
+export function EmployeeManagementWorkspace({
+  initialEmployees,
+  initialCompensationProfiles,
+  initialDepartments,
+  initialMode = null,
+  initialTab = "personal",
+  documentationMode = false
+}: Props) {
   const qc = useQueryClient();
-  const [mode, setMode] = useState<Mode>(null);
+  const [mode, setMode] = useState<Mode>(initialMode);
   const readOnly = mode === "view";
-  const [tab, setTab] = useState<TabKey>("personal");
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [form, setForm] = useState<FormState>(blankForm());
   const [existingDocuments, setExistingDocuments] = useState<EmployeeDocumentRecord[]>([]);
@@ -302,6 +312,19 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
     setExistingDocuments(employee?.documents ?? []);
     setQueuedDocuments([]);
   };
+
+  useEffect(() => {
+    if (!documentationMode || !initialMode) {
+      return;
+    }
+    setMode(initialMode);
+    setResetPasswordModalOpen(false);
+    setResetPasswordValue("employee123");
+    setForm(blankForm());
+    setExistingDocuments([]);
+    setQueuedDocuments([]);
+    setTab(initialTab);
+  }, [documentationMode, initialMode, initialTab]);
 
   const departmentChoices = departments
     .filter((entry) => entry.active || entry.name === form.department)
@@ -634,14 +657,16 @@ export function EmployeeManagementWorkspace({ initialEmployees, initialCompensat
           <div>
             <p className="section-title text-[24px] font-semibold text-[var(--primary)]">Employee Directory</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href="/employees/financial-details" className="secondary-button"><WalletCards className="h-4 w-4" /> Financial Setup</Link>
-            <button className="primary-button shadow-lg shadow-[rgba(20,43,87,0.18)]" onClick={() => openModal("create")}><Plus className="h-4 w-4" /> Add Employee</button>
-          </div>
+          {!documentationMode ? (
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href="/employees/financial-details" className="secondary-button"><WalletCards className="h-4 w-4" /> Financial Setup</Link>
+              <button className="primary-button shadow-lg shadow-[rgba(20,43,87,0.18)]" onClick={() => openModal("create")}><Plus className="h-4 w-4" /> Add Employee</button>
+            </div>
+          ) : null}
         </div>
       </section>
 
-      <EmployeesTable employees={employees} onView={(employee) => openModal("view", employee)} onEdit={(employee) => openModal("edit", employee)} onDelete={(employee) => deleteMutation.mutate(employee.id)} />
+      {!documentationMode ? <EmployeesTable employees={employees} onView={(employee) => openModal("view", employee)} onEdit={(employee) => openModal("edit", employee)} onDelete={(employee) => deleteMutation.mutate(employee.id)} /> : null}
 
       {mode ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-3 sm:p-4">

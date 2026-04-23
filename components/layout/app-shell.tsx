@@ -162,7 +162,7 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
             <div className="sidebar-nav sidebar-nav-utility space-y-2 pt-4 lg:pt-0 lg:space-y-0">
               <AttendanceQuickAction className="primary-button sidebar-action w-full" />
 
-              <button className="nav-item w-full">
+              <Link href="/help-center" className="nav-item w-full">
                 <span className="nav-item-indicator" />
                 <span className="nav-item-box">
                   <span className="nav-item-icon">
@@ -170,7 +170,7 @@ export function AppShell({ title, subtitle, actions, children, compact = false }
                   </span>
                 </span>
                 <span className="nav-item-label text-[15px] font-medium">Help Center</span>
-              </button>
+              </Link>
 
               <Link href="/login" className="nav-item">
                 <span className="nav-item-indicator" />
